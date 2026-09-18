@@ -1,0 +1,38 @@
+{
+  "orchestrator": {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "thinking": "high"
+  },
+  "sdd-explore": {
+    "model": "poolside/laguna-s-2.1:free",
+    "thinking": "medium"
+  },
+  "sdd-proposal": {
+    "model": "poolside/laguna-s-2.1:free",
+    "thinking": "medium"
+  },
+  "sdd-spec": {
+    "model": "poolside/laguna-s-2.1:free",
+    "thinking": "high"
+  },
+  "sdd-design": {
+    "model": "poolside/laguna-s-2.1:free",
+    "thinking": "high"
+  },
+  "sdd-tasks": {
+    "model": "poolside/laguna-s-2.1:free",
+    "thinking": "high"
+  },
+  "sdd-apply": {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "thinking": "high"
+  },
+  "sdd-verify": {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "thinking": "high"
+  },
+  "sdd-archive": {
+    "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "thinking": "medium"
+  }
+}
