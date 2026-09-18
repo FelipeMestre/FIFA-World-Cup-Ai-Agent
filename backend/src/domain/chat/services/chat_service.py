@@ -1,9 +1,16 @@
 import uuid
+from collections.abc import AsyncIterator
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.model.message import Message
 from src.infra.openrouter.exceptions import OpenRouterRequestFailed
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
+from src.infra.openrouter.schemas import (
+    ChatCompletionChunk,
+    ChatCompletionResult,
+    FinishReason,
+    ToolCall,
+)
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
@@ -50,15 +57,55 @@ class ChatService:
         completion_messages.extend({"role": m.role, "content": m.content} for m in history)
 
         try:
-            reply_content = await self._openrouter_client.create_chat_completion(
+            chunks = self._openrouter_client.create_chat_completion(
                 messages=completion_messages,
                 tools=tools,
             )
+            result = await _aggregate_chat_completion(chunks)
         except OpenRouterRequestFailed as exc:
             raise ChatServiceUnavailable(str(exc)) from exc
 
+        reply_content = result.content
         history.append(Message(role="assistant", content=reply_content))
         await self._conversation_cache.save_history(
             resolved_conversation_id, history, ttl_seconds=CONVERSATION_HISTORY_TTL_SECONDS
         )
         return resolved_conversation_id, reply_content
+
+
+async def _aggregate_chat_completion(
+    chunks: AsyncIterator[ChatCompletionChunk],
+) -> ChatCompletionResult:
+    """Consume the client's live chunk stream and build one aggregated
+    result. Stands in for the tool-execution loop's own aggregation until
+    PR2 introduces it -- keeps the plain-message round trip working exactly
+    as before from the outside while the client itself now streams.
+    """
+    content_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    tool_calls: list[ToolCall] = []
+    finish_reason: FinishReason | None = None
+    model: str | None = None
+
+    async for chunk in chunks:
+        if chunk.delta_content:
+            content_parts.append(chunk.delta_content)
+        if chunk.delta_reasoning:
+            reasoning_parts.append(chunk.delta_reasoning)
+        if chunk.tool_calls is not None:
+            tool_calls = chunk.tool_calls
+        if chunk.finish_reason is not None:
+            finish_reason = chunk.finish_reason
+        if chunk.model is not None:
+            model = chunk.model
+
+    if finish_reason is None or model is None:
+        raise OpenRouterRequestFailed(None, "Unexpected response shape")
+
+    return ChatCompletionResult(
+        content="".join(content_parts),
+        reasoning="".join(reasoning_parts),
+        tool_calls=tool_calls,
+        finish_reason=finish_reason,
+        model=model,
+    )

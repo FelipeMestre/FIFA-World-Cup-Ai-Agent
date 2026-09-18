@@ -1,7 +1,10 @@
+from collections.abc import AsyncIterator
 from typing import Protocol
+
+from src.infra.openrouter.schemas import ChatCompletionChunk
 
 
 class OpenRouterClientInterface(Protocol):
-    async def create_chat_completion(
+    def create_chat_completion(
         self, messages: list[dict], tools: list[dict] | None = None
-    ) -> str: ...
+    ) -> AsyncIterator[ChatCompletionChunk]: ...
