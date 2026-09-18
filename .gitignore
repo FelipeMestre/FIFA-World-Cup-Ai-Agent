@@ -23,3 +23,6 @@ docker-compose.override.yml
 
 # Claude Code: local machine settings only, not shared project config
 .claude/settings.local.json
+
+.atl
+.claude
