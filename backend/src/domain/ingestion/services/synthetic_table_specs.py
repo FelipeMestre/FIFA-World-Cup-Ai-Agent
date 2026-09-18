@@ -1,0 +1,190 @@
+"""`TableIngestionSpec` instances for the synthetic WC2026 dataset -- the same
+10 source tables as `seed_from_csv.py`'s `TABLE_SPECS`, but upsert-oriented
+(each spec carries `conflict_columns`, its natural primary key) instead of
+one-shot insert.
+"""
+
+from src.domain.ingestion.services import csv_parsers as parsers
+from src.domain.ingestion.services.table_ingestion_spec import TableIngestionSpec
+from src.infra.postgres.schemas.match_schema import (
+    MatchEventSchema,
+    MatchLineupSchema,
+    MatchSchema,
+    MatchTeamStatSchema,
+)
+from src.infra.postgres.schemas.player_schema import PlayerSchema, PlayerStatSchema
+from src.infra.postgres.schemas.reference_schema import (
+    RefereeSchema,
+    TournamentStageSchema,
+    VenueSchema,
+)
+from src.infra.postgres.schemas.team_schema import TeamSchema
+
+SYNTHETIC_TABLE_SPECS: list[TableIngestionSpec] = [
+    TableIngestionSpec(
+        source_name="team",
+        target_schema=TeamSchema,
+        column_spec={
+            "team_id": parsers.parse_int,
+            "team_name": parsers.parse_str,
+            "fifa_code": parsers.parse_str,
+            "group_letter": parsers.parse_str,
+            "confederation": parsers.parse_str,
+            "fifa_ranking_pre_tournament": parsers.parse_int,
+            "elo_rating": parsers.parse_int,
+            "manager_name": parsers.parse_str,
+        },
+        conflict_columns=("team_id",),
+    ),
+    TableIngestionSpec(
+        source_name="venue",
+        target_schema=VenueSchema,
+        column_spec={
+            "venue_id": parsers.parse_int,
+            "stadium_name": parsers.parse_str,
+            "city": parsers.parse_str,
+            "country": parsers.parse_str,
+            "capacity": parsers.parse_int,
+            "latitude": parsers.parse_float,
+            "longitude": parsers.parse_float,
+            "elevation_meters": parsers.parse_int,
+        },
+        conflict_columns=("venue_id",),
+    ),
+    TableIngestionSpec(
+        source_name="tournament_stage",
+        target_schema=TournamentStageSchema,
+        column_spec={
+            "stage_id": parsers.parse_int,
+            "stage_name": parsers.parse_str,
+            "is_knockout": parsers.parse_bool,
+        },
+        conflict_columns=("stage_id",),
+    ),
+    TableIngestionSpec(
+        source_name="referee",
+        target_schema=RefereeSchema,
+        column_spec={
+            "referee_id": parsers.parse_int,
+            "name": parsers.parse_str,
+            "country": parsers.parse_str,
+            "avg_cards_per_game": parsers.parse_float,
+        },
+        conflict_columns=("referee_id",),
+    ),
+    TableIngestionSpec(
+        source_name="player",
+        target_schema=PlayerSchema,
+        column_spec={
+            "player_id": parsers.parse_int,
+            "team_id": parsers.parse_int,
+            "player_name": parsers.parse_str,
+            "position": parsers.parse_str,
+            "club_team": parsers.parse_str,
+            "market_value_eur": parsers.parse_int,
+            "caps": parsers.parse_int,
+            "date_of_birth": parsers.parse_date,
+            "height_cm": parsers.parse_int,
+            "goals": parsers.parse_int,
+        },
+        conflict_columns=("player_id",),
+    ),
+    TableIngestionSpec(
+        source_name="match",
+        target_schema=MatchSchema,
+        column_spec={
+            "match_id": parsers.parse_int,
+            "date": parsers.parse_date,
+            "kickoff_time_utc": parsers.parse_time,
+            "stage_id": parsers.parse_int,
+            "venue_id": parsers.parse_int,
+            "home_team_id": parsers.parse_int,
+            "away_team_id": parsers.parse_int,
+            "home_score": parsers.parse_int,
+            "away_score": parsers.parse_int,
+            "home_penalty_score": parsers.parse_optional_int,
+            "away_penalty_score": parsers.parse_optional_int,
+            "status": parsers.parse_str,
+            "result_type": parsers.parse_str,
+            "home_xg": parsers.parse_float,
+            "away_xg": parsers.parse_float,
+            "referee_id": parsers.parse_int,
+            "player_of_the_match_id": parsers.parse_int,
+        },
+        conflict_columns=("match_id",),
+    ),
+    TableIngestionSpec(
+        source_name="match_event",
+        target_schema=MatchEventSchema,
+        column_spec={
+            "event_id": parsers.parse_int,
+            "match_id": parsers.parse_int,
+            "minute": parsers.parse_int,
+            "event_type": parsers.parse_str,
+            "team_id": parsers.parse_int,
+            "player_id": parsers.parse_int,
+        },
+        conflict_columns=("event_id",),
+    ),
+    TableIngestionSpec(
+        source_name="match_team_stat",
+        target_schema=MatchTeamStatSchema,
+        column_spec={
+            "match_id": parsers.parse_int,
+            "team_id": parsers.parse_int,
+            "possession_pct": parsers.parse_int,
+            "total_shots": parsers.parse_int,
+            "shots_on_target": parsers.parse_int,
+            "corners": parsers.parse_int,
+            "fouls": parsers.parse_int,
+            "offsides": parsers.parse_int,
+            "saves": parsers.parse_int,
+            "player_of_the_match": parsers.parse_optional_str,
+            "data_source": parsers.parse_str,
+            "last_updated": parsers.parse_date,
+        },
+        conflict_columns=("match_id", "team_id"),
+    ),
+    TableIngestionSpec(
+        source_name="match_lineup",
+        target_schema=MatchLineupSchema,
+        column_spec={
+            "lineup_id": parsers.parse_int,
+            "match_id": parsers.parse_int,
+            "player_id": parsers.parse_int,
+            "team_id": parsers.parse_int,
+            "is_starting_xi": parsers.parse_bool,
+            "tactical_position": parsers.parse_str,
+            "minutes_played": parsers.parse_int,
+        },
+        conflict_columns=("lineup_id",),
+    ),
+    TableIngestionSpec(
+        source_name="player_stat",
+        target_schema=PlayerStatSchema,
+        column_spec={
+            "player_id": parsers.parse_int,
+            "player_name": parsers.parse_str,
+            "team_id": parsers.parse_int,
+            "position": parsers.parse_str,
+            "matches_played": parsers.parse_int,
+            "matches_started": parsers.parse_int,
+            "minutes_played": parsers.parse_int,
+            "goals": parsers.parse_int,
+            "assists": parsers.parse_int,
+            "shots": parsers.parse_optional_int,
+            "shots_on_target": parsers.parse_optional_int,
+            "yellow_cards": parsers.parse_int,
+            "red_cards": parsers.parse_int,
+            "penalty_goals": parsers.parse_int,
+            "own_goals": parsers.parse_int,
+            "clean_sheets": parsers.parse_optional_int,
+            "saves": parsers.parse_optional_int,
+            "goals_conceded": parsers.parse_optional_int,
+            "average_rating": parsers.parse_optional_float,
+            "data_source": parsers.parse_optional_str,
+            "last_verified": parsers.parse_date,
+        },
+        conflict_columns=("player_id",),
+    ),
+]
