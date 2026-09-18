@@ -1,0 +1,25 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Third-party dataset clone — its own git repo, re-fetched from GitHub,
+# not project source. See data/FIFA-World-Cup-2026-Dataset/README.md.
+data/
+
+# Environment files — never commit secrets. backend/ and frontend/ each
+# have their own .gitignore covering this too; this is a repo-wide backstop.
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# Local docker-compose overrides (personal tweaks, not shared config)
+docker-compose.override.yml
+
+# Claude Code: local machine settings only, not shared project config
+.claude/settings.local.json
