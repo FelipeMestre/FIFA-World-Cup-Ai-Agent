@@ -1,0 +1,9 @@
+from typing import Protocol
+
+from src.domain.ingestion.model.ingestion_job import IngestionJob
+
+
+class IngestionJobRepositoryInterface(Protocol):
+    async def create(self, job: IngestionJob) -> IngestionJob: ...
+    async def get(self, job_id: int) -> IngestionJob | None: ...
+    async def update(self, job: IngestionJob) -> IngestionJob: ...
