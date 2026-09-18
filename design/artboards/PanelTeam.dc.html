@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Team detail panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside aria-label="Team detail: Argentina" style="width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: #12161D; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #262E3A;">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Team detail</span>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Argentina</h2>
+</div>
+<sc-if value="{{notSheet}}" hint-placeholder-val="{{true}}">
+<button type="button" aria-label="Collapse panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><rect x="3" y="4" width="14" height="12"></rect><path d="M12 4v12M6.5 8l2 2-2 2"></path></svg></button>
+</sc-if>
+<button type="button" aria-label="Close panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"></path></svg></button>
+</header>
+<div style="flex-shrink: 0; padding: 10px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #262E3A; font-size: 13px; line-height: 18px;">
+<span style="flex-grow: 1; min-width: 0; color: #95A0B3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">From: <span style="color: #ABB4C4;">How did Argentina perform defensively?</span></span>
+<a href="#message" style="flex-shrink: 0; font-weight: 600; text-decoration: none;">Jump to message</a>
+</div>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 16px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: center; gap: 14px;">
+<div style="width: 56px; height: 56px; flex-shrink: 0; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600;">ARG</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; line-height: 30px; font-weight: 600;">Argentina</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">Semifinalist · 7 matches · 630 minutes</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+<sc-for list="{{record}}" as="t" hint-placeholder-count="6">
+<div style="padding: 12px 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{t.label}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600; color: {{t.ink}};">{{t.value}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Tournament averages</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Per match · vs field</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+<sc-for list="{{avgs}}" as="a" hint-placeholder-count="6">
+<div style="padding: 12px 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{a.label}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">{{a.value}}</span>
+<span style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 18px;"><span style="color: #95A0B3;">Field {{a.field}}</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8B96AA;">{{a.delta}}</span></span>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Match by match</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">7 played</span>
+</div>
+<div style="display: flex; flex-direction: column;">
+<sc-for list="{{results}}" as="r" hint-placeholder-count="7">
+<div style="height: 48px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #262E3A;">
+<span style="width: 32px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{r.stage}}</span>
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 9px; font-weight: 600;">{{r.code}}</span>
+<span style="flex-grow: 1; font-size: 14px; line-height: 20px;">{{r.opp}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500;">{{r.score}}</span>
+<span style="width: 24px; height: 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 1px solid {{r.c}}; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: {{r.c}};">{{r.res}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="flex-grow: 1; padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Discipline</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Totals</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+<div style="padding: 12px 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Yellow cards</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">11</span>
+</div>
+<div style="padding: 12px 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Red cards</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">0</span>
+</div>
+<div style="padding: 12px 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Fouls</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">76</span>
+</div>
+</div>
+<span style="font-size: 13px; line-height: 18px; color: #95A0B3;">1.57 yellow cards per match · field 1.90</span>
+</section>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"w":{"editor":"int","default":480,"min":360,"max":640,"section":"Size"},"h":{"editor":"int","default":1360,"min":600,"max":2400,"section":"Size"},"sheet":{"editor":"boolean","default":false},"$preview":{"width":480,"height":1360}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const pos = '#35D18E', neg = '#FF7A6B', neu = '#8B96AA', ink = '#F4F6F9';
+    const record = [
+      { label: 'Won', value: '5', ink: pos }, { label: 'Drawn', value: '1', ink: neu }, { label: 'Lost', value: '1', ink: neg },
+      { label: 'Goals for', value: '14', ink: ink }, { label: 'Against', value: '5', ink: ink }, { label: 'Goal diff', value: '▲ +9', ink: pos }
+    ];
+    const avgs = [
+      { label: 'Possession', value: '58.4%', field: '50.0%', delta: '▲ 8.4' },
+      { label: 'Shots', value: '15.3', field: '12.4', delta: '▲ 2.9' },
+      { label: 'Shots on target', value: '6.1', field: '4.3', delta: '▲ 1.8' },
+      { label: 'Corners', value: '6.4', field: '4.9', delta: '▲ 1.5' },
+      { label: 'Fouls', value: '10.9', field: '12.1', delta: '▼ 1.2' },
+      { label: 'Offsides', value: '1.7', field: '1.9', delta: '▼ 0.2' }
+    ];
+    const res = { W: pos, D: neu, L: neg };
+    const results = [
+      ['MD1', 'ALG', 'Algeria', '3–0', 'W'], ['MD2', 'AUT', 'Austria', '2–0', 'W'], ['MD3', 'JOR', 'Jordan', '1–1', 'D'],
+      ['R32', 'NGA', 'Nigeria', '3–1', 'W'], ['R16', 'MEX', 'Mexico', '2–0', 'W'], ['QF', 'NED', 'Netherlands', '2–1', 'W'],
+      ['SF', 'BRA', 'Brazil', '1–2', 'L']
+    ].map(([stage, code, opp, score, r]) => ({ stage, code, opp, score, res: r, c: res[r] }));
+    return {
+      w: this.props.w ?? 480, h: this.props.h ?? 1360,
+      notSheet: !(this.props.sheet ?? false),
+      record, avgs, results
+    };
+  }
+}
+</script>
+</body>
+</html>

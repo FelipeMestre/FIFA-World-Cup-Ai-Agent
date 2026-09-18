@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Player comparison panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside aria-label="Player comparison: Messi and Mbappé" style="width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: #12161D; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #262E3A;">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Player comparison</span>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Messi vs Mbappé</h2>
+</div>
+<sc-if value="{{notSheet}}" hint-placeholder-val="{{true}}">
+<button type="button" aria-label="Collapse panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><rect x="3" y="4" width="14" height="12"></rect><path d="M12 4v12M6.5 8l2 2-2 2"></path></svg></button>
+</sc-if>
+<button type="button" aria-label="Close panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"></path></svg></button>
+</header>
+<div style="flex-shrink: 0; padding: 10px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #262E3A; font-size: 13px; line-height: 18px;">
+<span style="flex-grow: 1; min-width: 0; color: #95A0B3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">From: <span style="color: #ABB4C4;">Compare Messi vs Mbappé</span></span>
+<a href="#message" style="flex-shrink: 0; font-weight: 600; text-decoration: none;">Jump to message</a>
+</div>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #262E3A;">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<sc-for list="{{players}}" as="p" hint-placeholder-count="2">
+<div style="padding: 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;"><span style="width: 8px; height: 8px; border-radius: 2px; background: {{p.key}};"></span>{{p.slot}}</span>
+<div style="display: flex; align-items: center; gap: 10px;">
+<div style="width: 40px; height: 40px; flex-shrink: 0; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 2px solid {{p.key}}; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600;">{{p.initials}}</div>
+<div style="min-width: 0; display: flex; flex-direction: column;">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{p.name}}</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">{{p.sub}}</span>
+</div>
+</div>
+<button type="button" aria-label="{{p.swapLabel}}" style="height: 44px; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: #232A35; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; line-height: 16px; font-weight: 600; letter-spacing: 0.01em; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M4 7h11M12 4l3 3-3 3M16 13H5M8 10l-3 3 3 3"></path></svg><span style="flex-grow: 1; text-align: left;">Swap player</span><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#95A0B3" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M6 8l4 4 4-4"></path></svg></button>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<div role="group" aria-label="Normalization" style="display: flex; padding: 2px; background: #0A0D12; border: 1px solid #3A4456; border-radius: 8px;">
+<button type="button" aria-pressed="true" style="height: 36px; padding: 0 14px; background: #2C3440; border: 0; border-radius: 6px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer;">Per 90</button>
+<button type="button" aria-pressed="false" style="height: 36px; padding: 0 14px; background: transparent; border: 0; border-radius: 6px; color: #ABB4C4; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer;">Totals</button>
+</div>
+<span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Percentile vs 142 forwards</span>
+</div>
+</section>
+<section style="flex-grow: 1; padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+<table style="width: 100%; border-collapse: collapse; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; overflow: hidden;">
+<thead>
+<tr style="height: 36px; border-bottom: 1px solid #3A4456;">
+<th scope="col" style="padding: 0 14px; text-align: left; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Per 90</th>
+<th scope="col" style="padding: 0 12px; text-align: left; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;"><span style="display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; background: #4E8EF7;"></span>Messi</th>
+<th scope="col" style="padding: 0 14px 0 12px; text-align: left; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;"><span style="display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; background: #ABB4C4;"></span>Mbappé</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="10">
+<tr style="height: 56px; border-bottom: 1px solid #262E3A;">
+<th scope="row" style="padding: 0 14px; text-align: left; font-weight: 400;"><span style="display: block; font-size: 14px; line-height: 20px; color: #F4F6F9;">{{r.label}}</span><span style="display: block; font-size: 12px; line-height: 16px; color: #95A0B3;">{{r.note}}</span></th>
+<td style="padding: 0 12px;">
+<div style="display: flex; flex-direction: column; gap: 5px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums; color: {{r.aInk}};">{{r.a}} <span style="font-size: 11px; color: #4E8EF7;">{{r.aMark}}</span></span>
+<sc-if value="{{r.hasPct}}" hint-placeholder-val="{{true}}"><span style="display: flex; align-items: center; gap: 6px;"><span style="width: 56px; height: 4px; display: flex; background: #262E3A; border-radius: 2px;"><span style="width: {{r.aPctW}}; background: #4E8EF7; border-radius: 2px;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 14px; color: #95A0B3;">{{r.aPct}}</span></span></sc-if>
+</div>
+</td>
+<td style="padding: 0 14px 0 12px;">
+<div style="display: flex; flex-direction: column; gap: 5px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums; color: {{r.bInk}};">{{r.b}} <span style="font-size: 11px; color: #ABB4C4;">{{r.bMark}}</span></span>
+<sc-if value="{{r.hasPct}}" hint-placeholder-val="{{true}}"><span style="display: flex; align-items: center; gap: 6px;"><span style="width: 56px; height: 4px; display: flex; background: #262E3A; border-radius: 2px;"><span style="width: {{r.bPctW}}; background: #ABB4C4; border-radius: 2px;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 14px; color: #95A0B3;">{{r.bPct}}</span></span></sc-if>
+</div>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+<p style="margin: 0; font-size: 13px; line-height: 18px; color: #95A0B3;">▲ marks the better figure in each row. Percentile rank within position, forwards with at least 270 minutes. Minutes shown as totals.</p>
+</section>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"w":{"editor":"int","default":480,"min":360,"max":640,"section":"Size"},"h":{"editor":"int","default":1180,"min":600,"max":2400,"section":"Size"},"sheet":{"editor":"boolean","default":false},"$preview":{"width":480,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const lead = '#F4F6F9', trail = '#ABB4C4';
+    const players = [
+      { slot: 'Player A', key: '#4E8EF7', initials: 'LM', name: 'Lionel Messi', sub: 'ARG · FWD · 598 min', swapLabel: 'Swap player A' },
+      { slot: 'Player B', key: '#ABB4C4', initials: 'KM', name: 'Kylian Mbappé', sub: 'FRA · FWD · 612 min', swapLabel: 'Swap player B' }
+    ];
+    const ord = (n) => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
+    const rows = [
+      ['Goals', '', 0.75, 0.88, 88, 94], ['Assists', '', 0.60, 0.29, 97, 72], ['Goals + assists', '', 1.35, 1.18, 96, 91],
+      ['Shots', '', 3.61, 4.26, 79, 90], ['Shots on target', '', 1.81, 2.06, 84, 92], ['Shot accuracy', 'On target ÷ shots', '50.0%', '48.3%', 70, 66],
+      ['Fouls committed', 'Lower is better', 0.45, 0.74, 71, 58, true], ['Offsides', 'Lower is better', 0.30, 0.59, 80, 62, true],
+      ['Yellow cards', 'Lower is better', 0.15, 0.15, null, null, true], ['Minutes', 'Total', '598', '612', null, null]
+    ].map(([label, note, a, b, ap, bp, low]) => {
+      const an = parseFloat(a), bn = parseFloat(b);
+      const aBetter = low ? an < bn : an > bn;
+      const bBetter = low ? bn < an : bn > an;
+      const fmt = (v) => typeof v === 'number' ? v.toFixed(2) : v;
+      return {
+        label, note, a: fmt(a), b: fmt(b),
+        aInk: aBetter ? lead : trail, bInk: bBetter ? lead : trail,
+        aMark: aBetter && label !== 'Minutes' ? '▲' : '', bMark: bBetter && label !== 'Minutes' ? '▲' : '',
+        hasPct: ap != null, aPct: ap != null ? ord(ap) : '', bPct: bp != null ? ord(bp) : '',
+        aPctW: (ap ?? 0) + '%', bPctW: (bp ?? 0) + '%'
+      };
+    });
+    return { w: this.props.w ?? 480, h: this.props.h ?? 1180, notSheet: !(this.props.sheet ?? false), players, rows };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Match detail panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside aria-label="Match detail: France 1, Spain 2" style="width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: #12161D; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #262E3A;">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Match detail</span>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">France 1–2 Spain</h2>
+</div>
+<sc-if value="{{notSheet}}" hint-placeholder-val="{{true}}">
+<button type="button" aria-label="Collapse panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><rect x="3" y="4" width="14" height="12"></rect><path d="M12 4v12M6.5 8l2 2-2 2"></path></svg></button>
+</sc-if>
+<button type="button" aria-label="Close panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"></path></svg></button>
+</header>
+<div style="flex-shrink: 0; padding: 10px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #262E3A; font-size: 13px; line-height: 18px;">
+<span style="flex-grow: 1; min-width: 0; color: #95A0B3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">From: <span style="color: #ABB4C4;">Show me the France vs Spain semifinal breakdown</span></span>
+<a href="#message" style="flex-shrink: 0; font-weight: 600; text-decoration: none;">Jump to message</a>
+</div>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid #262E3A;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3; text-align: center;">Semifinal · [DATE] · [VENUE]</span>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 12px;">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;">
+<div style="width: 48px; height: 48px; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600;">FRA</div>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">France</span>
+<span style="width: 20px; height: 3px; border-radius: 2px; background: #4E8EF7;"></span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">Mbappé 51'</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px;">
+<div style="display: flex; align-items: center; gap: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 40px; line-height: 44px; font-weight: 600;"><span style="color: #ABB4C4;">1</span><span style="color: #95A0B3; font-size: 24px;">–</span><span>2</span></div>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Full time</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;">
+<div style="width: 48px; height: 48px; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600;">ESP</div>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Spain</span>
+<span style="width: 20px; height: 3px; border-radius: 2px; background: #ABB4C4;"></span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">Yamal 23' · Oyarzabal 78'</span>
+</div>
+</div>
+</section>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Team stats</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">FRA · ESP</span>
+</div>
+<sc-for list="{{stats}}" as="r" hint-placeholder-count="8">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 2px 0;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+<span style="width: 56px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500; color: {{r.aInk}};">{{r.aDisp}}</span>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{r.label}}</span>
+<span style="width: 56px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500; color: {{r.bInk}};">{{r.bDisp}}</span>
+</div>
+<div style="display: flex; gap: 2px; height: 6px;">
+<div style="width: {{r.aPct}}; background: {{r.aBar}}; border-radius: 3px 0 0 3px;"></div>
+<div style="flex-grow: 1; background: {{r.bBar}}; border-radius: 0 3px 3px 0;"></div>
+</div>
+</div>
+</sc-for>
+</section>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Timeline</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">12 events</span>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<sc-for list="{{timeline}}" as="e" hint-placeholder-count="12">
+<li style="min-height: 56px; display: grid; grid-template-columns: 44px 28px minmax(0, 1fr) auto; column-gap: 12px;">
+<span style="padding-top: 6px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;">{{e.min}}</span>
+<div style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; border-radius: 9999px; background: #1A2029; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; color: {{e.iconInk}};">
+<sc-if value="{{e.isGoal}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="Goal"><circle cx="10" cy="10" r="6.5"></circle><path d="M10 7.2l2.4 1.7-0.9 2.8h-3l-0.9-2.8z"></path></svg></sc-if>
+<sc-if value="{{e.isCard}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="Yellow card"><rect x="6.5" y="3.5" width="7" height="13" rx="1"></rect></svg></sc-if>
+<sc-if value="{{e.isVar}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-label="VAR review"><rect x="3" y="4" width="14" height="10"></rect><path d="M7 17h6M10 14v3"></path></svg></sc-if>
+<sc-if value="{{e.isSub}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-label="Substitution"><path d="M7 16V5M4 8l3-3 3 3M13 4v11M10 12l3 3 3-3"></path></svg></sc-if>
+</span>
+<span style="flex-grow: 1; width: 1px; min-height: 12px; background: #262E3A;"></span>
+</div>
+<div style="padding: 4px 0 12px; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 14px; line-height: 20px; font-weight: 500;">{{e.title}}</span>
+<sc-if value="{{e.isSub}}" hint-placeholder-val="{{false}}">
+<span style="display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; line-height: 18px; color: #ABB4C4;"><span><span style="color: #35D18E;">▲ On</span> {{e.on}}</span><span><span style="color: #FF7A6B;">▼ Off</span> {{e.off}}</span></span>
+</sc-if>
+<sc-if value="{{e.notSub}}" hint-placeholder-val="{{true}}">
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">{{e.detail}}</span>
+</sc-if>
+</div>
+<span style="padding-top: 6px; display: flex; align-items: flex-start; gap: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;"><span style="margin-top: 4px; width: 8px; height: 8px; border-radius: 2px; background: {{e.key}};"></span>{{e.code}}</span>
+</li>
+</sc-for>
+</ol>
+</section>
+<section style="flex-grow: 1; padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Lineups</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">▲ on · ▼ off</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+<sc-for list="{{teams}}" as="t" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<div style="height: 36px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #3A4456;">
+<span style="width: 8px; height: 8px; border-radius: 2px; background: {{t.key}};"></span>
+<span style="flex-grow: 1; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">{{t.name}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;">{{t.shape}}</span>
+</div>
+<sc-for list="{{t.groups}}" as="g" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column;">
+<span style="height: 22px; display: flex; align-items: center; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{g.name}}</span>
+<sc-for list="{{g.players}}" as="p" hint-placeholder-count="3">
+<div style="height: 28px; display: flex; align-items: center; gap: 8px;">
+<span style="width: 20px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;">{{p.no}}</span>
+<span style="flex-grow: 1; min-width: 0; font-size: 13px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{p.name}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: {{p.c}};">{{p.mark}}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</section>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"w":{"editor":"int","default":480,"min":360,"max":640,"section":"Size"},"h":{"editor":"int","default":2200,"min":600,"max":3000,"section":"Size"},"sheet":{"editor":"boolean","default":false},"$preview":{"width":480,"height":2200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const A = '#4E8EF7', B = '#ABB4C4', lead = '#F4F6F9', trail = '#ABB4C4', none = '#262E3A';
+    const stats = [
+      ['Possession', 44, 56, '44%', '56%'], ['Shots', 11, 16], ['On target', 4, 7], ['Corners', 5, 6],
+      ['Fouls', 13, 10], ['Offsides', 2, 1], ['Yellow cards', 2, 1], ['Red cards', 0, 0]
+    ].map(([label, a, b, aDisp, bDisp]) => {
+      const total = a + b;
+      return {
+        label, aDisp: aDisp ?? String(a), bDisp: bDisp ?? String(b),
+        aPct: total ? Math.round((a / total) * 100) + '%' : '50%',
+        aBar: total ? A : none, bBar: total ? B : none,
+        aInk: a > b ? lead : trail, bInk: b > a ? lead : trail
+      };
+    });
+    const ev = (min, kind, code, title, extra) => ({
+      min, code, title, key: code === 'FRA' ? A : B,
+      isGoal: kind === 'goal', isCard: kind === 'card', isVar: kind === 'var', isSub: kind === 'sub', notSub: kind !== 'sub',
+      iconInk: kind === 'goal' ? lead : trail,
+      detail: extra.detail ?? '', on: extra.on ?? '', off: extra.off ?? ''
+    });
+    const timeline = [
+      ev("23'", 'goal', 'ESP', 'Goal · Lamine Yamal', { detail: 'Assist Pedri · FRA 0–1 ESP' }),
+      ev("31'", 'card', 'FRA', 'Yellow card · Aurélien Tchouaméni', { detail: 'Foul' }),
+      ev("38'", 'var', 'FRA', 'VAR review · penalty check', { detail: 'Challenge on Dembélé · no penalty' }),
+      ev("51'", 'goal', 'FRA', 'Goal · Kylian Mbappé', { detail: 'Assist Michael Olise · FRA 1–1 ESP' }),
+      ev("64'", 'sub', 'FRA', 'Substitution', { on: 'Eduardo Camavinga', off: "N'Golo Kanté" }),
+      ev("64'", 'sub', 'ESP', 'Substitution', { on: 'Mikel Oyarzabal', off: 'Álvaro Morata' }),
+      ev("72'", 'card', 'ESP', 'Yellow card · Rodri', { detail: 'Tactical foul' }),
+      ev("72'", 'sub', 'FRA', 'Substitution', { on: 'Bradley Barcola', off: 'Ousmane Dembélé' }),
+      ev("78'", 'goal', 'ESP', 'Goal · Mikel Oyarzabal', { detail: 'Assist Nico Williams · FRA 1–2 ESP' }),
+      ev("80'", 'sub', 'ESP', 'Substitution', { on: 'Mikel Merino', off: 'Pedri' }),
+      ev("88'", 'sub', 'ESP', 'Substitution', { on: 'Martín Zubimendi', off: 'Fabián Ruiz' }),
+      ev("90+3'", 'card', 'FRA', 'Yellow card · Dayot Upamecano', { detail: 'Dissent' })
+    ];
+    const pl = (no, name, mark) => ({
+      no, name, mark: mark ?? '',
+      c: mark && mark.startsWith('▲') ? '#35D18E' : '#FF7A6B'
+    });
+    const teams = [
+      { name: 'France', key: A, shape: '4-3-3', groups: [
+        { name: 'GK', players: [pl(16, 'Mike Maignan')] },
+        { name: 'DEF', players: [pl(5, 'Jules Koundé'), pl(17, 'William Saliba'), pl(4, 'Dayot Upamecano'), pl(22, 'Theo Hernández')] },
+        { name: 'MID', players: [pl(8, 'Aurélien Tchouaméni'), pl(14, 'Adrien Rabiot'), pl(13, "N'Golo Kanté", "▼ 64'")] },
+        { name: 'FWD', players: [pl(11, 'Ousmane Dembélé', "▼ 72'"), pl(10, 'Kylian Mbappé'), pl(7, 'Michael Olise')] },
+        { name: 'Subs used', players: [pl(6, 'Eduardo Camavinga', "▲ 64'"), pl(20, 'Bradley Barcola', "▲ 72'")] }
+      ] },
+      { name: 'Spain', key: B, shape: '4-3-3', groups: [
+        { name: 'GK', players: [pl(23, 'Unai Simón')] },
+        { name: 'DEF', players: [pl(2, 'Dani Carvajal'), pl(3, 'Robin Le Normand'), pl(14, 'Aymeric Laporte'), pl(24, 'Marc Cucurella')] },
+        { name: 'MID', players: [pl(16, 'Rodri'), pl(8, 'Pedri', "▼ 80'"), pl(20, 'Fabián Ruiz', "▼ 88'")] },
+        { name: 'FWD', players: [pl(19, 'Lamine Yamal'), pl(7, 'Álvaro Morata', "▼ 64'"), pl(17, 'Nico Williams')] },
+        { name: 'Subs used', players: [pl(21, 'Mikel Oyarzabal', "▲ 64'"), pl(6, 'Mikel Merino', "▲ 80'"), pl(18, 'Martín Zubimendi', "▲ 88'")] }
+      ] }
+    ];
+    return {
+      w: this.props.w ?? 480, h: this.props.h ?? 2200,
+      notSheet: !(this.props.sheet ?? false),
+      stats, timeline, teams
+    };
+  }
+}
+</script>
+</body>
+</html>

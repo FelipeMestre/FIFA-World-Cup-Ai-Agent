@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Color and type direction</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0;background:#0A0D12}</style>
+</helmet>
+<div style="width: 1440px; height: 1480px; box-sizing: border-box; padding: 48px; display: flex; flex-direction: column; gap: 40px; background: #0A0D12; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">World Cup AI Scout · Owl Night theme</span>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; line-height: 38px; font-weight: 600;">Color and type direction</h1>
+<p style="margin: 0; max-width: 820px; font-size: 16px; line-height: 24px; color: #ABB4C4;">Dark, border-first, number-led. Violet always means the assistant or the action to take; azure means live data and the first side of any comparison. Outcome colors never appear without a glyph.</p>
+</div>
+
+<section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px;">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">{{g.title}}</h2>
+<sc-for list="{{g.items}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; gap: 12px; align-items: center;">
+<div style="width: 44px; height: 44px; flex-shrink: 0; box-sizing: border-box; border-radius: 8px; border: 1px solid #3A4456; background: {{s.hex}};"></div>
+<div style="min-width: 0; display: flex; flex-direction: column;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500;">{{s.name}} <span style="color: #95A0B3;">{{s.hex}}</span></span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">{{s.role}}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Series mapping, shared by widgets and panels</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<div style="height: 8px; border-radius: 4px; background: #4E8EF7;"></div>
+<span style="font-size: 14px; line-height: 20px; font-weight: 600;">Side A · home · player A</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">accent-live. Left in every mirrored bar, first column in every table.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<div style="height: 8px; border-radius: 4px; background: #ABB4C4;"></div>
+<span style="font-size: 14px; line-height: 20px; font-weight: 600;">Side B · away · player B</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">ink-secondary. Silver keeps violet reserved for the assistant.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<div style="height: 8px; display: flex; align-items: center;"><div style="width: 2px; height: 16px; background: #8B96AA;"></div></div>
+<span style="font-size: 14px; line-height: 20px; font-weight: 600;">Benchmark · field or position average</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">data-neutral, drawn as a tick marker, never as a third bar.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<div style="display: flex; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 600;"><span style="color: #35D18E;">▲ +9</span><span style="color: #FF7A6B;">▼ 2</span><span style="color: #35D18E;">W</span><span style="color: #8B96AA;">D</span><span style="color: #FF7A6B;">L</span></div>
+<span style="font-size: 14px; line-height: 20px; font-weight: 600;">Outcomes and deltas</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">Glyph or letter first, color second, so meaning survives color blindness.</span>
+</div>
+</div>
+</section>
+
+<section style="display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h2 style="margin: 0 0 8px; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Type: display for headings, sans for prose, mono for measured numbers</h2>
+<sc-for list="{{type}}" as="t" hint-placeholder-count="10">
+<div style="display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid #262E3A;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;">{{t.token}}<br><span style="color: #ABB4C4;">{{t.spec}}</span></span>
+<span style="font-family: {{t.family}}; font-size: {{t.size}}; line-height: {{t.lh}}; font-weight: {{t.weight}}; letter-spacing: {{t.ls}}; text-transform: {{t.tt}}; color: {{t.color}};">{{t.sample}}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Spacing · 8-point rhythm</h2>
+<div style="display: flex; align-items: flex-end; gap: 12px;">
+<sc-for list="{{space}}" as="s" hint-placeholder-count="8">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+<div style="width: {{s.px}}; height: {{s.px}}; background: #2C3440; border: 1px solid #3A4456;"></div>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 14px; color: #95A0B3;">{{s.v}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Radius grows with containment</h2>
+<div style="display: flex; gap: 12px; align-items: flex-end;">
+<div style="display: flex; flex-direction: column; gap: 6px;"><div style="width: 64px; height: 40px; background: #1A2029; border: 1px solid #3A4456; border-radius: 4px;"></div><span style="font-size: 12px; color: #95A0B3;">4 chip</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px;"><div style="width: 64px; height: 40px; background: #1A2029; border: 1px solid #3A4456; border-radius: 8px;"></div><span style="font-size: 12px; color: #95A0B3;">8 button, bubble</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px;"><div style="width: 64px; height: 40px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px;"></div><span style="font-size: 12px; color: #95A0B3;">12 widget</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px;"><div style="width: 64px; height: 40px; background: #1A2029; border: 1px solid #3A4456; border-radius: 20px;"></div><span style="font-size: 12px; color: #95A0B3;">20 composer, sheet</span></div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px;">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Surface stack</h2>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">Page 950 → shells and side panel 900 → widgets, tiles and the assistant bubble 800 → hover 700 → selected 600. Stat chips inside a widget drop back to 900 so they read as recessed wells.</span>
+</div>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1480}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const groups = [
+      { title: 'Surfaces and lines', items: [
+        { name: 'surface-950', hex: '#0A0D12', role: 'Page canvas' },
+        { name: 'surface-900', hex: '#12161D', role: 'Top bar, side panel, chip wells' },
+        { name: 'surface-800', hex: '#1A2029', role: 'Widgets, tiles, assistant bubble' },
+        { name: 'surface-700', hex: '#232A35', role: 'Hover, inputs, composer' },
+        { name: 'surface-600', hex: '#2C3440', role: 'Selected, showing in panel' },
+        { name: 'border-strong', hex: '#3A4456', role: 'Card and input outlines' }
+      ] },
+      { title: 'Ink', items: [
+        { name: 'ink-primary', hex: '#F4F6F9', role: 'Headings, scores, leader values' },
+        { name: 'ink-secondary', hex: '#ABB4C4', role: 'Secondary text, trailing values' },
+        { name: 'ink-muted', hex: '#95A0B3', role: 'Labels, captions, minutes' },
+        { name: 'ink-disabled', hex: '#4B5566', role: 'Disabled controls only' },
+        { name: 'border-subtle', hex: '#262E3A', role: 'Row hairlines' }
+      ] },
+      { title: 'Assistant and live', items: [
+        { name: 'brand', hex: '#7E6FEE', role: 'Scout mark, send, sign in' },
+        { name: 'on-brand', hex: '#0D0630', role: 'Text and icons on violet' },
+        { name: 'chat-user-surface', hex: '#211A3E', role: 'Visitor message bubble' },
+        { name: 'accent-live', hex: '#4E8EF7', role: 'Links, focus ring, side A' },
+        { name: 'accent-live-strong', hex: '#7FADF9', role: 'Link hover' }
+      ] },
+      { title: 'Data', items: [
+        { name: 'data-positive', hex: '#35D18E', role: '▲ wins, goals for, subs on' },
+        { name: 'data-negative', hex: '#FF7A6B', role: '▼ losses, against, subs off' },
+        { name: 'data-neutral', hex: '#8B96AA', role: 'Draws, benchmarks' },
+        { name: 'overlay-scrim', hex: '#05070A', role: 'Behind the mobile sheet (72%)' }
+      ] }
+    ];
+    const D = "'Space Grotesk', sans-serif", S = "'IBM Plex Sans', sans-serif", M = "'IBM Plex Mono', monospace";
+    const t = (token, spec, family, size, lh, weight, sample, extra) => ({
+      token, spec, family, size, lh, weight, sample,
+      ls: (extra && extra.ls) || 'normal', tt: (extra && extra.tt) || 'none', color: (extra && extra.color) || '#F4F6F9'
+    });
+    const type = [
+      t('display-md', 'Grotesk 32/38 600', D, '32px', '38px', 600, 'Ask anything about World Cup 2026'),
+      t('heading-lg', 'Grotesk 24/30 600', D, '24px', '30px', 600, 'Kylian Mbappé'),
+      t('heading-md', 'Grotesk 18/24 600', D, '18px', '24px', 600, 'France 1–2 Spain'),
+      t('heading-sm', 'Grotesk 15/20 600', D, '15px', '20px', 600, 'Tournament averages'),
+      t('body-lg', 'Plex Sans 16/24 400', S, '16px', '24px', 400, 'Spain won 2–1 with 56% possession.'),
+      t('body-sm', 'Plex Sans 13/18 400', S, '13px', '18px', 400, 'Semifinalist · 7 matches · 630 minutes', { color: '#ABB4C4' }),
+      t('label-sm', 'Plex Sans 11/14 600 caps', S, '11px', '14px', 600, 'Possession · per match', { ls: '0.06em', tt: 'uppercase', color: '#95A0B3' }),
+      t('data-xl', 'Plex Mono 40/44 600', M, '40px', '44px', 600, '1 – 2'),
+      t('data-lg', 'Plex Mono 22/26 600', M, '22px', '26px', 600, '58.4%   ▲ +9'),
+      t('data-md / sm', 'Plex Mono 14/20, 12/16', M, '14px', '20px', 500, "0.88   4.26   78'")
+    ];
+    const space = [4, 8, 12, 16, 20, 24, 32, 48].map((v) => ({ v, px: v + 'px' }));
+    return { groups, type, space };
+  }
+}
+</script>
+</body>
+</html>

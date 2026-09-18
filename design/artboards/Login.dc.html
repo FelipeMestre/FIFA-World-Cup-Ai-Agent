@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0D12}
+a{color:#4E8EF7}a:hover{color:#7FADF9}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #4E8EF7;outline-offset:2px}
+input::placeholder{color:#95A0B3}
+</style>
+</helmet>
+<main style="width: 1440px; height: 900px; box-sizing: border-box; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; background: radial-gradient(640px 420px at 50% 30%, rgba(126,111,238,0.22), rgba(126,111,238,0) 70%), radial-gradient(520px 380px at 85% 95%, rgba(78,142,247,0.12), rgba(78,142,247,0) 70%), #0A0D12; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9; overflow: hidden;">
+<svg width="1440" height="900" viewBox="0 0 1440 900" fill="none" stroke="#F4F6F9" stroke-opacity="0.04" stroke-width="1.5" aria-hidden="true" style="position: absolute; inset: 0;"><path d="M720 0v900"></path><circle cx="720" cy="450" r="160"></circle><rect x="-2" y="220" width="240" height="460"></rect><rect x="1202" y="220" width="240" height="460"></rect><rect x="-2" y="340" width="90" height="220"></rect><rect x="1352" y="340" width="90" height="220"></rect></svg>
+<div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;">
+<div style="width: 64px; height: 64px; border-radius: 18px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 1px rgba(78,142,247,0.4), 0 16px 40px rgba(78,142,247,0.35);"><svg width="50" height="50" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="19" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="4" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="17" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="13" y="12" width="6" height="6" rx="1.5" fill="#2F6FD8"></rect><path d="M16 12.5v5" stroke="#0D0630" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"></path><circle cx="9.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="22.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="9.5" cy="20.5" r="1.8" fill="#0D0630"></circle><circle cx="22.5" cy="20.5" r="1.8" fill="#0D0630"></circle><path d="M20.3 18.6a3 3 0 0 1 1.9-1.1" stroke="#4E8EF7" stroke-width="1.1" stroke-linecap="round" fill="none"></path><circle cx="10.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle><circle cx="23.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle></svg></div>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; line-height: 38px; font-weight: 700; letter-spacing: -0.02em;">Welcome back</h1>
+<p style="margin: 0; font-size: 15px; line-height: 22px; color: #ABB4C4;">Sign in to World Cup AI Scout, your 2026 tournament analyst.</p>
+</div>
+<div style="position: relative; width: 420px; box-sizing: border-box; padding: 28px; display: flex; flex-direction: column; gap: 18px; background: rgba(26,32,41,0.78); border: 1px solid #3A4456; border-radius: 20px; backdrop-filter: blur(16px); box-shadow: 0 24px 60px rgba(2,3,5,0.6), inset 0 1px 0 rgba(244,246,249,0.07);">
+<button type="button" style="height: 48px; display: flex; align-items: center; justify-content: center; gap: 10px; background: #F4F6F9; border: 0; border-radius: 12px; color: #0A0D12; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer;"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" aria-hidden="true"><circle cx="7" cy="10" r="3.5"></circle><path d="M10.5 10H17M14.5 10v3M17 10v2"></path></svg>Continue with SSO</button>
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="flex-grow: 1; height: 1px; background: #262E3A;"></span>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #95A0B3;">or with email</span>
+<span style="flex-grow: 1; height: 1px; background: #262E3A;"></span>
+</div>
+<form style="display: flex; flex-direction: column; gap: 14px; margin: 0;">
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<label for="email" style="font-size: 13px; line-height: 16px; font-weight: 600; color: #ABB4C4;">Email</label>
+<input id="email" type="email" autocomplete="email" placeholder="you@example.com" style="height: 48px; box-sizing: border-box; padding: 0 14px; background: #12161D; border: 1px solid #3A4456; border-radius: 12px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; box-shadow: inset 0 1px 2px rgba(2,3,5,0.4);">
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<div style="display: flex; align-items: center; justify-content: space-between;">
+<label for="password" style="font-size: 13px; line-height: 16px; font-weight: 600; color: #ABB4C4;">Password</label>
+<a href="#reset" style="font-size: 13px; line-height: 16px; text-decoration: none;">Forgot password?</a>
+</div>
+<input id="password" type="password" autocomplete="current-password" placeholder="••••••••" style="height: 48px; box-sizing: border-box; padding: 0 14px; background: #12161D; border: 1px solid #3A4456; border-radius: 12px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; box-shadow: inset 0 1px 2px rgba(2,3,5,0.4);">
+</div>
+<button type="submit" style="height: 48px; margin-top: 4px; background: #7E6FEE; border: 0; border-radius: 12px; color: #0D0630; font-family: 'IBM Plex Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 10px 28px rgba(126,111,238,0.45), inset 0 1px 0 rgba(255,255,255,0.25);">Sign in</button>
+</form>
+</div>
+<span style="position: relative; font-size: 12px; line-height: 16px; color: #95A0B3;">Answers built on official tournament match data · 104 matches · 48 teams</span>
+</main>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

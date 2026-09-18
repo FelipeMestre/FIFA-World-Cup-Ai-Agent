@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mobile home, empty state</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0D12}
+button:focus-visible,textarea:focus-visible{outline:2px solid #4E8EF7;outline-offset:2px}
+textarea::placeholder{color:#95A0B3}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #0A0D12; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9; overflow: hidden;">
+<header style="height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 0 4px 0 16px; display: flex; align-items: center; gap: 10px; background: #12161D; border-bottom: 1px solid #262E3A;">
+<div style="width: 28px; height: 28px; border-radius: 8px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(2,3,5,0.4); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="19" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="4" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="17" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="13" y="12" width="6" height="6" rx="1.5" fill="#2F6FD8"></rect><path d="M16 12.5v5" stroke="#0D0630" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"></path><circle cx="9.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="22.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="9.5" cy="20.5" r="1.8" fill="#0D0630"></circle><circle cx="22.5" cy="20.5" r="1.8" fill="#0D0630"></circle><path d="M20.3 18.6a3 3 0 0 1 1.9-1.1" stroke="#4E8EF7" stroke-width="1.1" stroke-linecap="round" fill="none"></path><circle cx="10.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle><circle cx="23.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle></svg></div>
+<span style="flex-grow: 1; font-family: 'Space Grotesk', sans-serif; font-size: 16px; line-height: 20px; font-weight: 600;">World Cup AI Scout</span>
+<button type="button" aria-label="History" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><circle cx="10" cy="10" r="6.5"></circle><path d="M10 6.5V10l2.5 1.5"></path></svg></button>
+<button type="button" aria-label="New chat" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M10 4v12M4 10h12"></path></svg></button>
+</header>
+<main style="flex-grow: 1; box-sizing: border-box; padding: 32px 16px 16px; display: flex; flex-direction: column; justify-content: flex-end; gap: 24px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">World Cup 2026 · 104 matches</span>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px; line-height: 30px; font-weight: 600;">Ask anything about the tournament</h1>
+<p style="margin: 0; font-size: 14px; line-height: 20px; color: #ABB4C4;">Teams, matches and players, answered with tournament data.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<button type="button" style="min-height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 10px; background: #12161D; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; text-align: left;"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#95A0B3" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 16V9M10 16V4M15 16v-5"></path></svg>Compare Messi vs Mbappé</button>
+<button type="button" style="min-height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 10px; background: #12161D; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; text-align: left;"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#95A0B3" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M10 3l6 2.5V10c0 3.5-2.6 6-6 7-3.4-1-6-3.5-6-7V5.5z"></path></svg>How did Argentina perform defensively?</button>
+<button type="button" style="min-height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 10px; background: #12161D; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; text-align: left;"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#95A0B3" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><rect x="3" y="5" width="14" height="10"></rect><path d="M10 5v10"></path><circle cx="10" cy="10" r="2"></circle></svg>France vs Spain semifinal breakdown</button>
+<button type="button" style="min-height: 48px; padding: 0 14px; display: flex; align-items: center; gap: 10px; background: #12161D; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; text-align: left;"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#95A0B3" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><circle cx="10" cy="7" r="3"></circle><path d="M4.5 16.5c0.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"></path></svg>Which keeper made the most saves?</button>
+</div>
+</main>
+<div style="flex-shrink: 0; padding: 8px 16px 24px; background: #0A0D12;">
+<div style="box-sizing: border-box; padding: 6px 6px 6px 16px; display: flex; align-items: center; gap: 8px; background: #232A35; border: 1px solid #3A4456; border-radius: 20px;">
+<label for="ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Ask a question</label>
+<textarea id="ask" rows="1" placeholder="Ask about a team, match or player…" style="flex-grow: 1; height: 44px; box-sizing: border-box; padding: 10px 0; resize: none; background: transparent; border: 0; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 24px;"></textarea>
+<button type="button" aria-label="Send" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #7E6FEE; border: 0; border-radius: 9999px; color: #0D0630;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"></path></svg></button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

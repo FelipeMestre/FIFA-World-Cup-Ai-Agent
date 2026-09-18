@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Player detail panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<aside aria-label="Player detail: Kylian Mbappé" style="width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: #12161D; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 8px 0 20px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #262E3A;">
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Player detail</span>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Kylian Mbappé</h2>
+</div>
+<sc-if value="{{notSheet}}" hint-placeholder-val="{{true}}">
+<button type="button" aria-label="Collapse panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><rect x="3" y="4" width="14" height="12"></rect><path d="M12 4v12M6.5 8l2 2-2 2"></path></svg></button>
+</sc-if>
+<button type="button" aria-label="Close panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: #ABB4C4; cursor: pointer;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"></path></svg></button>
+</header>
+<div style="flex-shrink: 0; padding: 10px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #262E3A; font-size: 13px; line-height: 18px;">
+<span style="flex-grow: 1; min-width: 0; color: #95A0B3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">From: <span style="color: #ABB4C4;">What about Mbappé's tournament?</span></span>
+<a href="#message" style="flex-shrink: 0; font-weight: 600; text-decoration: none;">Jump to message</a>
+</div>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: center; gap: 14px;">
+<div style="width: 64px; height: 64px; flex-shrink: 0; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 600;">KM</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 24px; line-height: 30px; font-weight: 600;">Kylian Mbappé</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">France · Forward · #10 · 7 apps · 612 min</span>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 24px; padding: 0 8px; box-sizing: border-box; display: flex; align-items: center; background: #2C3440; border-radius: 4px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">FWD</span>
+<span style="height: 24px; padding: 0 8px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; border: 1px solid #3A4456; border-radius: 4px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ABB4C4;"><span style="display: flex; gap: 2px; align-items: flex-end;" aria-hidden="true"><span style="width: 3px; height: 6px; background: #4E8EF7; border-radius: 1px;"></span><span style="width: 3px; height: 8px; background: #4E8EF7; border-radius: 1px;"></span><span style="width: 3px; height: 10px; background: #4E8EF7; border-radius: 1px;"></span></span>G+A tier: elite · top 10%</span>
+<span style="height: 24px; padding: 0 8px; box-sizing: border-box; display: flex; align-items: center; border: 1px solid #3A4456; border-radius: 4px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ABB4C4;">Discipline: 1 yellow</span>
+</div>
+</section>
+<section style="flex-shrink: 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Full breakdown</h3>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Totals · per 90</span>
+</div>
+<table style="width: 100%; border-collapse: collapse; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; overflow: hidden;">
+<thead>
+<tr style="height: 36px; border-bottom: 1px solid #3A4456;">
+<th scope="col" style="padding: 0 14px; text-align: left; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Stat</th>
+<th scope="col" style="padding: 0 8px; text-align: right; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Total</th>
+<th scope="col" style="padding: 0 8px; text-align: right; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Per 90</th>
+<th scope="col" style="padding: 0 14px 0 8px; text-align: right; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Pct · FWD</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="11">
+<tr style="height: 40px; border-bottom: 1px solid #262E3A;">
+<th scope="row" style="padding: 0 14px; text-align: left; font-size: 14px; line-height: 20px; font-weight: 400; color: #F4F6F9;">{{r.stat}}</th>
+<td style="padding: 0 8px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums;">{{r.total}}</td>
+<td style="padding: 0 8px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums; color: #ABB4C4;">{{r.p90}}</td>
+<td style="padding: 0 14px 0 8px;">
+<sc-if value="{{r.hasPct}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+<div style="width: 56px; height: 4px; background: #262E3A; border-radius: 2px; display: flex;"><div style="width: {{r.pctW}}; background: #4E8EF7; border-radius: 2px;"></div></div>
+<span style="width: 24px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500;">{{r.pct}}</span>
+</div>
+</sc-if>
+<sc-if value="{{r.noPct}}" hint-placeholder-val="{{false}}">
+<div style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #95A0B3;">—</div>
+</sc-if>
+</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</section>
+<section style="flex-grow: 1; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 15px; line-height: 20px; font-weight: 600;">Per 90 vs forward average</h3>
+</div>
+<div style="display: flex; gap: 16px; font-size: 12px; line-height: 16px; color: #ABB4C4;">
+<span style="display: flex; align-items: center; gap: 6px;"><span style="width: 12px; height: 8px; border-radius: 2px; background: #4E8EF7;"></span>Mbappé</span>
+<span style="display: flex; align-items: center; gap: 6px;"><span style="width: 2px; height: 12px; background: #8B96AA;"></span>Forward average</span>
+</div>
+<sc-for list="{{chart}}" as="c" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 104px minmax(0, 1fr) 92px; align-items: center; gap: 12px; height: 32px;">
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">{{c.label}}</span>
+<div style="position: relative; height: 12px; background: #1A2029; border-radius: 2px;">
+<div style="width: {{c.vW}}; height: 12px; background: #4E8EF7; border-radius: 2px;"></div>
+<div style="position: absolute; top: -4px; left: {{c.avgL}}; width: 2px; height: 20px; background: #8B96AA;"></div>
+</div>
+<span style="text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500;"><span style="color: #F4F6F9;">{{c.v}}</span><span style="color: #95A0B3;"> / {{c.avg}}</span></span>
+</div>
+</sc-for>
+<p style="margin: 0; font-size: 13px; line-height: 18px; color: #95A0B3;">Per 90 = total ÷ minutes × 90. Forward average and percentiles use forwards with at least 270 minutes. Fouls and offsides: lower is better.</p>
+</section>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"w":{"editor":"int","default":480,"min":360,"max":640,"section":"Size"},"h":{"editor":"int","default":1300,"min":600,"max":2400,"section":"Size"},"sheet":{"editor":"boolean","default":false},"$preview":{"width":480,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const rows = [
+      ['Appearances', '7', '—'], ['Minutes', '612', '—'], ['Goals', '6', '0.88', 94], ['Assists', '2', '0.29', 72],
+      ['Goals + assists', '8', '1.18', 91], ['Shots', '29', '4.26', 90], ['Shots on target', '14', '2.06', 92],
+      ['Fouls committed', '5', '0.74', 58], ['Offsides', '4', '0.59', 62], ['Yellow cards', '1', '0.15'], ['Red cards', '0', '0.00']
+    ].map(([stat, total, p90, pct]) => ({
+      stat, total, p90, pct: pct ?? '', pctW: (pct ?? 0) + '%', hasPct: pct != null, noPct: pct == null
+    }));
+    const chart = [
+      ['Goals', 0.88, 0.41], ['Assists', 0.29, 0.18], ['Shots', 4.26, 2.70],
+      ['On target', 2.06, 1.05], ['Fouls', 0.74, 1.10], ['Offsides', 0.59, 0.45]
+    ].map(([label, v, avg]) => {
+      const max = Math.max(v, avg) * 1.15;
+      return { label, v: v.toFixed(2), avg: avg.toFixed(2), vW: Math.round((v / max) * 100) + '%', avgL: Math.round((avg / max) * 100) + '%' };
+    });
+    return { w: this.props.w ?? 480, h: this.props.h ?? 1300, notSheet: !(this.props.sheet ?? false), rows, chart };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "title": "World Cup AI Scout",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home · empty state"
+    },
+    "Login.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Login"
+    },
+    "HomePanel.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home · side panel open (team)"
+    },
+    "HomeActive.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 3440,
+      "title": "Home · active thread, all four widgets"
+    },
+    "WidgetTeam.dc.html": {
+      "x": 0,
+      "y": 3900,
+      "w": 640,
+      "h": 500,
+      "title": "Widget · Team analysis"
+    },
+    "WidgetMatch.dc.html": {
+      "x": 720,
+      "y": 3900,
+      "w": 640,
+      "h": 560,
+      "title": "Widget · Match analysis"
+    },
+    "WidgetPlayer.dc.html": {
+      "x": 1440,
+      "y": 3900,
+      "w": 640,
+      "h": 400,
+      "title": "Widget · Player analysis (role tweak: goalkeeper)"
+    },
+    "WidgetCompare.dc.html": {
+      "x": 2160,
+      "y": 3900,
+      "w": 640,
+      "h": 640,
+      "title": "Widget · Player comparison"
+    },
+    "PanelTeam.dc.html": {
+      "x": 0,
+      "y": 4920,
+      "w": 480,
+      "h": 1360,
+      "title": "Panel · Team"
+    },
+    "PanelMatch.dc.html": {
+      "x": 560,
+      "y": 4920,
+      "w": 480,
+      "h": 2200,
+      "title": "Panel · Match"
+    },
+    "PanelPlayer.dc.html": {
+      "x": 1120,
+      "y": 4920,
+      "w": 480,
+      "h": 1300,
+      "title": "Panel · Player"
+    },
+    "PanelCompare.dc.html": {
+      "x": 1680,
+      "y": 4920,
+      "w": 480,
+      "h": 1180,
+      "title": "Panel · Player comparison"
+    },
+    "MobileEmpty.dc.html": {
+      "x": 0,
+      "y": 7540,
+      "w": 390,
+      "h": 844,
+      "title": "Mobile · empty state"
+    },
+    "MobileChat.dc.html": {
+      "x": 470,
+      "y": 7540,
+      "w": 390,
+      "h": 844,
+      "title": "Mobile · thread with widget"
+    },
+    "MobileSheet.dc.html": {
+      "x": 940,
+      "y": 7540,
+      "w": 390,
+      "h": 844,
+      "title": "Mobile · detail sheet over chat"
+    },
+    "Foundations.dc.html": {
+      "x": 0,
+      "y": 8804,
+      "w": 1440,
+      "h": 1480,
+      "title": "Color and type direction"
+    },
+    "Components.dc.html": {
+      "x": 1520,
+      "y": 8804,
+      "w": 1440,
+      "h": 1640,
+      "title": "Component breakdown"
+    },
+    "AppSidebar.dc.html": {
+      "x": 3040,
+      "y": 8804,
+      "w": 264,
+      "h": 900,
+      "title": "Left sidebar: new chat, previous chats, profile and settings (collapses to a rail when the panel opens)"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Login.dc.html",
+    "HomePanel.dc.html",
+    "HomeActive.dc.html",
+    "WidgetTeam.dc.html",
+    "WidgetMatch.dc.html",
+    "WidgetPlayer.dc.html",
+    "WidgetCompare.dc.html",
+    "PanelTeam.dc.html",
+    "PanelMatch.dc.html",
+    "PanelPlayer.dc.html",
+    "PanelCompare.dc.html",
+    "MobileEmpty.dc.html",
+    "MobileChat.dc.html",
+    "MobileSheet.dc.html",
+    "Foundations.dc.html",
+    "Components.dc.html",
+    "AppSidebar.dc.html"
+  ],
+  "notes": {
+    "row1": {
+      "x": 0,
+      "y": -300,
+      "text": "Desktop screens",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "row2": {
+      "x": 0,
+      "y": 3600,
+      "text": "Chat widgets, compact",
+      "kind": "title1",
+      "maxW": 2800
+    },
+    "row3": {
+      "x": 0,
+      "y": 4620,
+      "text": "Side panel detail",
+      "kind": "title1",
+      "maxW": 2160
+    },
+    "row4": {
+      "x": 0,
+      "y": 7240,
+      "text": "Mobile",
+      "kind": "title1",
+      "maxW": 1330
+    },
+    "row5": {
+      "x": 0,
+      "y": 8504,
+      "text": "System",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "data": {
+      "x": 6080,
+      "y": 0,
+      "w": 380,
+      "text": "All figures, scores and lineups are illustrative placeholders for layout, not real World Cup 2026 results. Wire each widget to the tournament dataset. [DATE] and [VENUE] are left open on purpose.",
+      "color": "orange",
+      "size": "m"
+    },
+    "mobile": {
+      "x": 1410,
+      "y": 7540,
+      "w": 360,
+      "text": "Widgets reflow at 358px: stat chips drop to 2 columns, events stack under the player of the match. The panel becomes a full-height sheet with a grab handle; collapse is hidden, close returns to the thread.",
+      "color": "blue",
+      "size": "m"
+    }
+  },
+  "designSystems": [
+    {
+      "title": "Owl Analytics",
+      "namespace": "owl-analytics",
+      "artifact": "https://claude.ai/code/artifact/990ac12f-9202-47c0-8ecf-8c621b36a465",
+      "version": "1789692233-71d6",
+      "copiedAt": "2026-09-17T12:00:00Z"
+    }
+  ]
+}

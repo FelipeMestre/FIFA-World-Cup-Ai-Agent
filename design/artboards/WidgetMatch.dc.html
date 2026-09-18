@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Match analysis widget</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<article aria-label="Match analysis: France 1, Spain 2" style="width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: #1A2029; border: 1px solid #262E3A; border-radius: 16px; overflow: hidden; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9; box-shadow: inset 0 1px 0 rgba(244,246,249,0.06), 0 8px 24px rgba(2,3,5,0.55);">
+<div style="flex-shrink: 0; padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; background: radial-gradient(420px 160px at 50% 0%, rgba(78,142,247,0.14), rgba(78,142,247,0) 70%); border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #95A0B3;"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#4E8EF7" stroke-width="1.75" stroke-linecap="square" aria-hidden="true"><rect x="3" y="5" width="14" height="10"></rect><path d="M10 5v10"></path></svg>Semifinal · [DATE]</span>
+<span style="height: 22px; padding: 0 10px; display: flex; align-items: center; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ABB4C4;">Full time</span>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px;">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+<div style="width: 52px; height: 52px; box-sizing: border-box; border-radius: 14px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; box-shadow: inset 0 -3px 0 #4E8EF7, inset 0 1px 0 rgba(244,246,249,0.08);">FRA</div>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 17px; line-height: 22px; font-weight: 600;">France</span>
+<span style="font-size: 12px; line-height: 16px; color: #95A0B3;">Mbappé 51'</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+<div style="display: flex; align-items: center; gap: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 48px; line-height: 52px; font-weight: 600; letter-spacing: -0.03em;">
+<span style="color: #95A0B3;">1</span><span style="width: 10px; height: 2px; background: #3A4456;"></span><span style="color: #F4F6F9;">2</span>
+</div>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Spain advance</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+<div style="width: 52px; height: 52px; box-sizing: border-box; border-radius: 14px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 700; box-shadow: inset 0 -3px 0 #ABB4C4, inset 0 1px 0 rgba(244,246,249,0.08);">ESP</div>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 17px; line-height: 22px; font-weight: 600;">Spain</span>
+<span style="font-size: 12px; line-height: 16px; color: #95A0B3;">Yamal 23' · Oyarzabal 78'</span>
+</div>
+</div>
+</div>
+<div style="flex-shrink: 0; padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px;">
+<sc-for list="{{bars}}" as="r" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 7px;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; line-height: 20px; font-weight: 600; color: {{r.aInk}};">{{r.aDisp}}</span>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{r.label}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; line-height: 20px; font-weight: 600; color: {{r.bInk}};">{{r.bDisp}}</span>
+</div>
+<div style="display: flex; gap: 3px; height: 8px;">
+<div style="width: {{r.aPct}}; background: linear-gradient(90deg, rgba(78,142,247,0.55), #4E8EF7); border-radius: 9999px 2px 2px 9999px;"></div>
+<div style="flex-grow: 1; background: linear-gradient(90deg, #ABB4C4, rgba(171,180,196,0.55)); border-radius: 2px 9999px 9999px 2px;"></div>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="flex-grow: 1; padding: 0 20px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch;">
+<div style="flex: 1 1 260px; display: flex; flex-direction: column; justify-content: center; padding: 6px 0;">
+<sc-for list="{{events}}" as="e" hint-placeholder-count="3">
+<div style="height: 30px; display: flex; align-items: center; gap: 10px;">
+<span style="width: 30px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3; text-align: right;">{{e.min}}</span>
+<span style="width: 22px; height: 22px; border-radius: 9999px; background: #232A35; display: flex; align-items: center; justify-content: center;"><svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#F4F6F9" stroke-width="1.75" aria-label="Goal"><circle cx="10" cy="10" r="6.5"></circle><path d="M10 7.2l2.4 1.7-0.9 2.8h-3l-0.9-2.8z"></path></svg></span>
+<span style="flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{e.name}}</span>
+<span style="display: flex; align-items: center; gap: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;"><span style="width: 7px; height: 7px; border-radius: 9999px; background: {{e.key}};"></span>{{e.code}}</span>
+</div>
+</sc-for>
+</div>
+<div style="flex: 1 1 180px; box-sizing: border-box; padding: 12px 14px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; align-items: center; gap: 12px;">
+<div style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600;">LY</div>
+<div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+<span style="display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;"><svg width="12" height="12" viewBox="0 0 20 20" fill="#F4F6F9" aria-hidden="true"><path d="M10 3.5l1.9 4 4.4 0.5-3.3 3 0.9 4.3L10 13.1l-3.9 2.2 0.9-4.3-3.3-3 4.4-0.5z"></path></svg>Player of the match</span>
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 16px; line-height: 20px; font-weight: 600;">Lamine Yamal</span>
+<span style="font-size: 12px; line-height: 16px; color: #ABB4C4;">Spain · FWD · 1 goal</span>
+</div>
+</div>
+</div>
+<div style="flex-shrink: 0; padding: 12px 16px 12px 20px; border-top: 1px solid #262E3A; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(18,22,29,0.6);">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: #95A0B3;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: #35D18E;"></span>3 goals · 3 cards · 1 VAR review</span>
+<sc-if value="{{notActive}}" hint-placeholder-val="{{true}}">
+<button type="button" style="height: 40px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: #232A35; border: 1px solid #3A4456; border-radius: 10px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; line-height: 16px; font-weight: 600; cursor: pointer; box-shadow: inset 0 1px 0 rgba(244,246,249,0.06);">Open details<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"></path></svg></button>
+</sc-if>
+<sc-if value="{{active}}" hint-placeholder-val="{{false}}">
+<button type="button" aria-pressed="true" style="height: 40px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: rgba(78,142,247,0.14); border: 1px solid rgba(78,142,247,0.45); border-radius: 10px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; line-height: 16px; font-weight: 600; cursor: pointer;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: #4E8EF7; box-shadow: 0 0 0 3px rgba(78,142,247,0.25);"></span>Showing in panel</button>
+</sc-if>
+</div>
+</article>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"w":{"editor":"int","default":640,"min":320,"max":760,"section":"Size"},"h":{"editor":"int","default":560,"min":300,"max":900,"section":"Size"},"active":{"editor":"boolean","default":false},"$preview":{"width":640,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const w = this.props.w ?? 640;
+    const h = this.props.h ?? 560;
+    const active = this.props.active ?? false;
+    const lead = '#F4F6F9', trail = '#95A0B3';
+    const bars = [
+      { label: 'Possession', a: 44, b: 56, aDisp: '44%', bDisp: '56%' },
+      { label: 'Shots', a: 11, b: 16, aDisp: '11', bDisp: '16' },
+      { label: 'On target', a: 4, b: 7, aDisp: '4', bDisp: '7' }
+    ].map((r) => ({
+      ...r,
+      aPct: Math.round((r.a / (r.a + r.b)) * 100) + '%',
+      aInk: r.a > r.b ? lead : trail,
+      bInk: r.b > r.a ? lead : trail
+    }));
+    const A = '#4E8EF7', B = '#ABB4C4';
+    const events = [
+      { min: "23'", name: 'Lamine Yamal', code: 'ESP', key: B },
+      { min: "51'", name: 'Kylian Mbappé', code: 'FRA', key: A },
+      { min: "78'", name: 'Mikel Oyarzabal', code: 'ESP', key: B }
+    ];
+    return { w, h, active, notActive: !active, bars, events };
+  }
+}
+</script>
+</body>
+</html>

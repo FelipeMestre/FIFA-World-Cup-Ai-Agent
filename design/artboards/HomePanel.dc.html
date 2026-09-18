@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home with side panel open</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0D12}
+a{color:#4E8EF7}a:hover{color:#7FADF9}
+button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #4E8EF7;outline-offset:2px}
+textarea::placeholder{color:#95A0B3}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; background: #0A0D12; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9; overflow: hidden;">
+<dc-import name="AppSidebar" collapsed="{{true}}" h="{{900}}" hint-size="72px,900px"></dc-import>
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background: radial-gradient(600px 360px at 50% -140px, rgba(126,111,238,0.16), rgba(126,111,238,0) 70%), #0A0D12;">
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 28px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #262E3A;">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Argentina defence</span>
+<span style="height: 24px; padding: 0 8px; display: flex; align-items: center; border-radius: 9999px; background: #1A2029; border: 1px solid #262E3A; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #95A0B3;">2 answers</span>
+</header>
+<main style="flex-grow: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 0 20px;">
+<div style="width: 680px; display: flex; flex-direction: column; gap: 28px;">
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 28px; height: 28px; border-radius: 8px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(78,142,247,0.3);"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="19" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="4" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="17" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="13" y="12" width="6" height="6" rx="1.5" fill="#2F6FD8"></rect><path d="M16 12.5v5" stroke="#0D0630" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"></path><circle cx="9.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="22.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="9.5" cy="20.5" r="1.8" fill="#0D0630"></circle><circle cx="22.5" cy="20.5" r="1.8" fill="#0D0630"></circle><path d="M20.3 18.6a3 3 0 0 1 1.9-1.1" stroke="#4E8EF7" stroke-width="1.1" stroke-linecap="round" fill="none"></path><circle cx="10.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle><circle cx="23.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle></svg></span>
+<span style="font-size: 14px; font-weight: 600;">Scout</span>
+<span style="height: 22px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border-radius: 9999px; background: #12161D; border: 1px solid #262E3A; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #95A0B3;"><span style="width: 5px; height: 5px; border-radius: 9999px; background: #35D18E;"></span>7 matches</span>
+</div>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: #ABB4C4;"><strong style="font-weight: 600; color: #F4F6F9;">5 goals conceded in 7 matches,</strong> 0.71 per game, with 3 clean sheets.</p>
+<dc-import name="WidgetTeam" w="{{640}}" h="{{500}}" active="{{true}}" hint-size="640px,500px"></dc-import>
+</div>
+<div style="display: flex; justify-content: flex-end;"><div style="max-width: 460px; padding: 12px 18px; background: #211A3E; border: 1px solid rgba(126,111,238,0.28); border-radius: 18px 18px 4px 18px; font-size: 16px; line-height: 24px;">And how did they do in the semifinal?</div></div>
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 28px; height: 28px; border-radius: 8px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(78,142,247,0.3);"><svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="19" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="4" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="17" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="13" y="12" width="6" height="6" rx="1.5" fill="#2F6FD8"></rect><path d="M16 12.5v5" stroke="#0D0630" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"></path><circle cx="9.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="22.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="9.5" cy="20.5" r="1.8" fill="#0D0630"></circle><circle cx="22.5" cy="20.5" r="1.8" fill="#0D0630"></circle><path d="M20.3 18.6a3 3 0 0 1 1.9-1.1" stroke="#4E8EF7" stroke-width="1.1" stroke-linecap="round" fill="none"></path><circle cx="10.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle><circle cx="23.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle></svg></span>
+<span style="font-size: 14px; font-weight: 600;">Scout</span>
+<span style="display: flex; align-items: center; gap: 4px;"><span style="width: 5px; height: 5px; border-radius: 9999px; background: #998DF2;"></span><span style="width: 5px; height: 5px; border-radius: 9999px; background: #7E6FEE;"></span><span style="width: 5px; height: 5px; border-radius: 9999px; background: rgba(126,111,238,0.4);"></span></span>
+<span style="font-size: 13px; color: #95A0B3;">Reading the semifinal…</span>
+</div>
+<p style="margin: 0; font-size: 16px; line-height: 26px; color: #ABB4C4;"><strong style="font-weight: 600; color: #F4F6F9;">Lost 1–2 to Brazil,</strong> their only defeat and the only match where they conceded twice.</p>
+</div>
+</div>
+</main>
+<div style="flex-shrink: 0; padding: 0 0 24px; display: flex; justify-content: center;">
+<div style="width: 680px; box-sizing: border-box; padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 10px; background: #1A2029; border: 1px solid #3A4456; border-radius: 20px; box-shadow: 0 24px 60px rgba(2,3,5,0.6), inset 0 1px 0 rgba(244,246,249,0.06);">
+<span style="height: 30px; padding: 0 10px; display: flex; align-items: center; gap: 6px; border-radius: 9999px; background: rgba(78,142,247,0.14); border: 1px solid rgba(78,142,247,0.4); font-size: 12px; font-weight: 600; white-space: nowrap;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: #4E8EF7;"></span>Pinned: Argentina</span>
+<label for="ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Ask a follow-up</label>
+<textarea id="ask" rows="1" placeholder="Ask about Argentina…" style="flex-grow: 1; height: 44px; box-sizing: border-box; padding: 10px 0; resize: none; background: transparent; border: 0; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 16px; line-height: 24px;"></textarea>
+<button type="button" aria-label="Stop generating" style="width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #F4F6F9; border: 0; border-radius: 14px; color: #0A0D12; cursor: pointer;"><svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="4" width="12" height="12" rx="2" fill="currentColor"></rect></svg></button>
+</div>
+</div>
+</div>
+<div style="width: 481px; flex-shrink: 0; box-sizing: border-box; border-left: 1px solid #3A4456; overflow: hidden; background: #12161D; box-shadow: -24px 0 60px rgba(2,3,5,0.45);">
+<dc-import name="PanelTeam" w="{{480}}" h="{{1360}}" hint-size="480px,1360px"></dc-import>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

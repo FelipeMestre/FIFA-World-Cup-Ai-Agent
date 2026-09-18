@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Component breakdown</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0A0D12}
+button:focus-visible{outline:2px solid #4E8EF7;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1640px; box-sizing: border-box; padding: 48px; display: flex; flex-direction: column; gap: 32px; background: #0A0D12; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">World Cup AI Scout · building blocks</span>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; line-height: 38px; font-weight: 600;">Component breakdown</h1>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Chat bubble</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Visitor on violet-tinted 211A3E, right. Assistant on 800, left with the scout mark. Widget replies add an outlined card frame under the lead sentence.</span></div>
+<div style="display: flex; justify-content: flex-end;"><div style="padding: 10px 14px; background: #211A3E; border-radius: 8px; font-size: 15px; line-height: 22px;">Who kept the most clean sheets?</div></div>
+<div style="display: flex; gap: 10px; align-items: flex-start;">
+<div style="width: 28px; height: 28px; flex-shrink: 0; border-radius: 9999px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(2,3,5,0.4); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="19" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="4" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="17" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="13" y="12" width="6" height="6" rx="1.5" fill="#2F6FD8"></rect><path d="M16 12.5v5" stroke="#0D0630" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"></path><circle cx="9.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="22.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="9.5" cy="20.5" r="1.8" fill="#0D0630"></circle><circle cx="22.5" cy="20.5" r="1.8" fill="#0D0630"></circle><path d="M20.3 18.6a3 3 0 0 1 1.9-1.1" stroke="#4E8EF7" stroke-width="1.1" stroke-linecap="round" fill="none"></path><circle cx="10.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle><circle cx="23.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle></svg></div>
+<div style="padding: 10px 14px; background: #1A2029; border-radius: 8px; font-size: 15px; line-height: 22px;"><strong style="font-weight: 600;">4 clean sheets</strong>, shared by two keepers. Want the list?</div>
+</div>
+<div style="display: flex; gap: 10px; align-items: flex-start;">
+<div style="width: 28px; height: 28px; flex-shrink: 0; border-radius: 9999px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(2,3,5,0.4); display: flex; align-items: center; justify-content: center;"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="19" y="4.5" width="6" height="6" rx="1.6" fill="#4E8EF7"></rect><rect x="4" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="17" y="9" width="11" height="17.5" rx="5.5" fill="#4E8EF7"></rect><rect x="13" y="12" width="6" height="6" rx="1.5" fill="#2F6FD8"></rect><path d="M16 12.5v5" stroke="#0D0630" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"></path><circle cx="9.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="22.5" cy="20.5" r="4" fill="#FFFFFF" stroke="#0D0630" stroke-width="1.2"></circle><circle cx="9.5" cy="20.5" r="1.8" fill="#0D0630"></circle><circle cx="22.5" cy="20.5" r="1.8" fill="#0D0630"></circle><path d="M20.3 18.6a3 3 0 0 1 1.9-1.1" stroke="#4E8EF7" stroke-width="1.1" stroke-linecap="round" fill="none"></path><circle cx="10.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle><circle cx="23.3" cy="19.7" r="0.6" fill="#FFFFFF"></circle></svg></div>
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px;">
+<div style="padding: 10px 14px; background: #1A2029; border-radius: 8px; font-size: 15px; line-height: 22px;"><strong style="font-weight: 600;">5–1–1</strong> for Argentina.</div>
+<div style="background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; overflow: hidden;">
+<div style="height: 32px; padding: 0 12px; display: flex; align-items: center; border-bottom: 1px solid #262E3A; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Team analysis</div>
+<div style="height: 56px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between;"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600;">Argentina</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 500;">5–1–1</span></div>
+</div>
+</div>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Widget card</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">640 wide on desktop, full width on mobile. Five fixed zones in one order for every entity type.</span></div>
+<div style="background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column;">
+<sc-for list="{{zones}}" as="z" hint-placeholder-count="5">
+<div style="height: {{z.h}}; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #262E3A;">
+<span style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 9999px; background: #2C3440; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;">{{z.n}}</span>
+<div style="display: flex; flex-direction: column;"><span style="font-size: 13px; line-height: 18px; font-weight: 600;">{{z.name}}</span><span style="font-size: 12px; line-height: 16px; color: #95A0B3;">{{z.desc}}</span></div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Stat chip and tile</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Chip: recessed 900 well, radius 4, inside widgets. Tile: 800 card, radius 12, inside panels. Same label and value styles.</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+<div style="padding: 10px 12px; background: #0A0D12; border: 1px solid #262E3A; border-radius: 4px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Avg possession</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">58.4%</span></div>
+<div style="padding: 10px 12px; background: #0A0D12; border: 1px solid #262E3A; border-radius: 4px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Goal diff</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600; color: #35D18E;">▲ +9</span></div>
+<div style="padding: 10px 12px; background: #0A0D12; border: 1px solid #262E3A; border-radius: 4px; display: flex; flex-direction: column; gap: 4px;"><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Conceded</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600; color: #FF7A6B;">▼ 5</span></div>
+<div style="padding: 12px 14px; background: #1A2029; border: 1px solid #3A4456; border-radius: 12px; display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Shots</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">15.3</span><span style="display: flex; justify-content: space-between; font-size: 12px; line-height: 16px;"><span style="color: #95A0B3;">Field 12.4</span><span style="font-family: 'IBM Plex Mono', monospace; color: #8B96AA;">▲ 2.9</span></span></div>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Side-panel header</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Entity label and title, collapse and close. The From strip ties the panel to the message that opened it. On mobile the sheet drops collapse and adds a grab handle.</span></div>
+<div style="border: 1px solid #3A4456; border-radius: 12px; overflow: hidden;">
+<div style="height: 64px; box-sizing: border-box; padding: 0 8px 0 16px; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #262E3A;">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Team detail</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Argentina</span></div>
+<button type="button" aria-label="Collapse panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; color: #ABB4C4;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><rect x="3" y="4" width="14" height="12"></rect><path d="M12 4v12M6.5 8l2 2-2 2"></path></svg></button>
+<button type="button" aria-label="Close panel" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; color: #ABB4C4;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"></path></svg></button>
+</div>
+<div style="padding: 8px 16px; display: flex; justify-content: space-between; font-size: 13px; line-height: 18px;"><span style="color: #95A0B3;">From: <span style="color: #ABB4C4;">How did Argentina…</span></span><span style="color: #4E8EF7; font-weight: 600;">Jump to message</span></div>
+</div>
+<div style="border: 1px solid #3A4456; border-radius: 20px 20px 0 0; overflow: hidden;">
+<div style="height: 20px; display: flex; align-items: center; justify-content: center;"><span style="width: 36px; height: 4px; border-radius: 9999px; background: #3A4456;"></span></div>
+<div style="height: 56px; box-sizing: border-box; padding: 0 8px 0 16px; display: flex; align-items: center; gap: 4px;">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Match detail · sheet</span><span style="font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">France 1–2 Spain</span></div>
+<button type="button" aria-label="Close sheet" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; color: #ABB4C4;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"></path></svg></button>
+</div>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Comparison row</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Split bar for two teams in one match. Diverging bars for two players. The leading value goes to ink-primary; the trailing one stays secondary.</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #ABB4C4;">44%</span><span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">Possession</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px;">56%</span></div>
+<div style="display: flex; gap: 2px; height: 6px;"><div style="width: 44%; background: #4E8EF7; border-radius: 3px 0 0 3px;"></div><div style="flex-grow: 1; background: #ABB4C4; border-radius: 0 3px 3px 0;"></div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid #262E3A;">
+<div style="display: flex; justify-content: space-between; align-items: center;"><span style="font-size: 13px; font-weight: 500;">Assists per 90</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #4E8EF7;">▲ +0.31 Messi</span></div>
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="width: 36px; font-family: 'IBM Plex Mono', monospace; font-size: 14px;">0.60</span>
+<div style="flex: 1 1 0; height: 8px; display: flex; justify-content: flex-end; background: #0A0D12; border-radius: 4px 0 0 4px;"><div style="width: 100%; background: #4E8EF7; border-radius: 4px 0 0 4px;"></div></div>
+<div style="width: 1px; height: 14px; background: #3A4456;"></div>
+<div style="flex: 1 1 0; height: 8px; display: flex; background: #0A0D12; border-radius: 0 4px 4px 0;"><div style="width: 48%; background: #ABB4C4; border-radius: 0 4px 4px 0;"></div></div>
+<span style="width: 36px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #ABB4C4;">0.29</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 110px 110px; gap: 8px; align-items: center; padding-top: 12px; border-top: 1px solid #262E3A;">
+<span style="font-size: 14px;">Goals</span>
+<div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #ABB4C4;">0.75</span><span style="display: flex; align-items: center; gap: 6px;"><span style="width: 56px; height: 4px; display: flex; background: #262E3A; border-radius: 2px;"><span style="width: 88%; background: #4E8EF7; border-radius: 2px;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #95A0B3;">88th</span></span></div>
+<div style="display: flex; flex-direction: column; gap: 4px;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px;">0.88 <span style="font-size: 11px; color: #ABB4C4;">▲</span></span><span style="display: flex; align-items: center; gap: 6px;"><span style="width: 56px; height: 4px; display: flex; background: #262E3A; border-radius: 2px;"><span style="width: 94%; background: #ABB4C4; border-radius: 2px;"></span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #95A0B3;">94th</span></span></div>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Timeline item</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Minute, event node on a hairline spine, what happened, which side. Four kinds: goal, card, VAR, substitution.</span></div>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column;">
+<sc-for list="{{events}}" as="e" hint-placeholder-count="4">
+<li style="min-height: 56px; display: grid; grid-template-columns: 36px 28px minmax(0, 1fr) auto; column-gap: 10px;">
+<span style="padding-top: 6px; text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; color: #95A0B3;">{{e.min}}</span>
+<div style="display: flex; flex-direction: column; align-items: center;">
+<span style="width: 28px; height: 28px; box-sizing: border-box; border-radius: 9999px; background: #1A2029; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; color: {{e.ink}};">
+<sc-if value="{{e.isGoal}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="Goal"><circle cx="10" cy="10" r="6.5"></circle><path d="M10 7.2l2.4 1.7-0.9 2.8h-3l-0.9-2.8z"></path></svg></sc-if>
+<sc-if value="{{e.isCard}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="Card"><rect x="6.5" y="3.5" width="7" height="13" rx="1"></rect></svg></sc-if>
+<sc-if value="{{e.isVar}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-label="VAR review"><rect x="3" y="4" width="14" height="10"></rect><path d="M7 17h6M10 14v3"></path></svg></sc-if>
+<sc-if value="{{e.isSub}}" hint-placeholder-val="{{false}}"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-label="Substitution"><path d="M7 16V5M4 8l3-3 3 3M13 4v11M10 12l3 3 3-3"></path></svg></sc-if>
+</span>
+<span style="flex-grow: 1; width: 1px; min-height: 12px; background: #262E3A;"></span>
+</div>
+<div style="padding: 4px 0 12px; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 14px; line-height: 20px; font-weight: 500;">{{e.title}}</span><span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">{{e.detail}}</span></div>
+<span style="padding-top: 6px; display: flex; align-items: flex-start; gap: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; color: #95A0B3;"><span style="margin-top: 4px; width: 8px; height: 8px; border-radius: 2px; background: {{e.key}};"></span>{{e.code}}</span>
+</li>
+</sc-for>
+</ol>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Actions</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Violet only for the one primary action. Expand is a ghost button; its selected state, Showing in panel, uses 600 plus a live dot.</span></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+<button type="button" style="height: 44px; padding: 0 16px; background: #7E6FEE; border: 0; border-radius: 8px; color: #0D0630; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600;">Sign in</button>
+<button type="button" style="height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600;">View full details<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M12 4h4v4M16 4l-6 6M8 4H4v12h12v-4"></path></svg></button>
+<button type="button" aria-pressed="true" style="height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: #2C3440; border: 1px solid #3A4456; border-radius: 8px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: #4E8EF7;"></span>Showing in panel</button>
+<button type="button" aria-label="Send" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: #7E6FEE; border: 0; border-radius: 9999px; color: #0D0630;"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"></path></svg></button>
+</div>
+<button type="button" style="align-self: flex-start; height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 8px; background: #0A0D12; border: 1px solid #3A4456; border-radius: 9999px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 14px;"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#95A0B3" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M5 16V9M10 16V4M15 16v-5"></path></svg>Suggested prompt chip</button>
+<div role="group" aria-label="Normalization" style="align-self: flex-start; display: flex; padding: 2px; background: #0A0D12; border: 1px solid #3A4456; border-radius: 8px;">
+<button type="button" aria-pressed="true" style="height: 36px; padding: 0 14px; background: #2C3440; border: 0; border-radius: 6px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600;">Per 90</button>
+<button type="button" aria-pressed="false" style="height: 36px; padding: 0 14px; background: transparent; border: 0; border-radius: 6px; color: #ABB4C4; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; font-weight: 600;">Totals</button>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Result pill and profile tags</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">W D L carry the letter as the glyph. Profile tags are stats-derived: position, contribution tier with a 3-step meter, discipline.</span></div>
+<div style="display: flex; gap: 8px;">
+<span style="width: 24px; height: 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 1px solid #35D18E; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #35D18E;">W</span>
+<span style="width: 24px; height: 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 1px solid #8B96AA; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #8B96AA;">D</span>
+<span style="width: 24px; height: 24px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 1px solid #FF7A6B; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #FF7A6B;">L</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 24px; padding: 0 8px; box-sizing: border-box; display: flex; align-items: center; background: #2C3440; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">FWD</span>
+<span style="height: 24px; padding: 0 8px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; border: 1px solid #3A4456; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ABB4C4;"><span style="display: flex; gap: 2px; align-items: flex-end;" aria-hidden="true"><span style="width: 3px; height: 6px; background: #4E8EF7; border-radius: 1px;"></span><span style="width: 3px; height: 8px; background: #4E8EF7; border-radius: 1px;"></span><span style="width: 3px; height: 10px; background: #3A4456; border-radius: 1px;"></span></span>G+A tier: strong</span>
+<span style="height: 24px; padding: 0 8px; box-sizing: border-box; display: flex; align-items: center; border: 1px solid #3A4456; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ABB4C4;">Discipline: 2 yellows</span>
+</div>
+<div style="display: flex; gap: 12px; align-items: center;">
+<span style="width: 44px; height: 44px; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 1px solid #3A4456; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600;">ARG</span>
+<span style="width: 44px; height: 44px; box-sizing: border-box; border-radius: 9999px; background: #232A35; border: 2px solid #4E8EF7; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600;">LM</span>
+<span style="font-size: 13px; line-height: 18px; color: #95A0B3;">Initials stand in for crests and photos. A 2px series ring marks side A or B.</span>
+</div>
+</section>
+
+<section style="padding: 20px; background: #12161D; border: 1px solid #262E3A; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;"><h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; line-height: 24px; font-weight: 600;">Panel behavior</h2><span style="font-size: 13px; line-height: 18px; color: #95A0B3;">How the drawer relates to the thread.</span></div>
+<sc-for list="{{rules}}" as="r" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: start;">
+<span style="width: 22px; height: 22px; border-radius: 9999px; background: #2C3440; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;">{{r.n}}</span>
+<span style="font-size: 14px; line-height: 20px; color: #ABB4C4;">{{r.t}}</span>
+</div>
+</sc-for>
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const zones = [
+      { n: 1, name: 'Header strip', desc: 'Entity type icon and label, scope in mono', h: '44px' },
+      { n: 2, name: 'Identity', desc: 'Badge or avatar, name, context line, record', h: '72px' },
+      { n: 3, name: 'Stat chips', desc: '3 or 4 key figures; 2 columns under 480px', h: '64px' },
+      { n: 4, name: 'Mini visual', desc: 'Split bars, per-match bars or events', h: '88px' },
+      { n: 5, name: 'Footer action', desc: 'Source caption and View full details', h: '60px' }
+    ];
+    const events = [
+      { min: "23'", title: 'Goal · Lamine Yamal', detail: 'Assist Pedri · FRA 0–1 ESP', code: 'ESP', key: '#ABB4C4', ink: '#F4F6F9', isGoal: true },
+      { min: "31'", title: 'Yellow card · Tchouaméni', detail: 'Foul', code: 'FRA', key: '#4E8EF7', ink: '#ABB4C4', isCard: true },
+      { min: "38'", title: 'VAR review · penalty check', detail: 'No penalty', code: 'FRA', key: '#4E8EF7', ink: '#ABB4C4', isVar: true },
+      { min: "64'", title: 'Substitution', detail: '▲ Oyarzabal  ▼ Morata', code: 'ESP', key: '#ABB4C4', ink: '#ABB4C4', isSub: true }
+    ].map((e) => ({ isGoal: false, isCard: false, isVar: false, isSub: false, ...e }));
+    const rules = [
+      { n: 1, t: 'Desktop: chat on the left, 480px panel on the right. The thread column stays centered in the remaining width.' },
+      { n: 2, t: 'Opening a widget replaces the panel content. One entity at a time; the source widget shows Showing in panel.' },
+      { n: 3, t: 'The panel stays open across follow-up turns. The composer placeholder names the pinned entity.' },
+      { n: 4, t: 'Collapse returns to full-width chat and keeps the last entity one click away; close clears it.' },
+      { n: 5, t: 'Mobile: a full-height sheet over a 72% scrim. Drag the handle down or tap close to return to the thread.' }
+    ];
+    return { zones, events, rules };
+  }
+}
+</script>
+</body>
+</html>

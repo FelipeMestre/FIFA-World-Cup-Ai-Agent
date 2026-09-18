@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Player analysis widget</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<article aria-label="Player analysis: {{p.name}}" style="width: {{w}}px; height: {{h}}px; box-sizing: border-box; display: flex; flex-direction: column; background: #1A2029; border: 1px solid #262E3A; border-radius: 16px; overflow: hidden; font-family: 'IBM Plex Sans', sans-serif; color: #F4F6F9; box-shadow: inset 0 1px 0 rgba(244,246,249,0.06), 0 8px 24px rgba(2,3,5,0.55);">
+<div style="flex-shrink: 0; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; background: linear-gradient(135deg, rgba(78,142,247,0.12) 0%, rgba(78,142,247,0) 55%); border-bottom: 1px solid #262E3A;">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #95A0B3;"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#4E8EF7" stroke-width="1.75" stroke-linecap="square" aria-hidden="true"><circle cx="10" cy="7" r="3"></circle><path d="M4.5 16.5c0.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5"></path></svg>Player analysis</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 16px; font-weight: 500; color: #95A0B3;">{{p.scope}}</span>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+<div style="width: 64px; height: 64px; flex-shrink: 0; box-sizing: border-box; border-radius: 9999px; padding: 2px; background: linear-gradient(135deg, #4E8EF7, rgba(78,142,247,0.2));">
+<div style="width: 100%; height: 100%; border-radius: 9999px; background: #232A35; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700;">{{p.initials}}</div>
+</div>
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -0.015em;">{{p.name}}</span>
+<span style="font-size: 13px; line-height: 18px; color: #ABB4C4;">{{p.sub}}</span>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 34px; line-height: 38px; font-weight: 600; letter-spacing: -0.03em;">{{p.hero}}</span>
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{p.heroLabel}}</span>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; padding: 0 10px; box-sizing: border-box; display: flex; align-items: center; background: #F4F6F9; border-radius: 9999px; font-size: 11px; line-height: 14px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #0A0D12;">{{p.pos}}</span>
+<span style="height: 26px; padding: 0 10px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; background: rgba(78,142,247,0.12); border: 1px solid rgba(78,142,247,0.35); border-radius: 9999px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #F4F6F9;">
+<span style="display: flex; gap: 2px; align-items: flex-end;" aria-hidden="true">
+<sc-for list="{{p.segs}}" as="s" hint-placeholder-count="3"><span style="width: 3px; height: {{s.h}}; background: {{s.c}}; border-radius: 1px;"></span></sc-for>
+</span>{{p.tier}}</span>
+<span style="height: 26px; padding: 0 10px; box-sizing: border-box; display: flex; align-items: center; border: 1px solid #3A4456; border-radius: 9999px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #ABB4C4;">{{p.disc}}</span>
+</div>
+</div>
+<div style="flex-grow: 1; padding: 16px 20px; display: flex; flex-direction: column;">
+<div style="display: grid; grid-template-columns: repeat({{cols}}, minmax(0, 1fr)); background: #12161D; border: 1px solid #262E3A; border-radius: 12px; overflow: hidden;">
+<sc-for list="{{p.chips}}" as="c" hint-placeholder-count="4">
+<div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: inset -1px 0 0 #262E3A, inset 0 -1px 0 #262E3A;">
+<span style="font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #95A0B3;">{{c.label}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 22px; line-height: 26px; font-weight: 600;">{{c.value}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="flex-shrink: 0; padding: 12px 16px 12px 20px; border-top: 1px solid #262E3A; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: rgba(18,22,29,0.6);">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: #95A0B3;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: #35D18E;"></span>{{p.foot}}</span>
+<sc-if value="{{notActive}}" hint-placeholder-val="{{true}}">
+<button type="button" style="height: 40px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: #232A35; border: 1px solid #3A4456; border-radius: 10px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; line-height: 16px; font-weight: 600; cursor: pointer; box-shadow: inset 0 1px 0 rgba(244,246,249,0.06);">Open details<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"></path></svg></button>
+</sc-if>
+<sc-if value="{{active}}" hint-placeholder-val="{{false}}">
+<button type="button" aria-pressed="true" style="height: 40px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: rgba(78,142,247,0.14); border: 1px solid rgba(78,142,247,0.45); border-radius: 10px; color: #F4F6F9; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; line-height: 16px; font-weight: 600; cursor: pointer;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: #4E8EF7; box-shadow: 0 0 0 3px rgba(78,142,247,0.25);"></span>Showing in panel</button>
+</sc-if>
+</div>
+</article>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["outfield","goalkeeper"],"default":"outfield"},"w":{"editor":"int","default":640,"min":320,"max":760,"section":"Size"},"h":{"editor":"int","default":400,"min":300,"max":900,"section":"Size"},"active":{"editor":"boolean","default":false},"$preview":{"width":640,"height":400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const w = this.props.w ?? 640;
+    const h = this.props.h ?? 400;
+    const active = this.props.active ?? false;
+    const gk = (this.props.role ?? 'outfield') === 'goalkeeper';
+    const segs = (n) => [6, 8, 10].map((px, i) => ({ h: px + 'px', c: i < n ? '#4E8EF7' : '#3A4456' }));
+    const p = gk ? {
+      initials: 'EM', name: 'Emiliano Martínez', sub: 'Argentina · Goalkeeper · #23', scope: '7 apps · 630 min',
+      hero: '80.8%', heroLabel: 'Save rate',
+      pos: 'GK', tier: 'Shot-stopping: high · top 20%', segs: segs(2), disc: 'Discipline: clean',
+      chips: [{ label: 'Saves', value: '21' }, { label: 'Clean sheets', value: '3' }, { label: 'Conceded', value: '5' }, { label: 'Minutes', value: '630' }],
+      foot: '30 shots on target faced'
+    } : {
+      initials: 'KM', name: 'Kylian Mbappé', sub: 'France · Forward · #10', scope: '7 apps · 612 min',
+      hero: '1.18', heroLabel: 'G+A per 90',
+      pos: 'FWD', tier: 'G+A tier: elite · top 10%', segs: segs(3), disc: 'Discipline: 1 yellow',
+      chips: [{ label: 'Goals', value: '6' }, { label: 'Assists', value: '2' }, { label: 'Shots', value: '29' }, { label: 'Minutes', value: '612' }],
+      foot: 'Stats-derived profile, not a scouting role'
+    };
+    return { w, h, active, notActive: !active, cols: w < 480 ? 2 : 4, p };
+  }
+}
+</script>
+</body>
+</html>
