@@ -44,10 +44,14 @@ class RealPlayerSchema(Base):
 class RealPlayerValuationSchema(Base):
     """Historical market-value snapshots (source: Transfermarkt player valuations export).
 
-    Surrogate `id` primary key: same-date duplicate valuations exist upstream.
+    Surrogate `id` primary key, plus a `(real_player_id, valuation_date)`
+    unique constraint the ingestion upsert targets via `ON CONFLICT`: a
+    later sync overwrites an earlier same-date valuation for the same
+    player rather than accumulating duplicates.
     """
 
     __tablename__ = "real_player_valuation"
+    __table_args__ = (UniqueConstraint("real_player_id", "valuation_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     real_player_id: Mapped[int] = mapped_column(ForeignKey("real_player.player_id"), nullable=False)
@@ -61,10 +65,12 @@ class RealTransferSchema(Base):
 
     `transfer_date` is kept as-is from upstream, including inconsistent
     future dates (e.g. 2028/2030) present in the source data -- no CHECK
-    constraint is applied.
+    constraint is applied. A `(real_player_id, transfer_date)` unique
+    constraint backs the ingestion upsert's `ON CONFLICT` target.
     """
 
     __tablename__ = "real_transfer"
+    __table_args__ = (UniqueConstraint("real_player_id", "transfer_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     real_player_id: Mapped[int] = mapped_column(ForeignKey("real_player.player_id"), nullable=False)
