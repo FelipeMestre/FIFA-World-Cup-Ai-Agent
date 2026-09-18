@@ -1,8 +1,16 @@
 import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.model.message import Message
-from src.domain.chat.services.tool_call_executor import ToolCallExecutor
+from src.domain.chat.services.tool_call_executor import (
+    ContentDeltaEvent,
+    ReasoningDeltaEvent,
+    ToolCallExecutor,
+    ToolCallRequestedEvent,
+    TurnResolvedEvent,
+)
 from src.domain.chat.tools.registry import TOOL_REGISTRY
 from src.infra.openrouter.exceptions import OpenRouterRequestFailed
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
@@ -28,6 +36,40 @@ DEFAULT_TOOL_SCHEMAS: list[dict] = [
 ]
 
 
+@dataclass(frozen=True)
+class CapReachedEvent:
+    """The tool-execution loop's iteration cap tripped. `content` is the
+    best-effort partial content accumulated so far; `clarification` is the
+    clarification-ask text appended after it. Always followed by a
+    `MessageDoneEvent` carrying the same combined text.
+    """
+
+    content: str
+    clarification: str
+
+
+@dataclass(frozen=True)
+class MessageDoneEvent:
+    """Terminal event for one chat turn: the conversation has been
+    persisted and `content` is the final text shown to the user (either the
+    assistant's normal reply, or the cap-trip's partial content plus
+    clarification).
+    """
+
+    conversation_id: str
+    content: str
+    model: str | None
+
+
+ChatTurnEvent = (
+    ReasoningDeltaEvent
+    | ContentDeltaEvent
+    | ToolCallRequestedEvent
+    | CapReachedEvent
+    | MessageDoneEvent
+)
+
+
 class ChatService:
     """Orchestrates a single chat turn: load history, run the bounded
     tool-execution loop against the LLM (delegated to `ToolCallExecutor`),
@@ -47,7 +89,11 @@ class ChatService:
         conversation_id: str | None,
         user_message: str,
         tools: list[dict] | None = None,
-    ) -> tuple[str, str]:
+    ) -> AsyncIterator[ChatTurnEvent]:
+        """Streams reasoning/content deltas as they arrive from the tool
+        loop, then persists the finished conversation and yields the
+        terminal event(s).
+        """
         resolved_conversation_id = conversation_id or str(uuid.uuid4())
         history = await self._conversation_cache.get_history(resolved_conversation_id)
         history.append(Message(role="user", content=user_message))
@@ -55,20 +101,36 @@ class ChatService:
         completion_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         completion_messages.extend({"role": m.role, "content": m.content} for m in history)
 
+        final_result: ChatCompletionResult | ToolLoopCapReached | None = None
         try:
-            result = await self._tool_executor.run(
-                completion_messages,
-                tools if tools is not None else DEFAULT_TOOL_SCHEMAS,
-            )
+            async for event in self._tool_executor.run(
+                completion_messages, tools if tools is not None else DEFAULT_TOOL_SCHEMAS
+            ):
+                if isinstance(event, TurnResolvedEvent):
+                    final_result = event.result
+                else:
+                    yield event
         except OpenRouterRequestFailed as exc:
             raise ChatServiceUnavailable(str(exc)) from exc
 
-        reply_content = _reply_content(result)
+        if final_result is None:
+            raise ChatServiceUnavailable("Tool-execution loop ended without a result")
+
+        reply_content = _reply_content(final_result)
+        model = final_result.model if isinstance(final_result, ChatCompletionResult) else None
+
+        if isinstance(final_result, ToolLoopCapReached):
+            yield CapReachedEvent(
+                content=final_result.partial_content, clarification=final_result.clarification
+            )
+
         history.append(Message(role="assistant", content=reply_content))
         await self._conversation_cache.save_history(
             resolved_conversation_id, history, ttl_seconds=CONVERSATION_HISTORY_TTL_SECONDS
         )
-        return resolved_conversation_id, reply_content
+        yield MessageDoneEvent(
+            conversation_id=resolved_conversation_id, content=reply_content, model=model
+        )
 
 
 def _reply_content(result: ChatCompletionResult | ToolLoopCapReached) -> str:

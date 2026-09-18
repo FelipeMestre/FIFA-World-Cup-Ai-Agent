@@ -1,21 +1,29 @@
 """Bounded tool-execution loop for a single chat turn.
 
 Consumes `OpenRouterClientInterface.create_chat_completion`'s live chunk
-stream, aggregates it into one `ChatCompletionResult` per iteration,
-validates and dispatches any requested tool calls against
-`domain.chat.tools.registry.TOOL_REGISTRY`, and re-sends the conversation
+stream, forwarding reasoning/content deltas as they arrive while also
+aggregating each iteration into a `ChatCompletionResult`, validating and
+dispatching any requested tool calls against
+`domain.chat.tools.registry.TOOL_REGISTRY`, and re-sending the conversation
 with the tool results appended -- up to `MAX_ITERATIONS` iterations.
 
+`run` is an async generator so a caller (`ChatService`) can forward live
+deltas to the browser as they happen instead of waiting for one aggregated
+result. It yields `ReasoningDeltaEvent`/`ContentDeltaEvent` as chunks arrive,
+`ToolCallRequestedEvent` when a tool call is about to be dispatched, and
+exactly one terminal `TurnResolvedEvent` (never raised, never discarded)
+carrying either a `ChatCompletionResult` or a `ToolLoopCapReached` once the
+loop resolves or hits its iteration cap.
+
 Never raises on a malformed tool call or on hitting the cap: both are
-returned as data (a `role: "tool"` error message fed back to the model, or a
-`ToolLoopCapReached` result) so the caller always has something to show the
-user. This is the loop's own per-iteration aggregation, superseding PR1's
-interim `_aggregate_chat_completion` helper that used to live in
-`chat_service.py`.
+handled as data (a `role: "tool"` error message fed back to the model, or a
+`ToolLoopCapReached` result inside the terminal event) so the caller always
+has something to show the user.
 """
 
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from pydantic import ValidationError
 
@@ -40,6 +48,42 @@ CLARIFICATION_REQUEST = (
 )
 
 
+@dataclass(frozen=True)
+class ReasoningDeltaEvent:
+    """One incremental piece of the model's reasoning trace."""
+
+    content: str
+
+
+@dataclass(frozen=True)
+class ContentDeltaEvent:
+    """One incremental piece of the model's final-answer content."""
+
+    content: str
+
+
+@dataclass(frozen=True)
+class ToolCallRequestedEvent:
+    """The loop is about to validate and dispatch a requested tool call."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class TurnResolvedEvent:
+    """Terminal event for one full chat turn.
+
+    `result` is a `ChatCompletionResult` on a normal completion, or a
+    `ToolLoopCapReached` when the iteration cap tripped without a final
+    answer. Always the last event `run` yields, exactly once.
+    """
+
+    result: ChatCompletionResult | ToolLoopCapReached
+
+
+ToolLoopEvent = ReasoningDeltaEvent | ContentDeltaEvent | ToolCallRequestedEvent | TurnResolvedEvent
+
+
 class ToolCallExecutor:
     """Runs the bounded tool-execution loop for one chat turn."""
 
@@ -48,7 +92,7 @@ class ToolCallExecutor:
 
     async def run(
         self, completion_messages: list[dict], tools: list[dict]
-    ) -> ChatCompletionResult | ToolLoopCapReached:
+    ) -> AsyncIterator[ToolLoopEvent]:
         """Mutates `completion_messages` in place, appending the assistant's
         tool-call requests and the tool results as the loop iterates.
         """
@@ -58,22 +102,33 @@ class ToolCallExecutor:
             chunks = self._openrouter_client.create_chat_completion(
                 messages=completion_messages, tools=tools
             )
-            result = await _aggregate_chat_completion(chunks)
+            aggregator = _ChunkAggregator()
+            async for chunk in chunks:
+                if chunk.delta_reasoning:
+                    yield ReasoningDeltaEvent(content=chunk.delta_reasoning)
+                if chunk.delta_content:
+                    yield ContentDeltaEvent(content=chunk.delta_content)
+                aggregator.absorb(chunk)
+            result = aggregator.finalize()
 
             if result.content:
                 partial_content_parts.append(result.content)
 
             if result.finish_reason != "tool_calls" or not result.tool_calls:
-                return result
+                yield TurnResolvedEvent(result=result)
+                return
 
             completion_messages.append(_assistant_tool_call_message(result))
             for tool_call in result.tool_calls:
+                yield ToolCallRequestedEvent(name=tool_call.name)
                 completion_messages.append(await self._execute_tool_call(tool_call))
 
         logger.info("Tool-execution loop hit the %s-iteration cap", MAX_ITERATIONS)
-        return ToolLoopCapReached(
-            partial_content="".join(partial_content_parts),
-            clarification=CLARIFICATION_REQUEST,
+        yield TurnResolvedEvent(
+            result=ToolLoopCapReached(
+                partial_content="".join(partial_content_parts),
+                clarification=CLARIFICATION_REQUEST,
+            )
         )
 
     async def _execute_tool_call(self, tool_call: ToolCall) -> dict:
@@ -118,35 +173,38 @@ def _tool_result_message(tool_call: ToolCall, content: str) -> dict:
     }
 
 
-async def _aggregate_chat_completion(
-    chunks: AsyncIterator[ChatCompletionChunk],
-) -> ChatCompletionResult:
-    """Consume one full turn's live chunk stream into one aggregated result."""
-    content_parts: list[str] = []
-    reasoning_parts: list[str] = []
-    tool_calls: list[ToolCall] = []
-    finish_reason: FinishReason | None = None
-    model: str | None = None
+class _ChunkAggregator:
+    """Accumulates one turn's live chunk stream into a `ChatCompletionResult`
+    while the caller simultaneously forwards each chunk's deltas onward.
+    """
 
-    async for chunk in chunks:
+    def __init__(self) -> None:
+        self._content_parts: list[str] = []
+        self._reasoning_parts: list[str] = []
+        self._tool_calls: list[ToolCall] = []
+        self._finish_reason: FinishReason | None = None
+        self._model: str | None = None
+
+    def absorb(self, chunk: ChatCompletionChunk) -> None:
         if chunk.delta_content:
-            content_parts.append(chunk.delta_content)
+            self._content_parts.append(chunk.delta_content)
         if chunk.delta_reasoning:
-            reasoning_parts.append(chunk.delta_reasoning)
+            self._reasoning_parts.append(chunk.delta_reasoning)
         if chunk.tool_calls is not None:
-            tool_calls = chunk.tool_calls
+            self._tool_calls = chunk.tool_calls
         if chunk.finish_reason is not None:
-            finish_reason = chunk.finish_reason
+            self._finish_reason = chunk.finish_reason
         if chunk.model is not None:
-            model = chunk.model
+            self._model = chunk.model
 
-    if finish_reason is None or model is None:
-        raise OpenRouterRequestFailed(None, "Unexpected response shape")
+    def finalize(self) -> ChatCompletionResult:
+        if self._finish_reason is None or self._model is None:
+            raise OpenRouterRequestFailed(None, "Unexpected response shape")
 
-    return ChatCompletionResult(
-        content="".join(content_parts),
-        reasoning="".join(reasoning_parts),
-        tool_calls=tool_calls,
-        finish_reason=finish_reason,
-        model=model,
-    )
+        return ChatCompletionResult(
+            content="".join(self._content_parts),
+            reasoning="".join(self._reasoning_parts),
+            tool_calls=self._tool_calls,
+            finish_reason=self._finish_reason,
+            model=self._model,
+        )

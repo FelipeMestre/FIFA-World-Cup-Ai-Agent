@@ -4,6 +4,12 @@ Per AGENTS.md's testing guidance, these drive the real `ToolCallExecutor`
 against real fake `OpenRouterClientInterface` implementations (no
 `Mock()`/`@patch`) and the real `GetCurrentUtcTimeArgs` Pydantic model from
 `domain.chat.tools.registry.TOOL_REGISTRY` -- no fake tool schemas.
+
+`ToolCallExecutor.run` is an async generator: it forwards live
+`ReasoningDeltaEvent`/`ContentDeltaEvent` chunks as they arrive and dispatches
+`ToolCallRequestedEvent` before each tool call, always ending with exactly one
+`TurnResolvedEvent` carrying the loop's final result. These tests drain the
+generator and assert on the collected events.
 """
 
 from collections.abc import AsyncIterator
@@ -13,12 +19,16 @@ import pytest
 from src.domain.chat.services.tool_call_executor import (
     CLARIFICATION_REQUEST,
     MAX_ITERATIONS,
+    ContentDeltaEvent,
     ToolCallExecutor,
+    ToolCallRequestedEvent,
+    TurnResolvedEvent,
 )
 from src.domain.chat.tools.registry import TOOL_REGISTRY
 from src.infra.openrouter.schemas import (
     ChatCompletionChunk,
     ChatCompletionResult,
+    ToolCall,
     ToolLoopCapReached,
 )
 
@@ -39,8 +49,6 @@ def _tool_call_chunk(
     *, tool_id: str, name: str, arguments: str, content: str = ""
 ) -> AsyncIterator[ChatCompletionChunk]:
     async def _gen() -> AsyncIterator[ChatCompletionChunk]:
-        from src.infra.openrouter.schemas import ToolCall
-
         if content:
             yield ChatCompletionChunk(delta_content=content)
         yield ChatCompletionChunk(
@@ -74,11 +82,16 @@ async def test_plain_message_returns_result_without_tool_calls() -> None:
     client = _ScriptedOpenRouterClient([_stop_chunk("Hello there!")])
     executor = ToolCallExecutor(client)
 
-    result = await executor.run([{"role": "user", "content": "Hi"}], _TOOLS)
+    events = [event async for event in executor.run([{"role": "user", "content": "Hi"}], _TOOLS)]
 
-    assert isinstance(result, ChatCompletionResult)
-    assert result.content == "Hello there!"
-    assert result.finish_reason == "stop"
+    content_deltas = [e for e in events if isinstance(e, ContentDeltaEvent)]
+    assert [e.content for e in content_deltas] == ["Hello there!"]
+
+    terminal = events[-1]
+    assert isinstance(terminal, TurnResolvedEvent)
+    assert isinstance(terminal.result, ChatCompletionResult)
+    assert terminal.result.content == "Hello there!"
+    assert terminal.result.finish_reason == "stop"
     assert len(client.calls) == 1
 
 
@@ -92,11 +105,19 @@ async def test_tool_call_triggers_executes_and_resolves_final_answer() -> None:
     )
     executor = ToolCallExecutor(client)
 
-    result = await executor.run([{"role": "user", "content": "What time is it?"}], _TOOLS)
+    events = [
+        event
+        async for event in executor.run([{"role": "user", "content": "What time is it?"}], _TOOLS)
+    ]
 
-    assert isinstance(result, ChatCompletionResult)
-    assert result.finish_reason == "stop"
-    assert "currently" in result.content
+    tool_call_events = [e for e in events if isinstance(e, ToolCallRequestedEvent)]
+    assert [e.name for e in tool_call_events] == ["get_current_utc_time"]
+
+    terminal = events[-1]
+    assert isinstance(terminal, TurnResolvedEvent)
+    assert isinstance(terminal.result, ChatCompletionResult)
+    assert terminal.result.finish_reason == "stop"
+    assert "currently" in terminal.result.content
     assert len(client.calls) == 2
 
     # Second call's messages include the assistant tool-call request and the
@@ -126,10 +147,15 @@ async def test_invalid_tool_call_arguments_rejected_without_crashing() -> None:
     )
     executor = ToolCallExecutor(client)
 
-    result = await executor.run([{"role": "user", "content": "What time is it?"}], _TOOLS)
+    events = [
+        event
+        async for event in executor.run([{"role": "user", "content": "What time is it?"}], _TOOLS)
+    ]
 
-    assert isinstance(result, ChatCompletionResult)
-    assert result.finish_reason == "stop"
+    terminal = events[-1]
+    assert isinstance(terminal, TurnResolvedEvent)
+    assert isinstance(terminal.result, ChatCompletionResult)
+    assert terminal.result.finish_reason == "stop"
     assert len(client.calls) == 2
 
     tool_message = client.calls[1][-1]
@@ -151,8 +177,13 @@ async def test_iteration_cap_returns_partial_content_and_clarification() -> None
     client = _ScriptedOpenRouterClient(responses)
     executor = ToolCallExecutor(client)
 
-    result = await executor.run([{"role": "user", "content": "Loop forever"}], _TOOLS)
+    events = [
+        event async for event in executor.run([{"role": "user", "content": "Loop forever"}], _TOOLS)
+    ]
 
+    terminal = events[-1]
+    assert isinstance(terminal, TurnResolvedEvent)
+    result = terminal.result
     assert isinstance(result, ToolLoopCapReached)
     assert result.clarification == CLARIFICATION_REQUEST
     # Best-effort partial content accumulated across iterations is surfaced,
