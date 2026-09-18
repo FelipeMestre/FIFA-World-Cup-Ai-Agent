@@ -1,0 +1,96 @@
+name: world-cup-ai-scout
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: world-cup-ai-scout-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: world_cup_ai_scout
+      POSTGRES_PASSWORD: world_cup_ai_scout
+      POSTGRES_DB: world_cup_ai_scout
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U world_cup_ai_scout -d world_cup_ai_scout"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: world-cup-ai-scout-redis
+    restart: unless-stopped
+    ports:
+      - "56379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: world-cup-ai-scout-backend
+    restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      # Override localhost-oriented values from the .env file: inside the
+      # compose network "localhost" would mean the backend container itself,
+      # not the postgres/redis services.
+      DATABASE_URL: postgresql+asyncpg://world_cup_ai_scout:world_cup_ai_scout@postgres:5432/world_cup_ai_scout
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/venv
+      # scripts/seed_from_csv.py defaults to reading the dataset from
+      # <repo-root>/data/FIFA-World-Cup-2026-Dataset, resolved via
+      # Path(__file__).resolve().parents[2] (i.e. "/" inside this container,
+      # since WORKDIR /app is bind-mounted from ./backend, not the repo root).
+      # Mount the host's data/ dir at that same absolute path so the script
+      # runs unmodified with its default --dataset-dir.
+      - ./data:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: world-cup-ai-scout-frontend
+    restart: unless-stopped
+    env_file:
+      - path: ./frontend/.env.local
+        required: false
+    environment:
+      # The frontend's Route Handlers run server-side, inside this
+      # container, so they must reach the backend by service name.
+      BACKEND_API_URL: http://backend:8000/api/v1
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_venv:
+  frontend_node_modules:
+  frontend_next_cache:
