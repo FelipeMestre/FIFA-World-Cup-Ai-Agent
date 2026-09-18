@@ -1,16 +1,12 @@
 import uuid
-from collections.abc import AsyncIterator
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.model.message import Message
+from src.domain.chat.services.tool_call_executor import ToolCallExecutor
+from src.domain.chat.tools.registry import TOOL_REGISTRY
 from src.infra.openrouter.exceptions import OpenRouterRequestFailed
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
-from src.infra.openrouter.schemas import (
-    ChatCompletionChunk,
-    ChatCompletionResult,
-    FinishReason,
-    ToolCall,
-)
+from src.infra.openrouter.schemas import ChatCompletionResult, ToolLoopCapReached
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
@@ -27,12 +23,15 @@ SYSTEM_PROMPT = (
 
 CONVERSATION_HISTORY_TTL_SECONDS = 60 * 60 * 24  # 24h
 
+DEFAULT_TOOL_SCHEMAS: list[dict] = [
+    tool_definition.json_schema for tool_definition in TOOL_REGISTRY.values()
+]
+
 
 class ChatService:
-    """Orchestrates a single chat turn: load history, call the LLM, persist
-    the updated history. `tools` is threaded through untouched as an explicit
-    extension point for a future tool-calling phase (team/match/player
-    analytics tools) -- no tool implementations exist yet.
+    """Orchestrates a single chat turn: load history, run the bounded
+    tool-execution loop against the LLM (delegated to `ToolCallExecutor`),
+    persist the updated history.
     """
 
     def __init__(
@@ -41,7 +40,7 @@ class ChatService:
         openrouter_client: OpenRouterClientInterface,
     ) -> None:
         self._conversation_cache = conversation_cache
-        self._openrouter_client = openrouter_client
+        self._tool_executor = ToolCallExecutor(openrouter_client)
 
     async def send_message(
         self,
@@ -57,15 +56,14 @@ class ChatService:
         completion_messages.extend({"role": m.role, "content": m.content} for m in history)
 
         try:
-            chunks = self._openrouter_client.create_chat_completion(
-                messages=completion_messages,
-                tools=tools,
+            result = await self._tool_executor.run(
+                completion_messages,
+                tools if tools is not None else DEFAULT_TOOL_SCHEMAS,
             )
-            result = await _aggregate_chat_completion(chunks)
         except OpenRouterRequestFailed as exc:
             raise ChatServiceUnavailable(str(exc)) from exc
 
-        reply_content = result.content
+        reply_content = _reply_content(result)
         history.append(Message(role="assistant", content=reply_content))
         await self._conversation_cache.save_history(
             resolved_conversation_id, history, ttl_seconds=CONVERSATION_HISTORY_TTL_SECONDS
@@ -73,39 +71,12 @@ class ChatService:
         return resolved_conversation_id, reply_content
 
 
-async def _aggregate_chat_completion(
-    chunks: AsyncIterator[ChatCompletionChunk],
-) -> ChatCompletionResult:
-    """Consume the client's live chunk stream and build one aggregated
-    result. Stands in for the tool-execution loop's own aggregation until
-    PR2 introduces it -- keeps the plain-message round trip working exactly
-    as before from the outside while the client itself now streams.
+def _reply_content(result: ChatCompletionResult | ToolLoopCapReached) -> str:
+    """On a normal completion, the assistant's final content. On a
+    cap-trip, the best-effort partial content plus the clarification ask --
+    always shown to the user, never silently discarded and never replaced by
+    a raw error.
     """
-    content_parts: list[str] = []
-    reasoning_parts: list[str] = []
-    tool_calls: list[ToolCall] = []
-    finish_reason: FinishReason | None = None
-    model: str | None = None
-
-    async for chunk in chunks:
-        if chunk.delta_content:
-            content_parts.append(chunk.delta_content)
-        if chunk.delta_reasoning:
-            reasoning_parts.append(chunk.delta_reasoning)
-        if chunk.tool_calls is not None:
-            tool_calls = chunk.tool_calls
-        if chunk.finish_reason is not None:
-            finish_reason = chunk.finish_reason
-        if chunk.model is not None:
-            model = chunk.model
-
-    if finish_reason is None or model is None:
-        raise OpenRouterRequestFailed(None, "Unexpected response shape")
-
-    return ChatCompletionResult(
-        content="".join(content_parts),
-        reasoning="".join(reasoning_parts),
-        tool_calls=tool_calls,
-        finish_reason=finish_reason,
-        model=model,
-    )
+    if isinstance(result, ToolLoopCapReached):
+        return f"{result.partial_content}\n\n{result.clarification}".strip()
+    return result.content
