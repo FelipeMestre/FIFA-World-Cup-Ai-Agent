@@ -73,7 +73,12 @@ class _FailingClient:
 
 
 class _FakeIngestionRepository:
+    def __init__(self, call_order: list[str] | None = None) -> None:
+        self._call_order = call_order
+
     async def upsert_many(self, schema_cls, rows, conflict_columns) -> UpsertResult:
+        if self._call_order is not None and schema_cls.__tablename__ == "real_player":
+            self._call_order.append("real_player")
         return UpsertResult(table_name=schema_cls.__tablename__, row_count=len(rows))
 
 
@@ -117,8 +122,9 @@ class _FakePlayerRepository:
 
 
 class _FakeIdentityLinkRepository:
-    def __init__(self) -> None:
+    def __init__(self, call_order: list[str] | None = None) -> None:
         self.upserted_candidates = []
+        self._call_order = call_order
 
     async def list_pending(self, limit: int = 100, offset: int = 0):  # pragma: no cover
         raise NotImplementedError
@@ -131,6 +137,8 @@ class _FakeIdentityLinkRepository:
 
     async def upsert_candidates(self, candidates):
         self.upserted_candidates = candidates
+        if self._call_order is not None:
+            self._call_order.append("player_identity_link")
         return UpsertResult(table_name="player_identity_link", row_count=len(candidates))
 
 
@@ -158,11 +166,12 @@ def _build_service(
     player_repository,
     detail_sync,
     identity_link_repository=None,
+    ingestion_repository=None,
 ):
     return TransfermarktSyncService(
         transfermarkt_client=client,
         csv_ingestion_service=CsvIngestionService(),
-        ingestion_repository=_FakeIngestionRepository(),
+        ingestion_repository=ingestion_repository or _FakeIngestionRepository(),
         ingestion_job_repository=job_repository,
         team_repository=team_repository,
         player_repository=player_repository,
@@ -223,6 +232,51 @@ async def test_run_sync_persists_only_matched_players_and_succeeds_job():
     # Only the matched player (500) is persisted, not the unrelated one (999).
     assert detail_sync.player_scoped_calls == [{500}]
     assert result.row_counts["players"] == 1
+
+
+@pytest.mark.asyncio
+async def test_run_sync_persists_real_player_before_identity_link():
+    # player_identity_link.real_player_id has a foreign key into real_player.
+    # Upserting identity-link candidates before the matched real_player rows
+    # exist raises ForeignKeyViolationError (found live, immediately after
+    # fixing the real_player_id collision above -- both bugs were hit in the
+    # same pipeline run).
+    call_order: list[str] = []
+    client = _FakeTransfermarktClient(
+        {
+            "national_teams": [_NATIONAL_TEAM_ROW],
+            "clubs": [],
+            "players": [
+                _player_row(
+                    player_id="500",
+                    first_name="John",
+                    last_name="Doe",
+                    date_of_birth="1998-05-10",
+                    current_club_id="77",
+                ),
+            ],
+        }
+    )
+    job_repository = _FakeJobRepository(_job())
+    team_repository = _FakeTeamRepository(
+        [Team(1, "Testland", "TST", "A", "UEFA", 10, 1800, "Coach")]
+    )
+    player_repository = _FakePlayerRepository(
+        [Player(1, 1, "John Doe", "FWD", "Some FC", 20000000, 30, date(1998, 5, 10), 182, 10)]
+    )
+    service = _build_service(
+        client,
+        job_repository,
+        team_repository,
+        player_repository,
+        _FakeDetailSync(),
+        identity_link_repository=_FakeIdentityLinkRepository(call_order),
+        ingestion_repository=_FakeIngestionRepository(call_order),
+    )
+
+    await service.run_sync(_job())
+
+    assert call_order == ["real_player", "player_identity_link"]
 
 
 @pytest.mark.asyncio

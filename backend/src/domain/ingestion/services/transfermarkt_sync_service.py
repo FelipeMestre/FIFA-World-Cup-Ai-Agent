@@ -124,8 +124,13 @@ class TransfermarktSyncService:
         candidates = self._matching_service.match(
             wc2026_players, real_player_candidates, national_team_id_by_team_id
         )
-        await self._identity_link_repository.upsert_candidates(candidates)
 
+        # `player_identity_link.real_player_id` has a foreign key into
+        # `real_player` -- the matched real_player rows must exist before
+        # upserting identity-link candidates that reference them, or the
+        # insert fails with ForeignKeyViolationError (found live: this
+        # ordering bug surfaced immediately after fixing the same-batch
+        # real_player_id collision above).
         matched_real_player_ids = {candidate.real_player_id for candidate in candidates}
         matched_player_rows = [
             row for row in player_rows if int(row["player_id"]) in matched_real_player_ids
@@ -136,6 +141,8 @@ class TransfermarktSyncService:
         matched_real_club_ids = {
             int(row["current_club_id"]) for row in matched_player_rows if row.get("current_club_id")
         }
+
+        await self._identity_link_repository.upsert_candidates(candidates)
 
         row_counts.update(
             await self._detail_sync.sync_player_scoped_tables(matched_real_player_ids)
