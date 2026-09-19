@@ -3,10 +3,15 @@
 concrete repositories/services directly, and drives the corresponding
 domain service. Domain exceptions are caught only to record the job's
 `failed` status before re-raising, so Arq's own retry/logging still applies.
+
+The synthetic-upload task receives the CSV as raw bytes in the job payload
+rather than a filesystem path: the API and worker run in separate
+containers with separate filesystems, so a path written by the API process
+is not visible to the worker process.
 """
 
 import csv
-from pathlib import Path
+import io
 from typing import Any
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import IngestionError
@@ -34,12 +39,12 @@ from src.infra.task_queue.session_scope import session_scope
 from src.infra.transfermarkt.client import get_transfermarkt_client
 
 
-def _read_csv_rows(csv_path: str) -> list[dict[str, Any]]:
-    with Path(csv_path).open(newline="", encoding="utf-8") as fh:
-        return list(csv.DictReader(fh))
+def _parse_csv_rows(csv_bytes: bytes) -> list[dict[str, Any]]:
+    text = io.StringIO(csv_bytes.decode("utf-8"))
+    return list(csv.DictReader(text))
 
 
-async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_path: str) -> None:
+async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_bytes: bytes) -> None:
     async with session_scope() as session:
         job_repository = _SqlAlchemyIngestionJobRepository(session)
         job = await job_repository.get(job_id)
@@ -51,10 +56,7 @@ async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_pat
             ingestion_repository=_SqlAlchemyIngestionRepository(session),
             ingestion_job_repository=job_repository,
         )
-        try:
-            await service.ingest_upload(table_name, _read_csv_rows(csv_path), job)
-        finally:
-            Path(csv_path).unlink(missing_ok=True)
+        await service.ingest_upload(table_name, _parse_csv_rows(csv_bytes), job)
 
 
 async def transfermarkt_sync_task(ctx: dict, job_id: int) -> None:
