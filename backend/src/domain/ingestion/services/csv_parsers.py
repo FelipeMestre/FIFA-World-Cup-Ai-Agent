@@ -39,5 +39,9 @@ def parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
+def parse_optional_date(value: str) -> date | None:
+    return date.fromisoformat(value) if value else None
+
+
 def parse_time(value: str) -> time:
     return time.fromisoformat(value)
