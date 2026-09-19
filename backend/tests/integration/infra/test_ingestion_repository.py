@@ -121,13 +121,16 @@ def _run_alembic(*args: str) -> None:
 
 @pytest.mark.asyncio
 async def test_migration_roundtrip() -> None:
-    """`alembic upgrade head` / `downgrade -1` roundtrip for the migration
-    adding `real_game_lineup`, `real_match_event`, `real_club_game`,
-    `ingestion_job`, and `player_identity_link.status`.
+    """`alembic upgrade head` / `downgrade db800dd3ee39` roundtrip for the
+    migration adding `real_game_lineup`, `real_match_event`,
+    `real_club_game`, `ingestion_job`, and `player_identity_link.status`.
 
     Assumes the DB starts at `head` (the normal state between test runs);
-    downgrades one revision, asserts the new tables are gone, then
-    upgrades back to `head` and asserts they exist again.
+    downgrades to the revision immediately before this migration (targeted
+    by explicit revision id, not a relative `-1` hop, so this test stays
+    correct regardless of how many migrations now sit on top of this one),
+    asserts the new tables are gone, then upgrades back to `head` and
+    asserts they exist again.
     """
     new_tables = {"real_game_lineup", "real_match_event", "real_club_game", "ingestion_job"}
 
@@ -137,7 +140,7 @@ async def test_migration_roundtrip() -> None:
     )
     await engine.dispose()
 
-    _run_alembic("downgrade", "-1")
+    _run_alembic("downgrade", "db800dd3ee39")
     tables_after_downgrade = await _table_names()
     assert new_tables.isdisjoint(tables_after_downgrade)
     await engine.dispose()
