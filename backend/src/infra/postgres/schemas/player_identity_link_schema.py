@@ -24,6 +24,16 @@ class PlayerMatchMethod(StrEnum):
     MANUAL = "manual"
 
 
+class LinkReviewStatus(StrEnum):
+    """Tri-state review outcome, replacing boolean-only `reviewed_by_admin`
+    semantics so a rejection can be represented without deleting the row.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class PlayerIdentityLinkSchema(Base):
     __tablename__ = "player_identity_link"
 
@@ -40,7 +50,17 @@ class PlayerIdentityLinkSchema(Base):
     # Null only makes sense when match_method == PlayerMatchMethod.MANUAL;
     # this is documented, not enforced via a DB constraint.
     match_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
+    # Additive: kept alongside `status` for backward compatibility with
+    # already-migrated rows. Reviewing (approve/reject) sets both together.
     reviewed_by_admin: Mapped[bool] = mapped_column(nullable=False, default=False)
+    status: Mapped[LinkReviewStatus] = mapped_column(
+        SAEnum(LinkReviewStatus, name="link_review_status"),
+        nullable=False,
+        # SQLAlchemy's Enum stores the Python member NAME (not `.value`) by
+        # default -- matches this file's existing `PlayerMatchMethod` column.
+        server_default=LinkReviewStatus.PENDING.name,
+        index=True,
+    )
     reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
