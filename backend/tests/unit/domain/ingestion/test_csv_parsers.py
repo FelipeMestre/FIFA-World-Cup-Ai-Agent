@@ -19,3 +19,17 @@ def test_parse_optional_date_accepts_a_full_timestamp():
 
 def test_parse_optional_date_returns_none_for_blank_value():
     assert csv_parsers.parse_optional_date("") is None
+
+
+def test_parse_optional_int_treats_a_bare_dash_as_none():
+    # Real Transfermarkt export (game_lineups.csv squad number) uses a
+    # literal "-" as its missing-value marker, not an empty string.
+    assert csv_parsers.parse_optional_int("-") is None
+
+
+def test_parse_optional_int_still_parses_real_values():
+    assert csv_parsers.parse_optional_int("9") == 9
+
+
+def test_parse_optional_float_treats_a_bare_dash_as_none():
+    assert csv_parsers.parse_optional_float("-") is None

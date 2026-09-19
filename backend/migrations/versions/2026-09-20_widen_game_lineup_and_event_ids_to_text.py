@@ -13,9 +13,12 @@ checking the real export's value format, only its column names. A real
 sync run hit `invalid literal for int()` the moment ingestion reached
 `game_lineups.csv`.
 
-Both tables were never successfully populated by any prior run (every
-attempt failed before reaching this step), so there is no existing data to
-migrate -- this is a pure type change, not a data conversion.
+`upgrade()` needs no data conversion, since no prior run had successfully
+populated these tables when this migration was first written. `downgrade()`
+truncates both tables first: a hash-string id has no valid integer
+representation, so reverting to the old INTEGER columns cannot preserve
+whatever real (hash-string) rows a later successful run may have written --
+those rows would need to be re-ingested after a downgrade regardless.
 """
 from typing import Sequence, Union
 
@@ -42,6 +45,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
+    # No valid int representation exists for a hash-string id -- truncate
+    # rather than attempt a lossy/failing cast.
+    op.execute("TRUNCATE TABLE real_match_event")
+    op.execute("TRUNCATE TABLE real_game_lineup")
     op.execute(
         "ALTER TABLE real_match_event ALTER COLUMN game_event_id TYPE INTEGER "
         "USING game_event_id::INTEGER"

@@ -11,8 +11,15 @@ def parse_int(value: str) -> int:
     return int(value)
 
 
+def _is_blank(value: str) -> bool:
+    # Some real Transfermarkt columns (e.g. game_lineups.csv's squad
+    # `number`) use a literal "-" as their missing-value marker instead of
+    # an empty string -- verified against the live export.
+    return not value or value.strip() == "-"
+
+
 def parse_optional_int(value: str) -> int | None:
-    return int(value) if value else None
+    return None if _is_blank(value) else int(value)
 
 
 def parse_float(value: str) -> float:
@@ -20,7 +27,7 @@ def parse_float(value: str) -> float:
 
 
 def parse_optional_float(value: str) -> float | None:
-    return float(value) if value else None
+    return None if _is_blank(value) else float(value)
 
 
 def parse_str(value: str) -> str:
