@@ -184,7 +184,7 @@ TRANSFERMARKT_DETAIL_SPECS: list[TableIngestionSpec] = [
         source_name="game_lineups",
         target_schema=RealGameLineupSchema,
         column_spec={
-            "game_lineups_id": parsers.parse_int,
+            "game_lineups_id": parsers.parse_str,
             "game_id": parsers.parse_int,
             "player_id": parsers.parse_int,
             "club_id": parsers.parse_int,
@@ -201,7 +201,7 @@ TRANSFERMARKT_DETAIL_SPECS: list[TableIngestionSpec] = [
         source_name="game_events",
         target_schema=RealMatchEventSchema,
         column_spec={
-            "game_event_id": parsers.parse_int,
+            "game_event_id": parsers.parse_str,
             "game_id": parsers.parse_int,
             "minute": parsers.parse_optional_int,
             "type": parsers.parse_str,

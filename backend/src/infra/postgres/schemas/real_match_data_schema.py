@@ -16,7 +16,10 @@ class RealGameLineupSchema(Base):
 
     __tablename__ = "real_game_lineup"
 
-    game_lineups_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    # A 32-char hex hash string in the real source (e.g.
+    # "b2dbe01c3656b06c8e23e9de714e26bb"), not an integer -- verified
+    # against the live export.
+    game_lineups_id: Mapped[str] = mapped_column(primary_key=True)
     real_game_id: Mapped[int] = mapped_column(nullable=False, index=True)
     real_player_id: Mapped[int] = mapped_column(
         ForeignKey("real_player.player_id"), nullable=False, index=True
@@ -36,7 +39,9 @@ class RealMatchEventSchema(Base):
 
     __tablename__ = "real_match_event"
 
-    game_event_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    # Same hash-string id shape as game_lineups_id above -- verified against
+    # the live export.
+    game_event_id: Mapped[str] = mapped_column(primary_key=True)
     real_game_id: Mapped[int] = mapped_column(nullable=False, index=True)
     minute: Mapped[int | None] = mapped_column(nullable=True)
     event_type: Mapped[str] = mapped_column(nullable=False)
