@@ -2,14 +2,14 @@
 Transfermarkt sync, and poll job status. Every route enqueues work onto the
 Arq worker rather than running it inline -- per AGENTS.md's own async-work
 table, ingesting hundreds-to-thousands of rows is not `BackgroundTasks`
-territory.
+territory. The uploaded CSV's bytes travel through the job payload rather
+than a shared filesystem path: the API and worker run in separate
+containers, so a path written here would not be visible to the worker.
 """
 
-import tempfile
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.concurrency import run_in_threadpool
 
 from src.api.v1.admin.dtos.ingestion_dtos import (
     JobStatusResponse,
@@ -38,12 +38,6 @@ IngestionJobRepositoryDep = Annotated[
 
 _MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 _ALLOWED_CONTENT_TYPES = {"text/csv", "application/vnd.ms-excel", "application/octet-stream"}
-
-
-def _write_temp_csv(contents: bytes) -> str:
-    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
-        tmp.write(contents)
-        return tmp.name
 
 
 @router.post(
@@ -78,7 +72,6 @@ async def upload_synthetic_csv(
             detail=f"file exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)}MB upload limit",
         )
 
-    csv_path = await run_in_threadpool(_write_temp_csv, contents)
     job = IngestionJob(
         id=None,
         job_type=IngestionJobType.SYNTHETIC_UPLOAD,
@@ -87,7 +80,7 @@ async def upload_synthetic_csv(
         requested_by_user_id=int(admin["sub"]),
     )
     created_job = await job_repository.create(job)
-    await enqueue_synthetic_upload(table_name, created_job.id, csv_path)
+    await enqueue_synthetic_upload(table_name, created_job.id, contents)
     return SyntheticUploadResponse(job_id=created_job.id, status=created_job.status.value)
 
 

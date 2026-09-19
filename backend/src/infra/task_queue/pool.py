@@ -18,9 +18,9 @@ async def get_arq_pool() -> ArqRedis:
     return _pool
 
 
-async def enqueue_synthetic_upload(table_name: str, job_id: int, csv_path: str) -> None:
+async def enqueue_synthetic_upload(table_name: str, job_id: int, csv_bytes: bytes) -> None:
     pool = await get_arq_pool()
-    await pool.enqueue_job("synthetic_upload_task", job_id, table_name, csv_path)
+    await pool.enqueue_job("synthetic_upload_task", job_id, table_name, csv_bytes)
 
 
 async def enqueue_transfermarkt_sync(job_id: int) -> None:
