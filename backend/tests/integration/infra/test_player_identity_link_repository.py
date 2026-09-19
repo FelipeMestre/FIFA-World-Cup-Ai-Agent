@@ -21,6 +21,7 @@ from src.infra.postgres.repositories.player_identity_link_repository import (
 
 _TEAM_ID = 990201
 _PLAYER_ID = 990201
+_OTHER_PLAYER_ID = 990202
 _REAL_PLAYER_ID = 990201
 _USER_ID = 990201
 
@@ -47,6 +48,15 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
         )
         await session.execute(
             text(
+                "INSERT INTO player (player_id, team_id, player_name, position, club_team, "
+                "market_value_eur, caps, date_of_birth, height_cm, goals) "
+                "VALUES (:id, :team_id, 'Other Player', 'FW', 'Test Club', 1000000, 10, "
+                "'2000-01-01', 180, 5)"
+            ),
+            {"id": _OTHER_PLAYER_ID, "team_id": _TEAM_ID},
+        )
+        await session.execute(
+            text(
                 "INSERT INTO real_player (player_id, first_name, last_name, position, "
                 "profile_url, last_synced_at) "
                 "VALUES (:id, 'Real', 'Player', 'Forward', 'https://example.test/player', now())"
@@ -64,10 +74,12 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
         yield session
     async with SessionFactory() as cleanup_session:
         await cleanup_session.execute(
-            text("DELETE FROM player_identity_link WHERE player_id = :id"), {"id": _PLAYER_ID}
+            text("DELETE FROM player_identity_link WHERE player_id IN (:id, :other_id)"),
+            {"id": _PLAYER_ID, "other_id": _OTHER_PLAYER_ID},
         )
         await cleanup_session.execute(
-            text("DELETE FROM player WHERE player_id = :id"), {"id": _PLAYER_ID}
+            text("DELETE FROM player WHERE player_id IN (:id, :other_id)"),
+            {"id": _PLAYER_ID, "other_id": _OTHER_PLAYER_ID},
         )
         await cleanup_session.execute(
             text("DELETE FROM team WHERE team_id = :id"), {"id": _TEAM_ID}
@@ -137,6 +149,38 @@ async def test_update_status_approves_and_records_reviewer(db_session: AsyncSess
 
     assert approved.status == LinkReviewStatus.APPROVED
     assert approved.reviewed_by_user_id == _USER_ID
+
+
+async def test_upsert_candidates_keeps_highest_confidence_on_real_player_id_collision(
+    db_session: AsyncSession,
+) -> None:
+    # Reproduces a real bug hit against the live Transfermarkt source: two
+    # different synthetic players both matched to the same real_player_id.
+    # real_player_id is unique, and a same-batch collision on it (not the
+    # ON CONFLICT (player_id) target) would raise UniqueViolationError
+    # without the dedup in upsert_candidates.
+    repository = _SqlAlchemyPlayerIdentityLinkRepository(db_session)
+    weaker = PlayerIdentityCandidate(
+        player_id=_OTHER_PLAYER_ID,
+        real_player_id=_REAL_PLAYER_ID,
+        match_method=PlayerMatchMethod.FUZZY_NAME,
+        match_confidence=Decimal("0.870"),
+    )
+    stronger = PlayerIdentityCandidate(
+        player_id=_PLAYER_ID,
+        real_player_id=_REAL_PLAYER_ID,
+        match_method=PlayerMatchMethod.EXACT_NAME_DOB,
+        match_confidence=Decimal("1.000"),
+    )
+
+    result = await repository.upsert_candidates([weaker, stronger])
+
+    assert result.row_count == 1
+    persisted = await db_session.execute(
+        text("SELECT player_id FROM player_identity_link WHERE real_player_id = :id"),
+        {"id": _REAL_PLAYER_ID},
+    )
+    assert persisted.scalar_one() == _PLAYER_ID
 
 
 async def test_update_status_on_unknown_id_raises(db_session: AsyncSession) -> None:

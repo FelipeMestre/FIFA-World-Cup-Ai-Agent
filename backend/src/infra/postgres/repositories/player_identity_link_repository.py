@@ -41,6 +41,29 @@ from src.infra.postgres.schemas.player_identity_link_schema import (
 _AUTO_ACCEPT_CONFIDENCE = Decimal("0.950")
 
 
+def _dedupe_by_real_player_id(
+    candidates: list[PlayerIdentityCandidate],
+) -> list[PlayerIdentityCandidate]:
+    """`real_player_id` is unique in `player_identity_link`: a real
+    Transfermarkt player can back at most one synthetic roster player. The
+    matching pipeline scores each synthetic player independently, so two
+    different synthetic players can both pick the same real player as their
+    best candidate -- a same-batch collision `ON CONFLICT (player_id)`
+    cannot resolve, since the conflict target doesn't cover
+    `real_player_id`. Keep only the highest-confidence candidate per real
+    player; the loser is left unmatched for this sync rather than wrongly
+    linked (found live: a real sync run hit this exact constraint violation).
+    """
+    best_by_real_player_id: dict[int, PlayerIdentityCandidate] = {}
+    for candidate in candidates:
+        current_best = best_by_real_player_id.get(candidate.real_player_id)
+        if current_best is None or (candidate.match_confidence or Decimal("-1")) > (
+            current_best.match_confidence or Decimal("-1")
+        ):
+            best_by_real_player_id[candidate.real_player_id] = candidate
+    return list(best_by_real_player_id.values())
+
+
 def _to_domain(row: PlayerIdentityLinkSchema) -> PlayerIdentityLink:
     return PlayerIdentityLink(
         id=row.id,
@@ -89,6 +112,7 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
     async def upsert_candidates(self, candidates: list[PlayerIdentityCandidate]) -> UpsertResult:
         if not candidates:
             return UpsertResult(table_name="player_identity_link", row_count=0)
+        candidates = _dedupe_by_real_player_id(candidates)
         rows = [
             {
                 "player_id": candidate.player_id,
