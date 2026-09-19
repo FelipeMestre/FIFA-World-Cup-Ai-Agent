@@ -25,7 +25,7 @@ _NATIONAL_TEAM_ROW = {
     "fifa_ranking": "10",
     "squad_size": "23",
     "average_age": "27.0",
-    "total_market_value_eur": "100000000",
+    "total_market_value": "100000000",
     "coach_name": "Coach",
     "url": "https://example.com",
 }

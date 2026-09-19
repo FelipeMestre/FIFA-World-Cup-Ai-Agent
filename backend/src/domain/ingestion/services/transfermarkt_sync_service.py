@@ -2,12 +2,14 @@
 scoping -> identity matching -> detail pulls (delegated to
 `TransfermarktDetailSync`), updating the `IngestionJob` throughout.
 
-Resolved gap: real `players.csv` has no `current_national_team_id` column,
-so pre-match filtering by national team is impossible. This buffers
-`players.csv` in full for matching only, runs
-`PlayerIdentityMatchingService.match()` against every candidate, and
-persists to `real_player` only the matched `player_id`s -- post-match
-filtering instead of an unsupported pre-match column filter.
+Correction (verified against the live source): `players.csv` DOES carry
+`current_national_team_id` -- an earlier revision of this module assumed
+otherwise without checking the real export. This still buffers `players.csv`
+in full and matches against every candidate rather than pre-filtering by
+that column; it remains correct (only matched `player_id`s get persisted),
+just not the most efficient shape. Pre-filtering by
+`current_national_team_id` before matching is a valid follow-up
+optimization, not a correctness fix.
 """
 
 from collections.abc import AsyncIterator
