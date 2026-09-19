@@ -66,6 +66,28 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: world-cup-ai-scout-worker
+    restart: unless-stopped
+    command: ["arq", "src.infra.task_queue.worker.WorkerSettings"]
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://world_cup_ai_scout:world_cup_ai_scout@postgres:5432/world_cup_ai_scout
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/venv
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend
