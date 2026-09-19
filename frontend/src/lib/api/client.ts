@@ -46,16 +46,13 @@ export interface SendChatMessagePayload {
   message: string;
 }
 
-export interface ChatMessageResponse {
-  conversation_id: string;
-  reply: {
-    parts: unknown[];
-  };
-}
-
-export async function sendChatMessage(
-  payload: SendChatMessagePayload,
-): Promise<ChatMessageResponse> {
+/**
+ * Sends a chat message and returns the raw streaming `Response` -- the
+ * backend replies over Server-Sent Events (`text/event-stream`), not one
+ * final JSON blob. Callers read `.body` themselves (see
+ * `features/chat/api/stream-chat-events.ts`).
+ */
+export async function sendChatMessage(payload: SendChatMessagePayload): Promise<Response> {
   const response = await fetch("/api/chat/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -69,5 +66,5 @@ export async function sendChatMessage(
     throw new ApiError(await parseErrorDetail(response), response.status);
   }
 
-  return (await response.json()) as ChatMessageResponse;
+  return response;
 }

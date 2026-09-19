@@ -4,7 +4,13 @@ import { useEffect, useRef } from "react";
 import { AlertCircle } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AssistantBubble, UserBubble } from "@/features/chat/components/chat-bubble";
+import {
+  AssistantBubble,
+  ClarificationNote,
+  ReasoningBlock,
+  ToolCallIndicator,
+  UserBubble,
+} from "@/features/chat/components/chat-bubble";
 import { MessagePartView } from "@/features/chat/components/message-part-renderer";
 import type { ChatMessage, EntityRef } from "@/features/chat/types";
 
@@ -41,14 +47,26 @@ export function MessageList({
                   </AlertDescription>
                 </Alert>
               ) : (
-                message.parts.map((part, index) => (
-                  <MessagePartView
-                    key={`${message.id}-${index}`}
-                    part={part}
-                    openEntity={openEntity}
-                    onOpenEntity={(ref) => onOpenEntity(ref, message.id)}
+                <>
+                  <ReasoningBlock
+                    content={message.reasoning ?? ""}
+                    isStreaming={message.isStreaming}
                   />
-                ))
+                  {message.activeToolName ? (
+                    <ToolCallIndicator name={message.activeToolName} />
+                  ) : null}
+                  {message.parts.map((part, index) => (
+                    <MessagePartView
+                      key={`${message.id}-${index}`}
+                      part={part}
+                      openEntity={openEntity}
+                      onOpenEntity={(ref) => onOpenEntity(ref, message.id)}
+                    />
+                  ))}
+                  {message.clarification ? (
+                    <ClarificationNote>{message.clarification}</ClarificationNote>
+                  ) : null}
+                </>
               )}
             </AssistantBubble>
           )}
