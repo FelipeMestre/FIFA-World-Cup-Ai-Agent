@@ -36,11 +36,14 @@ def parse_bool(value: str) -> bool:
 
 
 def parse_date(value: str) -> date:
-    return date.fromisoformat(value)
+    # Some real Transfermarkt columns (e.g. players.csv date_of_birth) carry
+    # a full timestamp ("1978-06-09 00:00:00") rather than a bare date;
+    # date.fromisoformat only accepts the latter, so take the date portion.
+    return date.fromisoformat(value.split(" ")[0])
 
 
 def parse_optional_date(value: str) -> date | None:
-    return date.fromisoformat(value) if value else None
+    return date.fromisoformat(value.split(" ")[0]) if value else None
 
 
 def parse_time(value: str) -> time:

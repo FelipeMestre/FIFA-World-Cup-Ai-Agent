@@ -13,10 +13,10 @@ optimization, not a correctness fix.
 """
 
 from collections.abc import AsyncIterator
-from datetime import date
 from typing import Any
 
 from src.domain.ingestion.model.ingestion_job import IngestionJob
+from src.domain.ingestion.services import csv_parsers as parsers
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
@@ -148,15 +148,13 @@ class TransfermarktSyncService:
 
     def _parse_player_candidates(self, player_rows: list[dict[str, str]]) -> list[dict[str, Any]]:
         # Matching needs typed player_id/date_of_birth, not raw CSV strings.
-        # current_national_team_id is intentionally absent from the source
-        # (see module docstring) -- `.get()` in the matching service handles
-        # its absence gracefully.
+        # `current_national_team_id` (when present, see module docstring) is
+        # passed through as-is; `.get()` in the matching service handles its
+        # absence gracefully for rows where it's blank.
         parsed = []
         for row in player_rows:
             entry: dict[str, Any] = dict(row)
             entry["player_id"] = int(row["player_id"])
-            entry["date_of_birth"] = (
-                date.fromisoformat(row["date_of_birth"]) if row.get("date_of_birth") else None
-            )
+            entry["date_of_birth"] = parsers.parse_optional_date(row.get("date_of_birth", ""))
             parsed.append(entry)
         return parsed
