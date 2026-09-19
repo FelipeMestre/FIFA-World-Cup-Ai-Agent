@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.v1.admin.routers.identity_link_router import router as identity_link_router
+from src.api.v1.admin.routers.ingestion_router import router as ingestion_router
 from src.api.v1.auth.routers.auth_router import router as auth_router
 from src.api.v1.chat.routers.chat_router import router as chat_router
 from src.api.v1.matches.routers.match_router import router as match_router
@@ -10,7 +12,15 @@ from src.config import app_settings
 
 SHOW_DOCS_IN = {"local", "staging"}
 
-API_V1_ROUTERS = (auth_router, chat_router, team_router, match_router, player_router)
+API_V1_ROUTERS = (
+    auth_router,
+    chat_router,
+    team_router,
+    match_router,
+    player_router,
+    ingestion_router,
+    identity_link_router,
+)
 
 
 def create_app() -> FastAPI:
