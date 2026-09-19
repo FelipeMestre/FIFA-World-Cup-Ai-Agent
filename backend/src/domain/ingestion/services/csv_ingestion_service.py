@@ -4,7 +4,7 @@ orchestration: DB access happens only through the injected
 repository (no real DB needed).
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import IngestionValidationError
@@ -14,6 +14,25 @@ from src.infra.postgres.interfaces.ingestion_repository_interface import (
 )
 
 _DEFAULT_CHUNK_SIZE = 500
+
+
+def _dedupe_by_conflict_columns(
+    batch: list[dict[str, Any]], conflict_columns: Sequence[str]
+) -> list[dict[str, Any]]:
+    """Postgres's `ON CONFLICT DO UPDATE` cannot affect the same row twice
+    within one INSERT statement (`CardinalityViolationError`). A real source
+    export can legitimately carry two rows for the same natural key within
+    one chunk (found live: a player with two transfers recorded on the same
+    date) -- the later row wins, matching this pipeline's own upsert
+    semantics for a repeat sync (later data overwrites earlier data).
+    Cross-chunk duplicates don't need this: `ON CONFLICT` against the DB
+    handles those correctly since they're separate statements.
+    """
+    deduped: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for row in batch:
+        key = tuple(row[column] for column in conflict_columns)
+        deduped[key] = row
+    return list(deduped.values())
 
 
 class CsvIngestionService:
@@ -29,12 +48,14 @@ class CsvIngestionService:
         for row_index, raw_row in enumerate(rows):
             batch.append(self._parse_row(spec, row_index, raw_row))
             if len(batch) >= chunk_size:
-                await repository.upsert_many(spec.target_schema, batch, spec.conflict_columns)
-                total += len(batch)
+                deduped = _dedupe_by_conflict_columns(batch, spec.conflict_columns)
+                await repository.upsert_many(spec.target_schema, deduped, spec.conflict_columns)
+                total += len(deduped)
                 batch = []
         if batch:
-            await repository.upsert_many(spec.target_schema, batch, spec.conflict_columns)
-            total += len(batch)
+            deduped = _dedupe_by_conflict_columns(batch, spec.conflict_columns)
+            await repository.upsert_many(spec.target_schema, deduped, spec.conflict_columns)
+            total += len(deduped)
         return total
 
     def _parse_row(

@@ -87,6 +87,26 @@ async def test_ingest_rows_raises_on_missing_column() -> None:
     assert "team_name" in str(exc_info.value)
 
 
+async def test_ingest_rows_dedupes_same_batch_conflict_key_keeping_the_last_row() -> None:
+    # Postgres's ON CONFLICT DO UPDATE raises CardinalityViolationError if
+    # one INSERT statement would affect the same conflict-key row twice.
+    # Found live: a real Transfermarkt transfers.csv chunk had two rows for
+    # the same (real_player_id, transfer_date) key.
+    repository = _FakeIngestionRepository()
+    service = CsvIngestionService()
+    rows = [
+        {"team_id": "1", "team_name": "First"},
+        {"team_id": "1", "team_name": "Second"},
+        {"team_id": "2", "team_name": "Unique"},
+    ]
+
+    total = await service.ingest_rows(_team_spec(), rows, repository, chunk_size=10)
+
+    assert total == 2
+    persisted = {row["team_id"]: row["team_name"] for row in repository.calls[0]}
+    assert persisted == {1: "Second", 2: "Unique"}
+
+
 async def test_ingest_rows_applies_row_transform() -> None:
     repository = _FakeIngestionRepository()
     service = CsvIngestionService()
