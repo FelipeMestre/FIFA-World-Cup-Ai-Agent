@@ -226,7 +226,13 @@ async def test_run_sync_persists_only_matched_players_and_succeeds_job():
 
 
 @pytest.mark.asyncio
-async def test_run_sync_marks_job_failed_on_source_error():
+async def test_run_sync_reraises_original_error_leaving_job_running():
+    # run_sync does NOT mark the job failed itself: a failure originating
+    # from a DB statement leaves the session's transaction aborted, and this
+    # service has no session access to roll back before writing. Marking
+    # failed is the caller's job (infra/task_queue/tasks.py's _fail_job),
+    # which does hold the session and rolls back first. See that module's
+    # docstring for the real-world bug this shape avoids.
     job_repository = _FakeJobRepository(_job())
     service = _build_service(
         _FailingClient(),
@@ -239,4 +245,4 @@ async def test_run_sync_marks_job_failed_on_source_error():
     with pytest.raises(RuntimeError):
         await service.run_sync(_job())
 
-    assert job_repository.updates[-1].status == IngestionJobStatus.FAILED
+    assert job_repository.updates[-1].status == IngestionJobStatus.RUNNING

@@ -77,16 +77,18 @@ class TransfermarktSyncService:
         self._detail_sync = detail_sync
 
     async def run_sync(self, job: IngestionJob) -> IngestionJob:
+        # A failure inside _run_pipeline() may originate from a DB statement
+        # (e.g. an upsert constraint violation), which leaves the session's
+        # transaction aborted -- any further statement on that same session,
+        # including a mark_failed() write, fails too until a rollback
+        # happens. This service has no direct session access to roll back,
+        # so on failure it re-raises the ORIGINAL exception unchanged and
+        # lets the caller (which does hold the session) roll back and
+        # persist the failure. Do not add a mark_failed()/update() call
+        # here -- it silently replaces the real error with a masking one.
         running_job = job.mark_running()
         running_job = await self._ingestion_job_repository.update(running_job)
-
-        try:
-            row_counts = await self._run_pipeline()
-        except Exception as exc:  # noqa: BLE001 -- fail the job loudly, then re-raise
-            failed_job = running_job.mark_failed(str(exc))
-            await self._ingestion_job_repository.update(failed_job)
-            raise
-
+        row_counts = await self._run_pipeline()
         succeeded_job = running_job.mark_succeeded(row_counts)
         return await self._ingestion_job_repository.update(succeeded_job)
 
