@@ -146,12 +146,14 @@ class _FakeDetailSync:
     def __init__(self) -> None:
         self.player_scoped_calls: list[set[int]] = []
 
-    async def sync_player_scoped_tables(self, matched_real_player_ids: set[int]) -> dict[str, int]:
+    async def sync_player_scoped_tables(
+        self, matched_real_player_ids: set[int], known_club_ids: set[str]
+    ) -> dict[str, int]:
         self.player_scoped_calls.append(matched_real_player_ids)
         return {"player_valuations": 0, "transfers": 0}
 
     async def sync_match_data(
-        self, matched_real_player_ids, matched_real_club_ids
+        self, matched_real_player_ids, matched_real_club_ids, known_club_ids
     ) -> dict[str, int]:
         return {"game_lineups": 0, "game_events": 0, "club_games": 0}
 

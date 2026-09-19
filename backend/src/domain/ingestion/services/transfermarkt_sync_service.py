@@ -23,7 +23,10 @@ from src.domain.ingestion.services.player_identity_matching_service import (
 )
 from src.domain.ingestion.services.roster_scoping_service import RosterScopingService
 from src.domain.ingestion.services.transfermarkt_detail_specs import TRANSFERMARKT_DETAIL_SPECS
-from src.domain.ingestion.services.transfermarkt_detail_sync import TransfermarktDetailSync
+from src.domain.ingestion.services.transfermarkt_detail_sync import (
+    TransfermarktDetailSync,
+    _sanitize_club_reference,
+)
 from src.domain.ingestion.services.transfermarkt_reference_specs import (
     TRANSFERMARKT_REFERENCE_SPECS,
 )
@@ -105,6 +108,15 @@ class TransfermarktSyncService:
         row_counts["clubs"] = await self._csv_ingestion_service.ingest_rows(
             _REFERENCE_SPECS_BY_NAME["clubs"], club_rows, self._ingestion_repository
         )
+        # A player/transfer/match row can reference a club_id that isn't in
+        # this particular clubs.csv export (Transfermarkt's own data gap,
+        # e.g. an obscure or historical club never scraped into this file) --
+        # found live: real_player_current_club_id_fkey failed on a club_id
+        # that simply doesn't exist in real_club. club_id columns are
+        # nullable throughout the real_* schema specifically to allow this;
+        # unresolvable references are nulled out rather than dropping the
+        # row or relaxing the constraint.
+        known_club_ids = {row["club_id"] for row in club_rows}
 
         wc2026_teams = await self._team_repository.list(limit=_ROSTER_LIST_LIMIT)
         national_team_id_by_team_id = self._roster_scoping_service.resolve_national_teams(
@@ -133,11 +145,16 @@ class TransfermarktSyncService:
         # real_player_id collision above).
         matched_real_player_ids = {candidate.real_player_id for candidate in candidates}
         matched_player_rows = [
-            row for row in player_rows if int(row["player_id"]) in matched_real_player_ids
+            _sanitize_club_reference(row, "current_club_id", known_club_ids)
+            for row in player_rows
+            if int(row["player_id"]) in matched_real_player_ids
         ]
         row_counts["players"] = await self._csv_ingestion_service.ingest_rows(
             _PLAYER_DETAIL_SPEC, matched_player_rows, self._ingestion_repository
         )
+        # Sanitized above, so any surviving current_club_id is known-valid --
+        # this scope set is itself safe to use as a filter for club_games/
+        # game_lineups/game_events below.
         matched_real_club_ids = {
             int(row["current_club_id"]) for row in matched_player_rows if row.get("current_club_id")
         }
@@ -145,10 +162,14 @@ class TransfermarktSyncService:
         await self._identity_link_repository.upsert_candidates(candidates)
 
         row_counts.update(
-            await self._detail_sync.sync_player_scoped_tables(matched_real_player_ids)
+            await self._detail_sync.sync_player_scoped_tables(
+                matched_real_player_ids, known_club_ids
+            )
         )
         row_counts.update(
-            await self._detail_sync.sync_match_data(matched_real_player_ids, matched_real_club_ids)
+            await self._detail_sync.sync_match_data(
+                matched_real_player_ids, matched_real_club_ids, known_club_ids
+            )
         )
         row_counts["real_player_season_stat"] = await self._detail_sync.sync_season_stats(
             matched_real_player_ids

@@ -26,6 +26,22 @@ async def _buffer(rows: AsyncIterator[dict[str, str]]) -> list[dict[str, str]]:
     return [row async for row in rows]
 
 
+def _sanitize_club_reference(
+    row: dict[str, str], column: str, known_club_ids: set[str]
+) -> dict[str, str]:
+    """Blanks `row[column]` if it doesn't resolve to an ingested `real_club`
+    row (found live: a player/transfer/event row can reference a club_id
+    Transfermarkt's own `clubs.csv` export never carries -- an upstream data
+    gap, not a bug here). `parsers.parse_optional_int` already treats an
+    empty string as `None`, so this reuses that existing null path. Only
+    safe for nullable FK columns -- a NOT NULL column (e.g.
+    `real_game_lineup.real_club_id`) must filter the row out instead.
+    """
+    if row.get(column) and row[column] not in known_club_ids:
+        row = {**row, column: ""}
+    return row
+
+
 class TransfermarktDetailSync:
     def __init__(
         self,
@@ -39,20 +55,36 @@ class TransfermarktDetailSync:
         self._ingestion_repository = ingestion_repository
         self._season_stat_aggregation_service = season_stat_aggregation_service
 
-    async def sync_player_scoped_tables(self, matched_real_player_ids: set[int]) -> dict[str, int]:
+    async def sync_player_scoped_tables(
+        self, matched_real_player_ids: set[int], known_club_ids: set[str]
+    ) -> dict[str, int]:
         """Valuations and transfers: scoped by `player_id` membership."""
         counts: dict[str, int] = {}
         for source_name in ("player_valuations", "transfers"):
             spec = _DETAIL_SPECS_BY_NAME[source_name]
             rows = await _buffer(self._client.stream_csv_rows(source_name))
             scoped = [row for row in rows if int(row["player_id"]) in matched_real_player_ids]
+            if source_name == "transfers":
+                # from_club_id/to_club_id are nullable -- null out any that
+                # don't resolve rather than dropping the transfer row.
+                scoped = [
+                    _sanitize_club_reference(
+                        _sanitize_club_reference(row, "from_club_id", known_club_ids),
+                        "to_club_id",
+                        known_club_ids,
+                    )
+                    for row in scoped
+                ]
             counts[source_name] = await self._csv_ingestion_service.ingest_rows(
                 spec, scoped, self._ingestion_repository
             )
         return counts
 
     async def sync_match_data(
-        self, matched_real_player_ids: set[int], matched_real_club_ids: set[int]
+        self,
+        matched_real_player_ids: set[int],
+        matched_real_club_ids: set[int],
+        known_club_ids: set[str],
     ) -> dict[str, int]:
         """Lineups, events, and club-games: scoped by matched player or club
         involvement (a row with no player reference, e.g. a club-level
@@ -61,8 +93,12 @@ class TransfermarktDetailSync:
         counts: dict[str, int] = {}
 
         lineup_rows = await _buffer(self._client.stream_csv_rows("game_lineups"))
+        # real_game_lineup.real_club_id is NOT NULL -- an unresolvable
+        # club_id can't be nulled, so the row is filtered out instead.
         scoped_lineups = [
-            row for row in lineup_rows if int(row["player_id"]) in matched_real_player_ids
+            row
+            for row in lineup_rows
+            if int(row["player_id"]) in matched_real_player_ids and row["club_id"] in known_club_ids
         ]
         counts["game_lineups"] = await self._csv_ingestion_service.ingest_rows(
             _DETAIL_SPECS_BY_NAME["game_lineups"], scoped_lineups, self._ingestion_repository
@@ -70,7 +106,7 @@ class TransfermarktDetailSync:
 
         event_rows = await _buffer(self._client.stream_csv_rows("game_events"))
         scoped_events = [
-            row
+            _sanitize_club_reference(row, "club_id", known_club_ids)
             for row in event_rows
             if (row.get("player_id") and int(row["player_id"]) in matched_real_player_ids)
             or (row.get("club_id") and int(row["club_id"]) in matched_real_club_ids)
@@ -80,8 +116,14 @@ class TransfermarktDetailSync:
         )
 
         club_game_rows = await _buffer(self._client.stream_csv_rows("club_games"))
+        # club_id is part of the composite primary key (NOT NULL) but is
+        # already guaranteed valid here: matched_real_club_ids is derived
+        # only from sanitized (known-valid) player rows upstream.
+        # opponent_id is nullable and NOT scoped, so it still needs sanitizing.
         scoped_club_games = [
-            row for row in club_game_rows if int(row["club_id"]) in matched_real_club_ids
+            _sanitize_club_reference(row, "opponent_id", known_club_ids)
+            for row in club_game_rows
+            if int(row["club_id"]) in matched_real_club_ids
         ]
         counts["club_games"] = await self._csv_ingestion_service.ingest_rows(
             _DETAIL_SPECS_BY_NAME["club_games"], scoped_club_games, self._ingestion_repository
