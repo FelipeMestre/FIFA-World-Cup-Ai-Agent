@@ -15,6 +15,7 @@ from src.api.v1.admin.dtos.ingestion_dtos import (
     JobStatusResponse,
     SyncTriggerResponse,
     SyntheticUploadResponse,
+    TransfermarktSyncRequest,
 )
 from src.api.v1.admin.services.upload_table_validation_service import validate_known_table
 from src.api.v1.auth.services.dependencies import require_admin
@@ -89,21 +90,26 @@ async def upload_synthetic_csv(
     response_model=SyncTriggerResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Trigger a roster-scoped Transfermarkt sync",
-    description="Admin-only. Queues the full scoped Transfermarkt sync pipeline "
-    "and returns a job id to poll.",
+    description="Admin-only. Queues the scoped Transfermarkt sync pipeline and "
+    "returns a job id to poll. With skip_populated=true, a step whose target "
+    "table already has rows is skipped instead of re-running -- useful for "
+    "resuming after a failure without re-fetching everything from scratch.",
 )
 async def trigger_transfermarkt_sync(
-    admin: AdminDep, job_repository: IngestionJobRepositoryDep
+    admin: AdminDep,
+    job_repository: IngestionJobRepositoryDep,
+    request: TransfermarktSyncRequest | None = None,
 ) -> SyncTriggerResponse:
+    request = request or TransfermarktSyncRequest()
     job = IngestionJob(
         id=None,
         job_type=IngestionJobType.TRANSFERMARKT_SYNC,
+        source_label="full-scoped-sync" if not request.skip_populated else "resume-scoped-sync",
         status=IngestionJobStatus.QUEUED,
-        source_label="full-scoped-sync",
         requested_by_user_id=int(admin["sub"]),
     )
     created_job = await job_repository.create(job)
-    await enqueue_transfermarkt_sync(created_job.id)
+    await enqueue_transfermarkt_sync(created_job.id, request.skip_populated)
     return SyncTriggerResponse(job_id=created_job.id, status=created_job.status.value)
 
 

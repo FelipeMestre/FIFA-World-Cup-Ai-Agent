@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import Annotated, Any
 
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +41,17 @@ class _SqlAlchemyIngestionRepository:
         await self._session.execute(stmt)
         await self._session.commit()
         return UpsertResult(table_name=table_name, row_count=len(rows))
+
+    async def has_rows(self, schema_cls: type[Base]) -> bool:
+        result = await self._session.execute(select(schema_cls.__table__).limit(1))
+        return result.first() is not None
+
+    async def fetch_columns(
+        self, schema_cls: type[Base], columns: Sequence[str]
+    ) -> list[dict[str, Any]]:
+        table = schema_cls.__table__
+        result = await self._session.execute(select(*(table.c[name] for name in columns)))
+        return [dict(row._mapping) for row in result]
 
 
 def get_ingestion_repository(

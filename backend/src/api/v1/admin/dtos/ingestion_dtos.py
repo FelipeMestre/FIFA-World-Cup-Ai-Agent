@@ -8,6 +8,15 @@ class SyntheticUploadResponse(BaseModel):
     status: str
 
 
+class TransfermarktSyncRequest(BaseModel):
+    skip_populated: bool = False
+    """Resume mode: a step whose target table already has rows is skipped
+    instead of re-fetching and re-upserting its source CSV (some of which
+    are millions of rows). Off by default -- a sync always runs in full
+    unless explicitly asked to resume.
+    """
+
+
 class SyncTriggerResponse(BaseModel):
     job_id: int
     status: str

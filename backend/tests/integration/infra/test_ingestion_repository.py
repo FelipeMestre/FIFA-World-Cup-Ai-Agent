@@ -102,6 +102,35 @@ async def test_upsert_many_with_no_rows_is_a_noop(db_session: AsyncSession) -> N
     assert result.row_count == 0
 
 
+@pytest.mark.asyncio
+async def test_has_rows_reflects_actual_table_state(db_session: AsyncSession) -> None:
+    # Backs the Transfermarkt sync's resume mode: a populated table means
+    # the corresponding step can be skipped.
+    repository = _SqlAlchemyIngestionRepository(db_session)
+    assert await repository.has_rows(RealClubSchema) is False
+
+    await repository.upsert_many(
+        RealClubSchema, [_club_row(_CLUB_IDS[0], "Some Club")], conflict_columns=("club_id",)
+    )
+
+    assert await repository.has_rows(RealClubSchema) is True
+
+
+@pytest.mark.asyncio
+async def test_fetch_columns_reads_back_requested_columns_only(db_session: AsyncSession) -> None:
+    repository = _SqlAlchemyIngestionRepository(db_session)
+    await repository.upsert_many(
+        RealClubSchema,
+        [_club_row(club_id, f"Club {club_id}") for club_id in _CLUB_IDS],
+        conflict_columns=("club_id",),
+    )
+
+    rows = await repository.fetch_columns(RealClubSchema, ["club_id", "name"])
+
+    assert {row["club_id"] for row in rows} == set(_CLUB_IDS)
+    assert all(set(row.keys()) == {"club_id", "name"} for row in rows)
+
+
 async def _table_names() -> set[str]:
     async with engine.connect() as conn:
         return set(await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_table_names()))

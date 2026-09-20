@@ -11,8 +11,15 @@ def parse_int(value: str) -> int:
     return int(value)
 
 
+def _is_blank(value: str) -> bool:
+    # Some real Transfermarkt columns (e.g. game_lineups.csv's squad
+    # `number`) use a literal "-" as their missing-value marker instead of
+    # an empty string -- verified against the live export.
+    return not value or value.strip() == "-"
+
+
 def parse_optional_int(value: str) -> int | None:
-    return int(value) if value else None
+    return None if _is_blank(value) else int(value)
 
 
 def parse_float(value: str) -> float:
@@ -20,7 +27,7 @@ def parse_float(value: str) -> float:
 
 
 def parse_optional_float(value: str) -> float | None:
-    return float(value) if value else None
+    return None if _is_blank(value) else float(value)
 
 
 def parse_str(value: str) -> str:
@@ -36,11 +43,14 @@ def parse_bool(value: str) -> bool:
 
 
 def parse_date(value: str) -> date:
-    return date.fromisoformat(value)
+    # Some real Transfermarkt columns (e.g. players.csv date_of_birth) carry
+    # a full timestamp ("1978-06-09 00:00:00") rather than a bare date;
+    # date.fromisoformat only accepts the latter, so take the date portion.
+    return date.fromisoformat(value.split(" ")[0])
 
 
 def parse_optional_date(value: str) -> date | None:
-    return date.fromisoformat(value) if value else None
+    return date.fromisoformat(value.split(" ")[0]) if value else None
 
 
 def parse_time(value: str) -> time:

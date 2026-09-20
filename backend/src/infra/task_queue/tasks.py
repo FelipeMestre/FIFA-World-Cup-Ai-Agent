@@ -1,8 +1,17 @@
 """Arq task functions the worker actually runs. Each opens its own
 `session_scope()` (no FastAPI `Depends` graph is available here), builds the
 concrete repositories/services directly, and drives the corresponding
-domain service. Domain exceptions are caught only to record the job's
-`failed` status before re-raising, so Arq's own retry/logging still applies.
+domain service.
+
+On any failure, `_fail_job` rolls the session back *before* writing the
+`failed` status: a failure that originates from a DB statement (e.g. an
+upsert constraint violation) leaves the session's transaction aborted, and
+any further statement on that same session -- including the mark_failed()
+write itself -- fails too until a rollback happens. Without the rollback,
+the real error gets replaced by a second, unrelated "transaction aborted"
+error, and the job is left stuck at `running` forever with no error
+message recorded. Found live: a real sync run hit exactly this, and the
+worker log showed only the masking error, not the original one.
 
 The synthetic-upload task receives the CSV as raw bytes in the job payload
 rather than a filesystem path: the API and worker run in separate
@@ -12,9 +21,12 @@ is not visible to the worker process.
 
 import csv
 import io
+import logging
 from typing import Any
 
-from src.domain.ingestion.exceptions.ingestion_exceptions import IngestionError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.domain.ingestion.model.ingestion_job import IngestionJobStatus
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
@@ -26,6 +38,9 @@ from src.domain.ingestion.services.season_stat_aggregation_service import (
 from src.domain.ingestion.services.synthetic_ingestion_service import SyntheticIngestionService
 from src.domain.ingestion.services.transfermarkt_detail_sync import TransfermarktDetailSync
 from src.domain.ingestion.services.transfermarkt_sync_service import TransfermarktSyncService
+from src.infra.postgres.interfaces.ingestion_job_repository_interface import (
+    IngestionJobRepositoryInterface,
+)
 from src.infra.postgres.repositories.ingestion_job_repository import (
     _SqlAlchemyIngestionJobRepository,
 )
@@ -38,10 +53,28 @@ from src.infra.postgres.repositories.team_repository import _SqlAlchemyTeamRepos
 from src.infra.task_queue.session_scope import session_scope
 from src.infra.transfermarkt.client import get_transfermarkt_client
 
+logger = logging.getLogger(__name__)
+
 
 def _parse_csv_rows(csv_bytes: bytes) -> list[dict[str, Any]]:
     text = io.StringIO(csv_bytes.decode("utf-8"))
     return list(csv.DictReader(text))
+
+
+async def _fail_job(
+    session: AsyncSession,
+    job_repository: IngestionJobRepositoryInterface,
+    job_id: int,
+    exc: Exception,
+) -> None:
+    logger.exception("ingestion_job %s failed", job_id, exc_info=exc)
+    await session.rollback()
+    current = await job_repository.get(job_id)
+    if current is not None and current.status in (
+        IngestionJobStatus.QUEUED,
+        IngestionJobStatus.RUNNING,
+    ):
+        await job_repository.update(current.mark_failed(str(exc)))
 
 
 async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_bytes: bytes) -> None:
@@ -56,10 +89,14 @@ async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_byt
             ingestion_repository=_SqlAlchemyIngestionRepository(session),
             ingestion_job_repository=job_repository,
         )
-        await service.ingest_upload(table_name, _parse_csv_rows(csv_bytes), job)
+        try:
+            await service.ingest_upload(table_name, _parse_csv_rows(csv_bytes), job)
+        except Exception as exc:
+            await _fail_job(session, job_repository, job_id, exc)
+            raise
 
 
-async def transfermarkt_sync_task(ctx: dict, job_id: int) -> None:
+async def transfermarkt_sync_task(ctx: dict, job_id: int, skip_populated: bool = False) -> None:
     async with session_scope() as session:
         job_repository = _SqlAlchemyIngestionJobRepository(session)
         job = await job_repository.get(job_id)
@@ -86,9 +123,7 @@ async def transfermarkt_sync_task(ctx: dict, job_id: int) -> None:
             ),
         )
         try:
-            await service.run_sync(job)
-        except IngestionError:
-            # run_sync already persisted job.mark_failed(...) before
-            # re-raising; this branch exists only to document that domain
-            # failures are not swallowed here, Arq still sees/logs them.
+            await service.run_sync(job, skip_populated)
+        except Exception as exc:
+            await _fail_job(session, job_repository, job_id, exc)
             raise

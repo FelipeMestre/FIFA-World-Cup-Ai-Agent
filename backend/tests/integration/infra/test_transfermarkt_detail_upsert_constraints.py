@@ -137,9 +137,13 @@ def _run_alembic(*args: str) -> None:
 
 @pytest.mark.asyncio
 async def test_migration_roundtrip() -> None:
-    """`alembic upgrade head` / `downgrade -1` roundtrip for the migration
-    adding the `real_player_valuation`/`real_transfer` natural-key unique
-    constraints.
+    """`alembic upgrade head` / `downgrade <explicit revision>` roundtrip
+    for the migration adding the `real_player_valuation`/`real_transfer`
+    natural-key unique constraints. A relative `downgrade -1` breaks the
+    moment another migration lands on top of this one (it would only undo
+    the newer migration, not this one) -- the same class of bug already
+    fixed once in test_ingestion_repository.py; found again here once
+    2026-09-20_widen_game_lineup_and_event_ids_to_text.py stacked on top.
     """
     valuation_constraints_before = await _constraint_names("real_player_valuation")
     transfer_constraints_before = await _constraint_names("real_transfer")
@@ -147,7 +151,7 @@ async def test_migration_roundtrip() -> None:
     assert "real_transfer_real_player_id_key" in transfer_constraints_before
     await engine.dispose()
 
-    _run_alembic("downgrade", "-1")
+    _run_alembic("downgrade", "14ba028c3574")
     valuation_constraints_after_downgrade = await _constraint_names("real_player_valuation")
     transfer_constraints_after_downgrade = await _constraint_names("real_transfer")
     assert "real_player_valuation_real_player_id_key" not in valuation_constraints_after_downgrade
