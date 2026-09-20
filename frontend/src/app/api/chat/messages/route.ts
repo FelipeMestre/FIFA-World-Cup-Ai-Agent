@@ -7,6 +7,11 @@ import { getSessionToken } from "@/lib/auth/session";
  * Proxies to the FastAPI backend's `/chat/messages`, attaching the JWT from
  * the httpOnly session cookie server-side. The browser never sees the
  * backend's URL or the bearer token.
+ *
+ * The backend streams its reply over Server-Sent Events, so this handler
+ * pipes `backendResponse.body` through unchanged instead of awaiting/parsing
+ * a full JSON body -- `EventSource` can't be used here since it only
+ * supports GET and this proxy must forward a JWT via POST.
  */
 export async function POST(request: Request) {
   const token = await getSessionToken();
@@ -45,14 +50,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const payload = await backendResponse.json().catch(() => null);
-
-  if (!backendResponse.ok) {
+  if (!backendResponse.ok || !backendResponse.body) {
+    const payload = await backendResponse.json().catch(() => null);
     return NextResponse.json(
       { detail: payload?.detail ?? "The chat assistant is unavailable" },
       { status: backendResponse.status },
     );
   }
 
-  return NextResponse.json(payload);
+  return new Response(backendResponse.body, {
+    status: backendResponse.status,
+    headers: { "Content-Type": "text/event-stream" },
+  });
 }

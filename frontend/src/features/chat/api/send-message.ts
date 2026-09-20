@@ -1,39 +1,33 @@
 import { ApiError, sendChatMessage } from "@/lib/api/client";
-import { messagePartSchema } from "@/features/chat/schemas/message-part.schema";
-import type { MessagePart } from "@/features/chat/types";
-
-export interface SendMessageResult {
-  conversationId: string;
-  parts: MessagePart[];
-}
+import {
+  streamChatEvents,
+  type ChatStreamEvent,
+} from "@/features/chat/api/stream-chat-events";
 
 /**
- * Sends a chat message and validates the reply's parts against the widget
- * contract schema. A part that fails validation (e.g. a future
- * `team_widget` whose `data` shape doesn't match yet) is dropped rather than
- * crashing the thread -- see message-part-renderer.tsx for the visible
- * fallback shown to the user in that case.
+ * Sends a chat message and yields the backend's SSE events (reasoning
+ * deltas, content deltas, tool-call notices, cap-trip, terminal
+ * `message_done`/`error`) as they arrive. Callers drive this async generator
+ * to render the reply incrementally instead of waiting for one final blob --
+ * see `use-chat-thread.ts`.
  */
-export async function sendMessage(
+export async function* sendMessage(
   conversationId: string | null,
   message: string,
-): Promise<SendMessageResult> {
+): AsyncGenerator<ChatStreamEvent> {
+  let response: Response;
   try {
-    const response = await sendChatMessage({ conversationId, message });
-    const parts: MessagePart[] = [];
-
-    for (const rawPart of response.reply.parts) {
-      const result = messagePartSchema.safeParse(rawPart);
-      if (result.success) {
-        parts.push(result.data);
-      }
-    }
-
-    return { conversationId: response.conversation_id, parts };
+    response = await sendChatMessage({ conversationId, message });
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
     }
     throw new ApiError("The chat assistant is temporarily unavailable", 502);
   }
+
+  if (!response.body) {
+    throw new ApiError("The chat assistant is temporarily unavailable", 502);
+  }
+
+  yield* streamChatEvents(response.body);
 }

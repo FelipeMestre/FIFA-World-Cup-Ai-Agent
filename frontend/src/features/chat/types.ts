@@ -231,6 +231,14 @@ export interface ChatMessage {
   id: string;
   role: ChatRole;
   parts: MessagePart[];
+  /** The model's reasoning trace, appended incrementally from `reasoning_delta` events. */
+  reasoning?: string;
+  /** True while this assistant message is still receiving stream events. */
+  isStreaming?: boolean;
+  /** Name of the tool the loop is currently dispatching, cleared once resolved. */
+  activeToolName?: string;
+  /** Set when the tool loop's iteration cap tripped; rendered as a distinct inline note. */
+  clarification?: string;
   /** Set on an assistant message that failed to send/receive a reply. */
   error?: string;
 }
