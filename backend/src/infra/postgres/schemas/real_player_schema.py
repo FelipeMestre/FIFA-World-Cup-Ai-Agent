@@ -30,7 +30,7 @@ class RealPlayerSchema(Base):
         ForeignKey("real_club.club_id"), nullable=True
     )
     current_national_team_id: Mapped[int | None] = mapped_column(
-        ForeignKey("real_national_team.national_team_id"), nullable=True
+        ForeignKey("national_team.transfermarkt_id"), nullable=True
     )
     international_caps: Mapped[int | None] = mapped_column(nullable=True)
     international_goals: Mapped[int | None] = mapped_column(nullable=True)

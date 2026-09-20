@@ -15,7 +15,7 @@ Pure function, no DB/HTTP -- fully unit-testable with fixture rows.
 
 import unicodedata
 
-from src.domain.teams.model.team import Team
+from src.domain.national_teams.model.national_team import NationalTeam
 
 
 def _normalize(value: str) -> str:
@@ -26,7 +26,7 @@ def _normalize(value: str) -> str:
 class RosterScopingService:
     def resolve_national_teams(
         self,
-        wc2026_teams: list[Team],
+        wc2026_teams: list[NationalTeam],
         national_team_rows: list[dict],
     ) -> dict[int, int]:
         """Returns `{synthetic team_id: real national_team_id}` for every

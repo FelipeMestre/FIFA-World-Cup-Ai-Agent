@@ -18,8 +18,8 @@ class MatchSchema(Base):
     kickoff_time_utc: Mapped[dt.time] = mapped_column(nullable=False)
     stage_id: Mapped[int] = mapped_column(ForeignKey("tournament_stage.stage_id"), nullable=False)
     venue_id: Mapped[int] = mapped_column(ForeignKey("venue.venue_id"), nullable=False)
-    home_team_id: Mapped[int] = mapped_column(ForeignKey("team.team_id"), nullable=False)
-    away_team_id: Mapped[int] = mapped_column(ForeignKey("team.team_id"), nullable=False)
+    home_team_id: Mapped[int] = mapped_column(ForeignKey("national_team.team_id"), nullable=False)
+    away_team_id: Mapped[int] = mapped_column(ForeignKey("national_team.team_id"), nullable=False)
     home_score: Mapped[int] = mapped_column(nullable=False)
     away_score: Mapped[int] = mapped_column(nullable=False)
     # Legitimately null for matches not decided by a penalty shootout.
@@ -42,7 +42,7 @@ class MatchEventSchema(Base):
     match_id: Mapped[int] = mapped_column(ForeignKey("match.match_id"), nullable=False)
     minute: Mapped[int] = mapped_column(nullable=False)
     event_type: Mapped[str] = mapped_column(nullable=False)
-    team_id: Mapped[int] = mapped_column(ForeignKey("team.team_id"), nullable=False)
+    team_id: Mapped[int] = mapped_column(ForeignKey("national_team.team_id"), nullable=False)
     player_id: Mapped[int] = mapped_column(ForeignKey("player.player_id"), nullable=False)
 
 
@@ -53,7 +53,7 @@ class MatchTeamStatSchema(Base):
         ForeignKey("match.match_id"), primary_key=True, autoincrement=False
     )
     team_id: Mapped[int] = mapped_column(
-        ForeignKey("team.team_id"), primary_key=True, autoincrement=False
+        ForeignKey("national_team.team_id"), primary_key=True, autoincrement=False
     )
     possession_pct: Mapped[int] = mapped_column(nullable=False)
     total_shots: Mapped[int] = mapped_column(nullable=False)
@@ -73,7 +73,7 @@ class MatchLineupSchema(Base):
     lineup_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     match_id: Mapped[int] = mapped_column(ForeignKey("match.match_id"), nullable=False)
     player_id: Mapped[int] = mapped_column(ForeignKey("player.player_id"), nullable=False)
-    team_id: Mapped[int] = mapped_column(ForeignKey("team.team_id"), nullable=False)
+    team_id: Mapped[int] = mapped_column(ForeignKey("national_team.team_id"), nullable=False)
     is_starting_xi: Mapped[bool] = mapped_column(nullable=False)
     tactical_position: Mapped[str] = mapped_column(nullable=False)
     minutes_played: Mapped[int] = mapped_column(nullable=False)

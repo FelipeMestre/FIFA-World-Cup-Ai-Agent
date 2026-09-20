@@ -13,13 +13,11 @@ from src.domain.ingestion.services.player_identity_matching_service import (
 )
 from src.domain.ingestion.services.roster_scoping_service import RosterScopingService
 from src.domain.ingestion.services.transfermarkt_sync_service import TransfermarktSyncService
+from src.domain.national_teams.model.national_team import NationalTeam
 from src.domain.players.model.player import Player
-from src.domain.teams.model.team import Team
 from src.infra.postgres.interfaces.ingestion_repository_interface import UpsertResult
-from src.infra.postgres.schemas.real_organization_schema import (
-    RealClubSchema,
-    RealNationalTeamSchema,
-)
+from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
+from src.infra.postgres.schemas.real_organization_schema import RealClubSchema
 from src.infra.postgres.schemas.real_player_schema import RealPlayerSchema
 
 _NATIONAL_TEAM_ROW = {
@@ -87,10 +85,13 @@ class _FakeIngestionRepository:
     ) -> None:
         self._call_order = call_order
         self._persisted_rows = persisted_rows or {}
+        self.update_matched_calls: list[tuple[type, str, list[dict]]] = []
+        self.upsert_many_calls: list[tuple[type, list[dict], tuple]] = []
 
     async def upsert_many(self, schema_cls, rows, conflict_columns) -> UpsertResult:
         if self._call_order is not None and schema_cls.__tablename__ == "real_player":
             self._call_order.append("real_player")
+        self.upsert_many_calls.append((schema_cls, rows, tuple(conflict_columns)))
         return UpsertResult(table_name=schema_cls.__tablename__, row_count=len(rows))
 
     async def has_rows(self, schema_cls) -> bool:
@@ -101,6 +102,15 @@ class _FakeIngestionRepository:
             {column: row[column] for column in columns}
             for row in self._persisted_rows.get(schema_cls, [])
         ]
+
+    async def has_non_null_column(self, schema_cls, column) -> bool:
+        return any(row.get(column) is not None for row in self._persisted_rows.get(schema_cls, []))
+
+    async def update_matched(self, schema_cls, key_column, rows) -> UpsertResult:
+        if self._call_order is not None and schema_cls.__tablename__ == "national_team":
+            self._call_order.append("national_team")
+        self.update_matched_calls.append((schema_cls, key_column, rows))
+        return UpsertResult(table_name=schema_cls.__tablename__, row_count=len(rows))
 
 
 class _FakeJobRepository:
@@ -120,14 +130,14 @@ class _FakeJobRepository:
         return job
 
 
-class _FakeTeamRepository:
-    def __init__(self, teams: list[Team]) -> None:
+class _FakeNationalTeamRepository:
+    def __init__(self, teams: list[NationalTeam]) -> None:
         self._teams = teams
 
     async def get(self, team_id: int):  # pragma: no cover - unused
         raise NotImplementedError
 
-    async def list(self, limit: int = 100, offset: int = 0) -> list[Team]:
+    async def list(self, limit: int = 100, offset: int = 0) -> list[NationalTeam]:
         return self._teams
 
 
@@ -194,7 +204,7 @@ class _FakeDetailSync:
 def _build_service(
     client,
     job_repository,
-    team_repository,
+    national_team_repository,
     player_repository,
     detail_sync,
     identity_link_repository=None,
@@ -205,7 +215,7 @@ def _build_service(
         csv_ingestion_service=CsvIngestionService(),
         ingestion_repository=ingestion_repository or _FakeIngestionRepository(),
         ingestion_job_repository=job_repository,
-        team_repository=team_repository,
+        national_team_repository=national_team_repository,
         player_repository=player_repository,
         identity_link_repository=identity_link_repository or _FakeIdentityLinkRepository(),
         roster_scoping_service=RosterScopingService(),
@@ -239,8 +249,19 @@ async def test_run_sync_persists_only_matched_players_and_succeeds_job():
         }
     )
     job_repository = _FakeJobRepository(_job())
-    team_repository = _FakeTeamRepository(
-        [Team(1, "Testland", "TST", "A", "UEFA", 10, 1800, "Coach")]
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            )
+        ]
     )
     player_repository = _FakePlayerRepository(
         [Player(1, 1, "John Doe", "FWD", "Some FC", 20000000, 30, date(1998, 5, 10), 182, 10)]
@@ -250,7 +271,7 @@ async def test_run_sync_persists_only_matched_players_and_succeeds_job():
     service = _build_service(
         client,
         job_repository,
-        team_repository,
+        national_team_repository,
         player_repository,
         detail_sync,
         identity_link_repository,
@@ -290,8 +311,19 @@ async def test_run_sync_persists_real_player_before_identity_link():
         }
     )
     job_repository = _FakeJobRepository(_job())
-    team_repository = _FakeTeamRepository(
-        [Team(1, "Testland", "TST", "A", "UEFA", 10, 1800, "Coach")]
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            )
+        ]
     )
     player_repository = _FakePlayerRepository(
         [Player(1, 1, "John Doe", "FWD", "Some FC", 20000000, 30, date(1998, 5, 10), 182, 10)]
@@ -299,7 +331,7 @@ async def test_run_sync_persists_real_player_before_identity_link():
     service = _build_service(
         client,
         job_repository,
-        team_repository,
+        national_team_repository,
         player_repository,
         _FakeDetailSync(),
         identity_link_repository=_FakeIdentityLinkRepository(call_order),
@@ -308,7 +340,7 @@ async def test_run_sync_persists_real_player_before_identity_link():
 
     await service.run_sync(_job())
 
-    assert call_order == ["real_player", "player_identity_link"]
+    assert call_order == ["national_team", "real_player", "player_identity_link"]
 
 
 @pytest.mark.asyncio
@@ -323,7 +355,7 @@ async def test_run_sync_reraises_original_error_leaving_job_running():
     service = _build_service(
         _FailingClient(),
         job_repository,
-        _FakeTeamRepository([]),
+        _FakeNationalTeamRepository([]),
         _FakePlayerRepository([]),
         _FakeDetailSync(),
     )
@@ -356,15 +388,26 @@ async def test_run_sync_with_skip_populated_derives_scope_from_db_without_refetc
         }
     )
     job_repository = _FakeJobRepository(_job())
-    team_repository = _FakeTeamRepository(
-        [Team(1, "Testland", "TST", "A", "UEFA", 10, 1800, "Coach")]
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            )
+        ]
     )
     player_repository = _FakePlayerRepository(
         [Player(1, 1, "John Doe", "FWD", "Some FC", 20000000, 30, date(1998, 5, 10), 182, 10)]
     )
     ingestion_repository = _FakeIngestionRepository(
         persisted_rows={
-            RealNationalTeamSchema: [{"national_team_id": 1, "country_name": "Testland"}],
+            NationalTeamSchema: [{"team_id": 1, "transfermarkt_id": 1}],
             RealClubSchema: [{"club_id": "77"}],
             RealPlayerSchema: [{"player_id": 500, "current_club_id": "77"}],
         }
@@ -373,7 +416,7 @@ async def test_run_sync_with_skip_populated_derives_scope_from_db_without_refetc
     service = _build_service(
         client,
         job_repository,
-        team_repository,
+        national_team_repository,
         player_repository,
         detail_sync,
         ingestion_repository=ingestion_repository,
@@ -387,3 +430,95 @@ async def test_run_sync_with_skip_populated_derives_scope_from_db_without_refetc
     assert result.row_counts["clubs"] == 0
     assert result.row_counts["players"] == 0
     assert detail_sync.player_scoped_calls == [{500}]
+
+
+@pytest.mark.asyncio
+async def test_national_teams_step_updates_matched_and_creates_unmatched():
+    # A WC2026 team matched by name (Testland) only gets its existing row's
+    # enrichment columns UPDATEd. A Transfermarkt country with no WC2026
+    # match (Unmatchedland) is CREATEd instead -- team_id omitted so the
+    # database's IDENTITY column assigns it, keyed by transfermarkt_id so a
+    # later sync re-matches (not duplicates) this same row.
+    client = _FakeTransfermarktClient(
+        {
+            "national_teams": [
+                _NATIONAL_TEAM_ROW,
+                {
+                    "national_team_id": "2",
+                    "name": "Unmatchedland",
+                    "country_name": "Unmatchedland",
+                    "confederation": "CONMEBOL",
+                    "fifa_ranking": "50",
+                    "squad_size": "22",
+                    "average_age": "25.0",
+                    "total_market_value": "5000000",
+                    "coach_name": "Someone Else",
+                    "url": "https://example.com/other",
+                },
+            ],
+            "clubs": [],
+            "players": [],
+        }
+    )
+    job_repository = _FakeJobRepository(_job())
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            )
+        ]
+    )
+    ingestion_repository = _FakeIngestionRepository()
+    service = _build_service(
+        client,
+        job_repository,
+        national_team_repository,
+        _FakePlayerRepository([]),
+        _FakeDetailSync(),
+        ingestion_repository=ingestion_repository,
+    )
+
+    result = await service.run_sync(_job())
+
+    assert result.row_counts["national_teams"] == 2
+
+    assert len(ingestion_repository.update_matched_calls) == 1
+    schema_cls, key_column, update_rows = ingestion_repository.update_matched_calls[0]
+    assert schema_cls is NationalTeamSchema
+    assert key_column == "team_id"
+    assert update_rows == [
+        {
+            "team_id": 1,
+            "transfermarkt_id": 1,
+            "squad_size": 23,
+            "average_age": 27.0,
+            "total_market_value_eur": 100000000,
+            "url": "https://example.com",
+        }
+    ]
+
+    national_team_creates = [
+        call for call in ingestion_repository.upsert_many_calls if call[0] is NationalTeamSchema
+    ]
+    assert len(national_team_creates) == 1
+    _, create_rows, conflict_columns = national_team_creates[0]
+    assert conflict_columns == ("transfermarkt_id",)
+    assert create_rows == [
+        {
+            "team_name": "Unmatchedland",
+            "confederation": "CONMEBOL",
+            "transfermarkt_id": 2,
+            "squad_size": 22,
+            "average_age": 25.0,
+            "total_market_value_eur": 5000000,
+            "url": "https://example.com/other",
+        }
+    ]
+    assert "team_id" not in create_rows[0]

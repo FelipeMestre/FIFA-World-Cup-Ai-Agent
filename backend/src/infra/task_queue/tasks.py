@@ -13,6 +13,15 @@ error, and the job is left stuck at `running` forever with no error
 message recorded. Found live: a real sync run hit exactly this, and the
 worker log showed only the masking error, not the original one.
 
+Both task functions catch `BaseException`, not `Exception`: arq enforces
+`JOB_TIMEOUT_SECONDS` via `asyncio.wait_for`, which cancels the running
+task on timeout -- and `asyncio.CancelledError` is a `BaseException`, not
+an `Exception`, since Python 3.8. `except Exception` alone silently lets a
+timeout-cancelled job skip `_fail_job` entirely, leaving it stuck at
+`running` forever with no error message, even though arq itself already
+gave up on it. Found live: a Transfermarkt sync exceeded the 30-minute
+job timeout and stayed `running` in the DB indefinitely.
+
 The synthetic-upload task receives the CSV as raw bytes in the job payload
 rather than a filesystem path: the API and worker run in separate
 containers with separate filesystems, so a path written by the API process
@@ -45,11 +54,13 @@ from src.infra.postgres.repositories.ingestion_job_repository import (
     _SqlAlchemyIngestionJobRepository,
 )
 from src.infra.postgres.repositories.ingestion_repository import _SqlAlchemyIngestionRepository
+from src.infra.postgres.repositories.national_team_repository import (
+    _SqlAlchemyNationalTeamRepository,
+)
 from src.infra.postgres.repositories.player_identity_link_repository import (
     _SqlAlchemyPlayerIdentityLinkRepository,
 )
 from src.infra.postgres.repositories.player_repository import _SqlAlchemyPlayerRepository
-from src.infra.postgres.repositories.team_repository import _SqlAlchemyTeamRepository
 from src.infra.task_queue.session_scope import session_scope
 from src.infra.transfermarkt.client import get_transfermarkt_client
 
@@ -65,7 +76,7 @@ async def _fail_job(
     session: AsyncSession,
     job_repository: IngestionJobRepositoryInterface,
     job_id: int,
-    exc: Exception,
+    exc: BaseException,
 ) -> None:
     logger.exception("ingestion_job %s failed", job_id, exc_info=exc)
     await session.rollback()
@@ -74,7 +85,11 @@ async def _fail_job(
         IngestionJobStatus.QUEUED,
         IngestionJobStatus.RUNNING,
     ):
-        await job_repository.update(current.mark_failed(str(exc)))
+        # str(asyncio.CancelledError()) is "" -- fall back to the class name
+        # so a job cancelled by arq's JOB_TIMEOUT_SECONDS still gets a
+        # readable error_message instead of an empty string.
+        message = str(exc) or exc.__class__.__name__
+        await job_repository.update(current.mark_failed(message))
 
 
 async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_bytes: bytes) -> None:
@@ -91,7 +106,7 @@ async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_byt
         )
         try:
             await service.ingest_upload(table_name, _parse_csv_rows(csv_bytes), job)
-        except Exception as exc:
+        except BaseException as exc:
             await _fail_job(session, job_repository, job_id, exc)
             raise
 
@@ -110,7 +125,7 @@ async def transfermarkt_sync_task(ctx: dict, job_id: int, skip_populated: bool =
             csv_ingestion_service=CsvIngestionService(),
             ingestion_repository=ingestion_repository,
             ingestion_job_repository=job_repository,
-            team_repository=_SqlAlchemyTeamRepository(session),
+            national_team_repository=_SqlAlchemyNationalTeamRepository(session),
             player_repository=_SqlAlchemyPlayerRepository(session),
             identity_link_repository=_SqlAlchemyPlayerIdentityLinkRepository(session),
             roster_scoping_service=RosterScopingService(),
@@ -124,6 +139,6 @@ async def transfermarkt_sync_task(ctx: dict, job_id: int, skip_populated: bool =
         )
         try:
             await service.run_sync(job, skip_populated)
-        except Exception as exc:
+        except BaseException as exc:
             await _fail_job(session, job_repository, job_id, exc)
             raise

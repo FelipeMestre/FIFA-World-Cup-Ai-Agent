@@ -6,13 +6,13 @@ from src.infra.postgres.schemas import (  # noqa: F401
     auth_schema,
     ingestion_job_schema,
     match_schema,
+    national_team_schema,
     player_identity_link_schema,
     player_schema,
     real_match_data_schema,
     real_organization_schema,
     real_player_schema,
     reference_schema,
-    team_schema,
 )
 from src.infra.postgres.schemas.base import Base
 

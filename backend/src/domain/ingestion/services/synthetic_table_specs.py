@@ -12,18 +12,18 @@ from src.infra.postgres.schemas.match_schema import (
     MatchSchema,
     MatchTeamStatSchema,
 )
+from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 from src.infra.postgres.schemas.player_schema import PlayerSchema, PlayerStatSchema
 from src.infra.postgres.schemas.reference_schema import (
     RefereeSchema,
     TournamentStageSchema,
     VenueSchema,
 )
-from src.infra.postgres.schemas.team_schema import TeamSchema
 
 SYNTHETIC_TABLE_SPECS: list[TableIngestionSpec] = [
     TableIngestionSpec(
         source_name="team",
-        target_schema=TeamSchema,
+        target_schema=NationalTeamSchema,
         column_spec={
             "team_id": parsers.parse_int,
             "team_name": parsers.parse_str,
