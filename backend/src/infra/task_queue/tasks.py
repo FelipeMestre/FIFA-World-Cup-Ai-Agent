@@ -54,11 +54,13 @@ from src.infra.postgres.repositories.ingestion_job_repository import (
     _SqlAlchemyIngestionJobRepository,
 )
 from src.infra.postgres.repositories.ingestion_repository import _SqlAlchemyIngestionRepository
+from src.infra.postgres.repositories.national_team_repository import (
+    _SqlAlchemyNationalTeamRepository,
+)
 from src.infra.postgres.repositories.player_identity_link_repository import (
     _SqlAlchemyPlayerIdentityLinkRepository,
 )
 from src.infra.postgres.repositories.player_repository import _SqlAlchemyPlayerRepository
-from src.infra.postgres.repositories.team_repository import _SqlAlchemyTeamRepository
 from src.infra.task_queue.session_scope import session_scope
 from src.infra.transfermarkt.client import get_transfermarkt_client
 
@@ -123,7 +125,7 @@ async def transfermarkt_sync_task(ctx: dict, job_id: int, skip_populated: bool =
             csv_ingestion_service=CsvIngestionService(),
             ingestion_repository=ingestion_repository,
             ingestion_job_repository=job_repository,
-            team_repository=_SqlAlchemyTeamRepository(session),
+            national_team_repository=_SqlAlchemyNationalTeamRepository(session),
             player_repository=_SqlAlchemyPlayerRepository(session),
             identity_link_repository=_SqlAlchemyPlayerIdentityLinkRepository(session),
             roster_scoping_service=RosterScopingService(),

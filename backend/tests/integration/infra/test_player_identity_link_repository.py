@@ -31,8 +31,8 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
     async with SessionFactory() as session:
         await session.execute(
             text(
-                "INSERT INTO team (team_id, team_name, fifa_code, group_letter, confederation, "
-                "fifa_ranking_pre_tournament, elo_rating, manager_name) "
+                "INSERT INTO national_team (team_id, team_name, fifa_code, group_letter, "
+                "confederation, fifa_ranking_pre_tournament, elo_rating, manager_name) "
                 "VALUES (:id, 'Test Team', 'TST', 'A', 'UEFA', 1, 1000, 'Test Manager')"
             ),
             {"id": _TEAM_ID},
@@ -82,7 +82,7 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
             {"id": _PLAYER_ID, "other_id": _OTHER_PLAYER_ID},
         )
         await cleanup_session.execute(
-            text("DELETE FROM team WHERE team_id = :id"), {"id": _TEAM_ID}
+            text("DELETE FROM national_team WHERE team_id = :id"), {"id": _TEAM_ID}
         )
         await cleanup_session.execute(
             text("DELETE FROM real_player WHERE player_id = :id"), {"id": _REAL_PLAYER_ID}

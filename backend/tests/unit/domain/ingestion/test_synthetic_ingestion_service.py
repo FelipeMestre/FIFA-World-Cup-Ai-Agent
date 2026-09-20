@@ -19,7 +19,7 @@ from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionServ
 from src.domain.ingestion.services.synthetic_ingestion_service import SyntheticIngestionService
 from src.domain.ingestion.services.table_ingestion_spec import TableIngestionSpec
 from src.infra.postgres.interfaces.ingestion_repository_interface import UpsertResult
-from src.infra.postgres.schemas.team_schema import TeamSchema
+from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 
 
 @dataclass
@@ -51,7 +51,7 @@ class _FakeIngestionJobRepository:
 def _team_spec() -> TableIngestionSpec:
     return TableIngestionSpec(
         source_name="team",
-        target_schema=TeamSchema,
+        target_schema=NationalTeamSchema,
         column_spec={"team_id": int, "team_name": str},
         conflict_columns=("team_id",),
     )

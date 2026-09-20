@@ -47,3 +47,25 @@ class IngestionRepositoryInterface(Protocol):
         instead of the source CSV that produced it.
         """
         ...
+
+    async def has_non_null_column(self, schema_cls: type[Base], column: str) -> bool:
+        """Whether any row of `schema_cls`'s table has `column` set --
+        backs the resume-mode skip signal for a step that only ever
+        UPDATEs pre-existing rows (never inserts), where `has_rows` alone
+        would always be true regardless of whether that step has run.
+        """
+        ...
+
+    async def update_matched(
+        self,
+        schema_cls: type[Base],
+        key_column: str,
+        rows: list[dict[str, Any]],
+    ) -> UpsertResult:
+        """UPDATEs existing rows of `schema_cls`'s table, matched by each
+        row dict's `key_column` value -- unlike `upsert_many`, a row whose
+        key doesn't match an existing one is silently skipped, never
+        inserted. Every dict must carry the same set of keys (the columns
+        being updated) plus `key_column`.
+        """
+        ...

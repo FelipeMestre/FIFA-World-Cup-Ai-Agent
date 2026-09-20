@@ -36,15 +36,15 @@ from src.infra.postgres.interfaces.ingestion_job_repository_interface import (
 from src.infra.postgres.interfaces.ingestion_repository_interface import (
     IngestionRepositoryInterface,
 )
+from src.infra.postgres.interfaces.national_team_repository_interface import (
+    NationalTeamRepositoryInterface,
+)
 from src.infra.postgres.interfaces.player_identity_link_repository_interface import (
     PlayerIdentityLinkRepositoryInterface,
 )
 from src.infra.postgres.interfaces.player_repository_interface import PlayerRepositoryInterface
-from src.infra.postgres.interfaces.team_repository_interface import TeamRepositoryInterface
-from src.infra.postgres.schemas.real_organization_schema import (
-    RealClubSchema,
-    RealNationalTeamSchema,
-)
+from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
+from src.infra.postgres.schemas.real_organization_schema import RealClubSchema
 from src.infra.postgres.schemas.real_player_schema import RealPlayerSchema
 from src.infra.transfermarkt.client_interface import TransfermarktClientInterface
 
@@ -66,7 +66,7 @@ class TransfermarktSyncService:
         csv_ingestion_service: CsvIngestionService,
         ingestion_repository: IngestionRepositoryInterface,
         ingestion_job_repository: IngestionJobRepositoryInterface,
-        team_repository: TeamRepositoryInterface,
+        national_team_repository: NationalTeamRepositoryInterface,
         player_repository: PlayerRepositoryInterface,
         identity_link_repository: PlayerIdentityLinkRepositoryInterface,
         roster_scoping_service: RosterScopingService,
@@ -77,7 +77,7 @@ class TransfermarktSyncService:
         self._csv_ingestion_service = csv_ingestion_service
         self._ingestion_repository = ingestion_repository
         self._ingestion_job_repository = ingestion_job_repository
-        self._team_repository = team_repository
+        self._national_team_repository = national_team_repository
         self._player_repository = player_repository
         self._identity_link_repository = identity_link_repository
         self._roster_scoping_service = roster_scoping_service
@@ -103,29 +103,72 @@ class TransfermarktSyncService:
     async def _run_pipeline(self, skip_populated: bool) -> dict[str, int]:
         row_counts: dict[str, int] = {}
 
+        # `national_team` base rows come only from the synthetic WC2026
+        # upload, never from this sync -- fetch them first so the
+        # Transfermarkt step below can match against them.
+        wc2026_teams = await self._national_team_repository.list(limit=_ROSTER_LIST_LIMIT)
+
         # Resume mode: a step whose target table is already populated is
         # skipped -- its (often expensive: players.csv alone is ~50k rows
         # feeding an O(n*m) fuzzy-match loop) fetch+parse+match+upsert never
         # runs. Whatever a later step needs from a skipped one is rebuilt
         # from the already-persisted rows instead of the source CSV.
-        if skip_populated and await self._ingestion_repository.has_rows(RealNationalTeamSchema):
-            national_team_rows = [
-                {
-                    "national_team_id": str(row["national_team_id"]),
-                    "country_name": row["country_name"],
-                }
-                for row in await self._ingestion_repository.fetch_columns(
-                    RealNationalTeamSchema, ["national_team_id", "country_name"]
-                )
-            ]
+        #
+        # `national_team` rows always exist once the synthetic upload has
+        # run (independent of this sync), so `has_rows` can't signal
+        # whether Transfermarkt enrichment already happened here -- the
+        # signal is instead whether any row has been matched/enriched yet.
+        if skip_populated and await self._ingestion_repository.has_non_null_column(
+            NationalTeamSchema, "real_national_team_id"
+        ):
+            enriched = await self._ingestion_repository.fetch_columns(
+                NationalTeamSchema, ["team_id", "real_national_team_id"]
+            )
+            national_team_id_by_team_id = {
+                row["team_id"]: row["real_national_team_id"]
+                for row in enriched
+                if row["real_national_team_id"] is not None
+            }
             row_counts["national_teams"] = 0
         else:
             national_team_rows = await _buffer(self._client.stream_csv_rows("national_teams"))
-            row_counts["national_teams"] = await self._csv_ingestion_service.ingest_rows(
-                _REFERENCE_SPECS_BY_NAME["national_teams"],
-                national_team_rows,
-                self._ingestion_repository,
+            national_team_id_by_team_id = self._roster_scoping_service.resolve_national_teams(
+                wc2026_teams,
+                [
+                    {
+                        "national_team_id": int(row["national_team_id"]),
+                        "country_name": row["country_name"],
+                    }
+                    for row in national_team_rows
+                ],
             )
+            # This step never creates a `national_team` row -- only Transfermarkt
+            # countries that matched an existing WC2026 team_id (by name, via
+            # RosterScopingService) are written, as an UPDATE of that row's
+            # enrichment columns. A Transfermarkt country with no WC2026 match
+            # is simply not written anywhere.
+            real_row_by_id = {int(row["national_team_id"]): row for row in national_team_rows}
+            update_rows = [
+                {
+                    "team_id": team_id,
+                    "real_national_team_id": real_team_id,
+                    "squad_size": parsers.parse_optional_int(
+                        real_row_by_id[real_team_id].get("squad_size", "")
+                    ),
+                    "average_age": parsers.parse_optional_float(
+                        real_row_by_id[real_team_id].get("average_age", "")
+                    ),
+                    "total_market_value_eur": parsers.parse_optional_int(
+                        real_row_by_id[real_team_id].get("total_market_value", "")
+                    ),
+                    "url": parsers.parse_optional_str(real_row_by_id[real_team_id].get("url", "")),
+                }
+                for team_id, real_team_id in national_team_id_by_team_id.items()
+            ]
+            result = await self._ingestion_repository.update_matched(
+                NationalTeamSchema, "team_id", update_rows
+            )
+            row_counts["national_teams"] = result.row_count
 
         if skip_populated and await self._ingestion_repository.has_rows(RealClubSchema):
             known_club_ids = {
@@ -150,18 +193,6 @@ class TransfermarktSyncService:
             # nulled out rather than dropping the row or relaxing the
             # constraint.
             known_club_ids = {row["club_id"] for row in club_rows}
-
-        wc2026_teams = await self._team_repository.list(limit=_ROSTER_LIST_LIMIT)
-        national_team_id_by_team_id = self._roster_scoping_service.resolve_national_teams(
-            wc2026_teams,
-            [
-                {
-                    "national_team_id": int(row["national_team_id"]),
-                    "country_name": row["country_name"],
-                }
-                for row in national_team_rows
-            ],
-        )
 
         if skip_populated and await self._ingestion_repository.has_rows(RealPlayerSchema):
             persisted_players = await self._ingestion_repository.fetch_columns(

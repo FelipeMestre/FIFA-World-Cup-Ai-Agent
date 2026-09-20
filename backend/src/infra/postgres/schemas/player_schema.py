@@ -12,7 +12,7 @@ class PlayerSchema(Base):
     __tablename__ = "player"
 
     player_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
-    team_id: Mapped[int] = mapped_column(ForeignKey("team.team_id"), nullable=False)
+    team_id: Mapped[int] = mapped_column(ForeignKey("national_team.team_id"), nullable=False)
     player_name: Mapped[str] = mapped_column(nullable=False)
     position: Mapped[str] = mapped_column(nullable=False)
     club_team: Mapped[str] = mapped_column(nullable=False)
@@ -38,7 +38,7 @@ class PlayerStatSchema(Base):
         ForeignKey("player.player_id"), primary_key=True, autoincrement=False
     )
     player_name: Mapped[str] = mapped_column(nullable=False)
-    team_id: Mapped[int] = mapped_column(ForeignKey("team.team_id"), nullable=False)
+    team_id: Mapped[int] = mapped_column(ForeignKey("national_team.team_id"), nullable=False)
     position: Mapped[str] = mapped_column(nullable=False)
     matches_played: Mapped[int] = mapped_column(nullable=False)
     matches_started: Mapped[int] = mapped_column(nullable=False)

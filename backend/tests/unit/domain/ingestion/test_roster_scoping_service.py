@@ -1,11 +1,11 @@
 """Pure unit tests for `RosterScopingService` -- in-memory fixtures, no DB."""
 
 from src.domain.ingestion.services.roster_scoping_service import RosterScopingService
-from src.domain.teams.model.team import Team
+from src.domain.national_teams.model.national_team import NationalTeam
 
 
-def _team(team_id: int, name: str, fifa_code: str) -> Team:
-    return Team(
+def _team(team_id: int, name: str, fifa_code: str) -> NationalTeam:
+    return NationalTeam(
         id=team_id,
         name=name,
         fifa_code=fifa_code,

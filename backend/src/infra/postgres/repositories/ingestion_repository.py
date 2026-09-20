@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from typing import Annotated, Any
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import bindparam, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +52,36 @@ class _SqlAlchemyIngestionRepository:
         table = schema_cls.__table__
         result = await self._session.execute(select(*(table.c[name] for name in columns)))
         return [dict(row._mapping) for row in result]
+
+    async def has_non_null_column(self, schema_cls: type[Base], column: str) -> bool:
+        table = schema_cls.__table__
+        result = await self._session.execute(
+            select(table.c[column]).where(table.c[column].isnot(None)).limit(1)
+        )
+        return result.first() is not None
+
+    async def update_matched(
+        self,
+        schema_cls: type[Base],
+        key_column: str,
+        rows: list[dict[str, Any]],
+    ) -> UpsertResult:
+        table_name = schema_cls.__tablename__
+        if not rows:
+            return UpsertResult(table_name=table_name, row_count=0)
+
+        table = schema_cls.__table__
+        # A plain `key_column` bindparam name collides with the SET clause
+        # SQLAlchemy infers from the same-named param key in each row dict,
+        # so the WHERE match key travels under a distinct name.
+        stmt = update(table).where(table.c[key_column] == bindparam("_match_key"))
+        params = [
+            {**{k: v for k, v in row.items() if k != key_column}, "_match_key": row[key_column]}
+            for row in rows
+        ]
+        await self._session.execute(stmt, params)
+        await self._session.commit()
+        return UpsertResult(table_name=table_name, row_count=len(rows))
 
 
 def get_ingestion_repository(
