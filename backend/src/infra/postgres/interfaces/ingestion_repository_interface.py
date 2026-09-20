@@ -28,7 +28,16 @@ class IngestionRepositoryInterface(Protocol):
         schema_cls: type[Base],
         rows: list[dict[str, Any]],
         conflict_columns: Sequence[str],
-    ) -> UpsertResult: ...
+    ) -> UpsertResult:
+        """Every dict in `rows` must carry the same set of keys. On
+        conflict, only the columns actually present in that key set are
+        updated -- a column every row intentionally omits (e.g. an
+        IDENTITY-assigned primary key, or one this batch doesn't populate)
+        is left untouched by the conflicting row's existing value, not
+        overwritten by whatever the omitted column's implicit default
+        would have been.
+        """
+        ...
 
     async def has_rows(self, schema_cls: type[Base]) -> bool:
         """Whether `schema_cls`'s table currently has any rows -- backs the

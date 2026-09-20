@@ -29,10 +29,15 @@ class _SqlAlchemyIngestionRepository:
             return UpsertResult(table_name=table_name, row_count=0)
 
         stmt = insert(schema_cls).values(rows)
+        # Derived from the payload's own keys, not every column the schema
+        # has: a row that intentionally omits a column (e.g. an
+        # IDENTITY-assigned PK, or a column this particular batch doesn't
+        # populate) must not have that column overwritten by `excluded`'s
+        # implicit-default value on conflict.
         update_columns = {
-            column.name: stmt.excluded[column.name]
-            for column in schema_cls.__table__.columns
-            if column.name not in conflict_columns
+            column_name: stmt.excluded[column_name]
+            for column_name in rows[0]
+            if column_name not in conflict_columns
         }
         stmt = stmt.on_conflict_do_update(
             index_elements=list(conflict_columns),

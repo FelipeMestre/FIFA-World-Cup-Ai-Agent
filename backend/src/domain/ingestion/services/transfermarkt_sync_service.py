@@ -119,15 +119,15 @@ class TransfermarktSyncService:
         # whether Transfermarkt enrichment already happened here -- the
         # signal is instead whether any row has been matched/enriched yet.
         if skip_populated and await self._ingestion_repository.has_non_null_column(
-            NationalTeamSchema, "real_national_team_id"
+            NationalTeamSchema, "transfermarkt_id"
         ):
             enriched = await self._ingestion_repository.fetch_columns(
-                NationalTeamSchema, ["team_id", "real_national_team_id"]
+                NationalTeamSchema, ["team_id", "transfermarkt_id"]
             )
             national_team_id_by_team_id = {
-                row["team_id"]: row["real_national_team_id"]
+                row["team_id"]: row["transfermarkt_id"]
                 for row in enriched
-                if row["real_national_team_id"] is not None
+                if row["transfermarkt_id"] is not None
             }
             row_counts["national_teams"] = 0
         else:
@@ -142,33 +142,53 @@ class TransfermarktSyncService:
                     for row in national_team_rows
                 ],
             )
-            # This step never creates a `national_team` row -- only Transfermarkt
-            # countries that matched an existing WC2026 team_id (by name, via
-            # RosterScopingService) are written, as an UPDATE of that row's
-            # enrichment columns. A Transfermarkt country with no WC2026 match
-            # is simply not written anywhere.
             real_row_by_id = {int(row["national_team_id"]): row for row in national_team_rows}
+
+            def _enrichment_columns(real_team_id: int) -> dict[str, Any]:
+                row = real_row_by_id[real_team_id]
+                return {
+                    "squad_size": parsers.parse_optional_int(row.get("squad_size", "")),
+                    "average_age": parsers.parse_optional_float(row.get("average_age", "")),
+                    "total_market_value_eur": parsers.parse_optional_int(
+                        row.get("total_market_value", "")
+                    ),
+                    "url": parsers.parse_optional_str(row.get("url", "")),
+                }
+
+            # A Transfermarkt country matched to an existing WC2026 team_id
+            # (by name, via RosterScopingService) only gets that row's
+            # enrichment columns UPDATEd. A country with no WC2026 match is
+            # CREATEd instead -- `team_id` is deliberately left out of the
+            # payload so the database's IDENTITY column assigns it, and
+            # `transfermarkt_id` (unique) is the natural key a later sync
+            # re-matches this same row by, so it's never duplicated.
             update_rows = [
                 {
                     "team_id": team_id,
-                    "real_national_team_id": real_team_id,
-                    "squad_size": parsers.parse_optional_int(
-                        real_row_by_id[real_team_id].get("squad_size", "")
-                    ),
-                    "average_age": parsers.parse_optional_float(
-                        real_row_by_id[real_team_id].get("average_age", "")
-                    ),
-                    "total_market_value_eur": parsers.parse_optional_int(
-                        real_row_by_id[real_team_id].get("total_market_value", "")
-                    ),
-                    "url": parsers.parse_optional_str(real_row_by_id[real_team_id].get("url", "")),
+                    "transfermarkt_id": real_team_id,
+                    **_enrichment_columns(real_team_id),
                 }
                 for team_id, real_team_id in national_team_id_by_team_id.items()
             ]
-            result = await self._ingestion_repository.update_matched(
+            update_result = await self._ingestion_repository.update_matched(
                 NationalTeamSchema, "team_id", update_rows
             )
-            row_counts["national_teams"] = result.row_count
+
+            matched_transfermarkt_ids = set(national_team_id_by_team_id.values())
+            create_rows = [
+                {
+                    "team_name": row["country_name"],
+                    "confederation": row["confederation"],
+                    "transfermarkt_id": int(row["national_team_id"]),
+                    **_enrichment_columns(int(row["national_team_id"])),
+                }
+                for row in national_team_rows
+                if int(row["national_team_id"]) not in matched_transfermarkt_ids
+            ]
+            create_result = await self._ingestion_repository.upsert_many(
+                NationalTeamSchema, create_rows, conflict_columns=("transfermarkt_id",)
+            )
+            row_counts["national_teams"] = update_result.row_count + create_result.row_count
 
         if skip_populated and await self._ingestion_repository.has_rows(RealClubSchema):
             known_club_ids = {

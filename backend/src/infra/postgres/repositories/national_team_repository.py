@@ -22,7 +22,7 @@ def _to_domain(row: NationalTeamSchema) -> NationalTeam:
         fifa_ranking_pre_tournament=row.fifa_ranking_pre_tournament,
         elo_rating=row.elo_rating,
         manager_name=row.manager_name,
-        real_national_team_id=row.real_national_team_id,
+        transfermarkt_id=row.transfermarkt_id,
         squad_size=row.squad_size,
         average_age=row.average_age,
         total_market_value_eur=row.total_market_value_eur,
