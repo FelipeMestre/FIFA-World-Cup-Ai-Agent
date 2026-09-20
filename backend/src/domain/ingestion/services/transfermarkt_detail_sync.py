@@ -15,10 +15,26 @@ from src.domain.ingestion.services.transfermarkt_detail_specs import TRANSFERMAR
 from src.infra.postgres.interfaces.ingestion_repository_interface import (
     IngestionRepositoryInterface,
 )
-from src.infra.postgres.schemas.real_player_schema import RealPlayerSeasonStatSchema
+from src.infra.postgres.schemas.real_match_data_schema import (
+    RealClubGameSchema,
+    RealGameLineupSchema,
+    RealMatchEventSchema,
+)
+from src.infra.postgres.schemas.real_player_schema import (
+    RealPlayerSeasonStatSchema,
+    RealPlayerValuationSchema,
+    RealTransferSchema,
+)
 from src.infra.transfermarkt.client_interface import TransfermarktClientInterface
 
 _DETAIL_SPECS_BY_NAME = {spec.source_name: spec for spec in TRANSFERMARKT_DETAIL_SPECS}
+_SCHEMA_BY_SOURCE_NAME = {
+    "player_valuations": RealPlayerValuationSchema,
+    "transfers": RealTransferSchema,
+    "game_lineups": RealGameLineupSchema,
+    "game_events": RealMatchEventSchema,
+    "club_games": RealClubGameSchema,
+}
 _SEASON_STAT_CONFLICT_COLUMNS = ("real_player_id", "season", "competition_id")
 # asyncpg caps total query parameters at 32767; real_player_season_stat has
 # 9 columns, and unlike every other table here this upsert doesn't go
@@ -78,11 +94,19 @@ class TransfermarktDetailSync:
         self._season_stat_aggregation_service = season_stat_aggregation_service
 
     async def sync_player_scoped_tables(
-        self, matched_real_player_ids: set[int], known_club_ids: set[str]
+        self,
+        matched_real_player_ids: set[int],
+        known_club_ids: set[str],
+        skip_populated: bool = False,
     ) -> dict[str, int]:
         """Valuations and transfers: scoped by `player_id` membership."""
         counts: dict[str, int] = {}
         for source_name in ("player_valuations", "transfers"):
+            if skip_populated and await self._ingestion_repository.has_rows(
+                _SCHEMA_BY_SOURCE_NAME[source_name]
+            ):
+                counts[source_name] = 0
+                continue
             spec = _DETAIL_SPECS_BY_NAME[source_name]
             rows = await _buffer(self._client.stream_csv_rows(source_name))
             scoped = [row for row in rows if int(row["player_id"]) in matched_real_player_ids]
@@ -107,6 +131,7 @@ class TransfermarktDetailSync:
         matched_real_player_ids: set[int],
         matched_real_club_ids: set[int],
         known_club_ids: set[str],
+        skip_populated: bool = False,
     ) -> dict[str, int]:
         """Lineups, events, and club-games: scoped by matched player or club
         involvement (a row with no player reference, e.g. a club-level
@@ -114,60 +139,76 @@ class TransfermarktDetailSync:
         """
         counts: dict[str, int] = {}
 
-        lineup_rows = await _buffer(self._client.stream_csv_rows("game_lineups"))
-        # real_game_lineup.real_club_id is NOT NULL -- an unresolvable
-        # club_id can't be nulled, so the row is filtered out instead.
-        scoped_lineups = [
-            row
-            for row in lineup_rows
-            if int(row["player_id"]) in matched_real_player_ids and row["club_id"] in known_club_ids
-        ]
-        counts["game_lineups"] = await self._csv_ingestion_service.ingest_rows(
-            _DETAIL_SPECS_BY_NAME["game_lineups"], scoped_lineups, self._ingestion_repository
-        )
+        if skip_populated and await self._ingestion_repository.has_rows(RealGameLineupSchema):
+            counts["game_lineups"] = 0
+        else:
+            lineup_rows = await _buffer(self._client.stream_csv_rows("game_lineups"))
+            # real_game_lineup.real_club_id is NOT NULL -- an unresolvable
+            # club_id can't be nulled, so the row is filtered out instead.
+            scoped_lineups = [
+                row
+                for row in lineup_rows
+                if int(row["player_id"]) in matched_real_player_ids
+                and row["club_id"] in known_club_ids
+            ]
+            counts["game_lineups"] = await self._csv_ingestion_service.ingest_rows(
+                _DETAIL_SPECS_BY_NAME["game_lineups"], scoped_lineups, self._ingestion_repository
+            )
 
-        event_rows = await _buffer(self._client.stream_csv_rows("game_events"))
-        # real_player_id (from player_id), player_in_id, and
-        # assist_player_id (from player_assist_id) are all nullable FKs into
-        # real_player, but only matched roster players were persisted this
-        # run -- a substitution's incoming/assisting player is very often
-        # someone outside that set.
-        scoped_events = []
-        for row in event_rows:
-            if not (
-                (row.get("player_id") and int(row["player_id"]) in matched_real_player_ids)
-                or (row.get("club_id") and int(row["club_id"]) in matched_real_club_ids)
-            ):
-                continue
-            row = _sanitize_club_reference(row, "club_id", known_club_ids)
-            for column in ("player_id", "player_in_id", "player_assist_id"):
-                row = _sanitize_player_reference(row, column, matched_real_player_ids)
-            scoped_events.append(row)
-        counts["game_events"] = await self._csv_ingestion_service.ingest_rows(
-            _DETAIL_SPECS_BY_NAME["game_events"], scoped_events, self._ingestion_repository
-        )
+        if skip_populated and await self._ingestion_repository.has_rows(RealMatchEventSchema):
+            counts["game_events"] = 0
+        else:
+            event_rows = await _buffer(self._client.stream_csv_rows("game_events"))
+            # real_player_id (from player_id), player_in_id, and
+            # assist_player_id (from player_assist_id) are all nullable FKs
+            # into real_player, but only matched roster players were
+            # persisted this run -- a substitution's incoming/assisting
+            # player is very often someone outside that set.
+            scoped_events = []
+            for row in event_rows:
+                if not (
+                    (row.get("player_id") and int(row["player_id"]) in matched_real_player_ids)
+                    or (row.get("club_id") and int(row["club_id"]) in matched_real_club_ids)
+                ):
+                    continue
+                row = _sanitize_club_reference(row, "club_id", known_club_ids)
+                for column in ("player_id", "player_in_id", "player_assist_id"):
+                    row = _sanitize_player_reference(row, column, matched_real_player_ids)
+                scoped_events.append(row)
+            counts["game_events"] = await self._csv_ingestion_service.ingest_rows(
+                _DETAIL_SPECS_BY_NAME["game_events"], scoped_events, self._ingestion_repository
+            )
 
-        club_game_rows = await _buffer(self._client.stream_csv_rows("club_games"))
-        # club_id is part of the composite primary key (NOT NULL) but is
-        # already guaranteed valid here: matched_real_club_ids is derived
-        # only from sanitized (known-valid) player rows upstream.
-        # opponent_id is nullable and NOT scoped, so it still needs sanitizing.
-        scoped_club_games = [
-            _sanitize_club_reference(row, "opponent_id", known_club_ids)
-            for row in club_game_rows
-            if int(row["club_id"]) in matched_real_club_ids
-        ]
-        counts["club_games"] = await self._csv_ingestion_service.ingest_rows(
-            _DETAIL_SPECS_BY_NAME["club_games"], scoped_club_games, self._ingestion_repository
-        )
+        if skip_populated and await self._ingestion_repository.has_rows(RealClubGameSchema):
+            counts["club_games"] = 0
+        else:
+            club_game_rows = await _buffer(self._client.stream_csv_rows("club_games"))
+            # club_id is part of the composite primary key (NOT NULL) but is
+            # already guaranteed valid here: matched_real_club_ids is
+            # derived only from sanitized (known-valid) player rows
+            # upstream. opponent_id is nullable and NOT scoped, so it still
+            # needs sanitizing.
+            scoped_club_games = [
+                _sanitize_club_reference(row, "opponent_id", known_club_ids)
+                for row in club_game_rows
+                if int(row["club_id"]) in matched_real_club_ids
+            ]
+            counts["club_games"] = await self._csv_ingestion_service.ingest_rows(
+                _DETAIL_SPECS_BY_NAME["club_games"], scoped_club_games, self._ingestion_repository
+            )
         return counts
 
-    async def sync_season_stats(self, matched_real_player_ids: set[int]) -> int:
+    async def sync_season_stats(
+        self, matched_real_player_ids: set[int], skip_populated: bool = False
+    ) -> int:
         """`appearances.csv` has no `season` column directly -- join against
         `games.csv` by `game_id` first (games.csv itself has no target
         table; it exists only to recover `season`/`competition_id`), then
         aggregate via `SeasonStatAggregationService` before upserting.
         """
+        if skip_populated and await self._ingestion_repository.has_rows(RealPlayerSeasonStatSchema):
+            return 0
+
         game_rows = await _buffer(self._client.stream_csv_rows("games"))
         games_by_id: dict[str, dict[str, Any]] = {
             row["game_id"]: {"season": row["season"], "competition_id": row["competition_id"]}

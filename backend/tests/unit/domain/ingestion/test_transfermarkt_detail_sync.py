@@ -7,25 +7,39 @@ from src.domain.ingestion.services.season_stat_aggregation_service import (
 )
 from src.domain.ingestion.services.transfermarkt_detail_sync import TransfermarktDetailSync
 from src.infra.postgres.interfaces.ingestion_repository_interface import UpsertResult
-from src.infra.postgres.schemas.real_player_schema import RealPlayerSeasonStatSchema
+from src.infra.postgres.schemas.real_match_data_schema import (
+    RealClubGameSchema,
+    RealGameLineupSchema,
+    RealMatchEventSchema,
+)
+from src.infra.postgres.schemas.real_player_schema import (
+    RealPlayerSeasonStatSchema,
+    RealPlayerValuationSchema,
+)
 
 
 class _FakeTransfermarktClient:
     def __init__(self, tables: dict[str, list[dict[str, str]]]) -> None:
         self._tables = tables
+        self.requested_tables: list[str] = []
 
     async def stream_csv_rows(self, table_name: str):
+        self.requested_tables.append(table_name)
         for row in self._tables.get(table_name, []):
             yield row
 
 
 class _FakeIngestionRepository:
-    def __init__(self) -> None:
+    def __init__(self, populated_schemas: set[type] | None = None) -> None:
         self.calls: list[tuple[type, list[dict], tuple[str, ...]]] = []
+        self._populated_schemas = populated_schemas or set()
 
     async def upsert_many(self, schema_cls, rows, conflict_columns) -> UpsertResult:
         self.calls.append((schema_cls, rows, tuple(conflict_columns)))
         return UpsertResult(table_name=schema_cls.__tablename__, row_count=len(rows))
+
+    async def has_rows(self, schema_cls) -> bool:
+        return schema_cls in self._populated_schemas
 
 
 def _detail_sync(client: _FakeTransfermarktClient, repository: _FakeIngestionRepository):
@@ -345,3 +359,56 @@ async def test_sync_season_stats_chunks_large_aggregated_result():
         call for call in repository.calls if call[0].__tablename__ == "real_player_season_stat"
     ]
     assert [len(call[1]) for call in season_stat_calls] == [2, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_sync_player_scoped_tables_skips_populated_tables_when_resuming():
+    client = _FakeTransfermarktClient(
+        {
+            "player_valuations": [
+                {"player_id": "1", "date": "2026-01-01", "market_value_in_eur": "1000"}
+            ],
+            "transfers": [],
+        }
+    )
+    repository = _FakeIngestionRepository(populated_schemas={RealPlayerValuationSchema})
+    sync = _detail_sync(client, repository)
+
+    counts = await sync.sync_player_scoped_tables(
+        matched_real_player_ids={1}, known_club_ids=set(), skip_populated=True
+    )
+
+    assert counts["player_valuations"] == 0
+    assert "player_valuations" not in client.requested_tables
+    assert "transfers" in client.requested_tables
+
+
+@pytest.mark.asyncio
+async def test_sync_match_data_skips_populated_tables_when_resuming():
+    client = _FakeTransfermarktClient({"game_lineups": [], "game_events": [], "club_games": []})
+    repository = _FakeIngestionRepository(
+        populated_schemas={RealGameLineupSchema, RealMatchEventSchema, RealClubGameSchema}
+    )
+    sync = _detail_sync(client, repository)
+
+    counts = await sync.sync_match_data(
+        matched_real_player_ids=set(),
+        matched_real_club_ids=set(),
+        known_club_ids=set(),
+        skip_populated=True,
+    )
+
+    assert counts == {"game_lineups": 0, "game_events": 0, "club_games": 0}
+    assert client.requested_tables == []
+
+
+@pytest.mark.asyncio
+async def test_sync_season_stats_skips_when_resuming_and_populated():
+    client = _FakeTransfermarktClient({"games": [], "appearances": []})
+    repository = _FakeIngestionRepository(populated_schemas={RealPlayerSeasonStatSchema})
+    sync = _detail_sync(client, repository)
+
+    row_count = await sync.sync_season_stats(matched_real_player_ids={1}, skip_populated=True)
+
+    assert row_count == 0
+    assert client.requested_tables == []

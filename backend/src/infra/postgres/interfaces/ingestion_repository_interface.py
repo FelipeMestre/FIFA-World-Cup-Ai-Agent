@@ -29,3 +29,21 @@ class IngestionRepositoryInterface(Protocol):
         rows: list[dict[str, Any]],
         conflict_columns: Sequence[str],
     ) -> UpsertResult: ...
+
+    async def has_rows(self, schema_cls: type[Base]) -> bool:
+        """Whether `schema_cls`'s table currently has any rows -- backs the
+        Transfermarkt sync's resume mode: a step whose target table is
+        already populated can be skipped instead of re-fetching and
+        re-upserting a source CSV that can be millions of rows.
+        """
+        ...
+
+    async def fetch_columns(
+        self, schema_cls: type[Base], columns: Sequence[str]
+    ) -> list[dict[str, Any]]:
+        """Reads back `columns` from every row of `schema_cls`'s table --
+        lets a skipped step's downstream consumers (roster scoping, club/
+        player scoping) rebuild what they need from already-persisted data
+        instead of the source CSV that produced it.
+        """
+        ...

@@ -23,10 +23,11 @@ async def enqueue_synthetic_upload(table_name: str, job_id: int, csv_bytes: byte
     await pool.enqueue_job("synthetic_upload_task", job_id, table_name, csv_bytes)
 
 
-async def enqueue_transfermarkt_sync(job_id: int) -> None:
+async def enqueue_transfermarkt_sync(job_id: int, skip_populated: bool = False) -> None:
     # NOTE: the design's optional `table_filter` (partial-table sync) is
-    # deferred -- this batch runs the full scoped pipeline only. Adding a
-    # filtered subset later is additive (a new optional param + a check in
+    # deferred -- this batch runs the full scoped pipeline only (optionally
+    # resuming via skip_populated). Adding a filtered subset later is
+    # additive (a new optional param + a check in
     # `TransfermarktSyncService._run_pipeline`), not a breaking change.
     pool = await get_arq_pool()
-    await pool.enqueue_job("transfermarkt_sync_task", job_id)
+    await pool.enqueue_job("transfermarkt_sync_task", job_id, skip_populated)

@@ -96,7 +96,7 @@ async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_byt
             raise
 
 
-async def transfermarkt_sync_task(ctx: dict, job_id: int) -> None:
+async def transfermarkt_sync_task(ctx: dict, job_id: int, skip_populated: bool = False) -> None:
     async with session_scope() as session:
         job_repository = _SqlAlchemyIngestionJobRepository(session)
         job = await job_repository.get(job_id)
@@ -123,7 +123,7 @@ async def transfermarkt_sync_task(ctx: dict, job_id: int) -> None:
             ),
         )
         try:
-            await service.run_sync(job)
+            await service.run_sync(job, skip_populated)
         except Exception as exc:
             await _fail_job(session, job_repository, job_id, exc)
             raise
