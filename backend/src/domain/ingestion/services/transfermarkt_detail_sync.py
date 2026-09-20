@@ -20,6 +20,13 @@ from src.infra.transfermarkt.client_interface import TransfermarktClientInterfac
 
 _DETAIL_SPECS_BY_NAME = {spec.source_name: spec for spec in TRANSFERMARKT_DETAIL_SPECS}
 _SEASON_STAT_CONFLICT_COLUMNS = ("real_player_id", "season", "competition_id")
+# asyncpg caps total query parameters at 32767; real_player_season_stat has
+# 9 columns, and unlike every other table here this upsert doesn't go
+# through CsvIngestionService's own chunking (there's no CSV row to chunk --
+# the aggregated rows are already in memory). Found live: a real run with
+# ~14,400 aggregated rows (129,915 parameters) exceeded the limit in one
+# INSERT.
+_SEASON_STAT_CHUNK_SIZE = 500
 
 
 async def _buffer(rows: AsyncIterator[dict[str, str]]) -> list[dict[str, str]]:
@@ -185,9 +192,11 @@ class TransfermarktDetailSync:
         aggregated = self._season_stat_aggregation_service.aggregate(
             scoped_appearances, games_by_id
         )
-        if not aggregated:
-            return 0
-        result = await self._ingestion_repository.upsert_many(
-            RealPlayerSeasonStatSchema, aggregated, _SEASON_STAT_CONFLICT_COLUMNS
-        )
-        return result.row_count
+        total = 0
+        for start in range(0, len(aggregated), _SEASON_STAT_CHUNK_SIZE):
+            chunk = aggregated[start : start + _SEASON_STAT_CHUNK_SIZE]
+            result = await self._ingestion_repository.upsert_many(
+                RealPlayerSeasonStatSchema, chunk, _SEASON_STAT_CONFLICT_COLUMNS
+            )
+            total += result.row_count
+        return total

@@ -1,5 +1,6 @@
 import pytest
 
+from src.domain.ingestion.services import transfermarkt_detail_sync as detail_sync_module
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.season_stat_aggregation_service import (
     SeasonStatAggregationService,
@@ -306,3 +307,41 @@ async def test_sync_season_stats_returns_zero_when_no_matched_appearances():
 
     assert row_count == 0
     assert repository.calls == []
+
+
+@pytest.mark.asyncio
+async def test_sync_season_stats_chunks_large_aggregated_result():
+    # asyncpg caps total query parameters at 32767; unlike every other
+    # table here, this upsert doesn't go through CsvIngestionService's own
+    # chunking. Found live: ~14,400 aggregated rows in one INSERT exceeded
+    # the limit. Use a small chunk size to keep this test fast while still
+    # exercising multiple chunks.
+    game_rows = [{"game_id": "g1", "season": "2025", "competition_id": "FIWC"}]
+    appearance_rows = [
+        {
+            "player_id": str(player_id),
+            "game_id": "g1",
+            "goals": "0",
+            "assists": "0",
+            "yellow_cards": "0",
+            "red_cards": "0",
+            "minutes_played": "90",
+        }
+        for player_id in range(1, 6)
+    ]
+    client = _FakeTransfermarktClient({"games": game_rows, "appearances": appearance_rows})
+    repository = _FakeIngestionRepository()
+    sync = _detail_sync(client, repository)
+
+    original_chunk_size = detail_sync_module._SEASON_STAT_CHUNK_SIZE
+    detail_sync_module._SEASON_STAT_CHUNK_SIZE = 2
+    try:
+        row_count = await sync.sync_season_stats(matched_real_player_ids=set(range(1, 6)))
+    finally:
+        detail_sync_module._SEASON_STAT_CHUNK_SIZE = original_chunk_size
+
+    assert row_count == 5
+    season_stat_calls = [
+        call for call in repository.calls if call[0].__tablename__ == "real_player_season_stat"
+    ]
+    assert [len(call[1]) for call in season_stat_calls] == [2, 2, 1]
