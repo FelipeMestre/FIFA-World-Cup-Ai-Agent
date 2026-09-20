@@ -42,6 +42,21 @@ def _sanitize_club_reference(
     return row
 
 
+def _sanitize_player_reference(
+    row: dict[str, str], column: str, matched_real_player_ids: set[int]
+) -> dict[str, str]:
+    """Same idea as `_sanitize_club_reference`, but against the set of
+    `real_player` rows actually persisted this run (only matched roster
+    players, not every player Transfermarkt ever mentions). Found live:
+    `game_events.player_in_id`/`assist_player_id` -- a substitution event's
+    incoming/assisting player is very often someone outside the matched
+    roster.
+    """
+    if row.get(column) and int(row[column]) not in matched_real_player_ids:
+        row = {**row, column: ""}
+    return row
+
+
 class TransfermarktDetailSync:
     def __init__(
         self,
@@ -105,12 +120,22 @@ class TransfermarktDetailSync:
         )
 
         event_rows = await _buffer(self._client.stream_csv_rows("game_events"))
-        scoped_events = [
-            _sanitize_club_reference(row, "club_id", known_club_ids)
-            for row in event_rows
-            if (row.get("player_id") and int(row["player_id"]) in matched_real_player_ids)
-            or (row.get("club_id") and int(row["club_id"]) in matched_real_club_ids)
-        ]
+        # real_player_id (from player_id), player_in_id, and
+        # assist_player_id (from player_assist_id) are all nullable FKs into
+        # real_player, but only matched roster players were persisted this
+        # run -- a substitution's incoming/assisting player is very often
+        # someone outside that set.
+        scoped_events = []
+        for row in event_rows:
+            if not (
+                (row.get("player_id") and int(row["player_id"]) in matched_real_player_ids)
+                or (row.get("club_id") and int(row["club_id"]) in matched_real_club_ids)
+            ):
+                continue
+            row = _sanitize_club_reference(row, "club_id", known_club_ids)
+            for column in ("player_id", "player_in_id", "player_assist_id"):
+                row = _sanitize_player_reference(row, column, matched_real_player_ids)
+            scoped_events.append(row)
         counts["game_events"] = await self._csv_ingestion_service.ingest_rows(
             _DETAIL_SPECS_BY_NAME["game_events"], scoped_events, self._ingestion_repository
         )

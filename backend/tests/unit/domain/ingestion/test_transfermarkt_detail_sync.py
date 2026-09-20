@@ -164,6 +164,51 @@ async def test_sync_match_data_drops_lineup_rows_with_unresolvable_club_id():
 
 
 @pytest.mark.asyncio
+async def test_sync_match_data_nulls_unresolvable_event_player_references():
+    # Found live: game_events.player_in_id/player_assist_id reference
+    # players outside the matched roster (a substitution's incoming/
+    # assisting player is very often someone we never matched/persisted).
+    # Both are nullable FKs into real_player, so they're nulled rather than
+    # dropping the event.
+    client = _FakeTransfermarktClient(
+        {
+            "game_lineups": [],
+            "club_games": [],
+            "game_events": [
+                {
+                    "game_event_id": "e1",
+                    "date": "2025-06-01",
+                    "game_id": "100",
+                    "minute": "70",
+                    "type": "Substitutions",
+                    "club_id": "10",
+                    "club_name": "Test FC",
+                    "player_id": "1",
+                    "description": "",
+                    "player_in_id": "999999",
+                    "player_assist_id": "",
+                },
+            ],
+        }
+    )
+    repository = _FakeIngestionRepository()
+    sync = _detail_sync(client, repository)
+
+    counts = await sync.sync_match_data(
+        matched_real_player_ids={1}, matched_real_club_ids={10}, known_club_ids={"10"}
+    )
+
+    assert counts["game_events"] == 1
+    event_call = next(
+        call for call in repository.calls if call[0].__tablename__ == "real_match_event"
+    )
+    row = event_call[1][0]
+    assert row["real_player_id"] == 1
+    assert row["player_in_id"] is None
+    assert row["assist_player_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_sync_match_data_nulls_unresolvable_club_game_opponent():
     client = _FakeTransfermarktClient(
         {
