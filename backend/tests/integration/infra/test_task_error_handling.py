@@ -6,6 +6,7 @@ real error message -- not stuck at `running` with a masking
 rolled the session back first.
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -71,3 +72,31 @@ async def test_fail_job_recovers_and_persists_real_error_after_aborted_transacti
     assert reloaded is not None
     assert reloaded.status == IngestionJobStatus.FAILED
     assert reloaded.error_message == "real underlying error"
+
+
+async def test_fail_job_records_a_readable_message_for_a_cancelled_job(db_session) -> None:
+    # arq cancels a job that exceeds JOB_TIMEOUT_SECONDS via
+    # asyncio.wait_for -- asyncio.CancelledError is a BaseException, not an
+    # Exception, since Python 3.8. Found live: a real sync run exceeded the
+    # 30-minute timeout and stayed stuck at `running` forever because the
+    # task's `except Exception` never saw the cancellation. str(exc) on a
+    # bare CancelledError is also "" -- _fail_job must fall back to the
+    # class name so the recorded error isn't blank.
+    job_repository = _SqlAlchemyIngestionJobRepository(db_session)
+    created = await job_repository.create(
+        IngestionJob(
+            id=None,
+            job_type=IngestionJobType.TRANSFERMARKT_SYNC,
+            status=IngestionJobStatus.QUEUED,
+            source_label="test",
+            requested_by_user_id=_USER_ID,
+        )
+    )
+    running = await job_repository.update(created.mark_running())
+
+    await _fail_job(db_session, job_repository, running.id, asyncio.CancelledError())
+
+    reloaded = await job_repository.get(running.id)
+    assert reloaded is not None
+    assert reloaded.status == IngestionJobStatus.FAILED
+    assert reloaded.error_message == "CancelledError"
