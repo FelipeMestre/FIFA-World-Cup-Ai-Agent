@@ -39,6 +39,7 @@ def _real_player(
     last_name: str,
     dob: date | None = date(2000, 1, 1),
     national_team_id: int | None = 1,
+    height_in_cm: int | None = 180,
 ) -> dict:
     return {
         "player_id": real_player_id,
@@ -46,6 +47,7 @@ def _real_player(
         "last_name": last_name,
         "date_of_birth": dob,
         "current_national_team_id": national_team_id,
+        "height_in_cm": height_in_cm,
     }
 
 
@@ -91,6 +93,58 @@ def test_fuzzy_name_match_falls_in_tier_range() -> None:
     candidate = candidates[0]
     assert candidate.match_method == PlayerMatchMethod.FUZZY_NAME
     assert Decimal("0.850") <= candidate.match_confidence < Decimal("0.950")
+
+
+def test_fuzzy_name_corroborated_by_dob_and_height_auto_accepts_at_0_950() -> None:
+    # User-reported gap: a fuzzy name match with a confirmed DOB and height
+    # should auto-accept, not sit in the review queue capped below 0.950.
+    synthetic = [_player(1, "Robert Lewandowski", dob=date(1988, 8, 21), team_id=10)]
+    real = [
+        _real_player(
+            500,
+            "Robert",
+            "Lewandovski",
+            dob=date(1988, 8, 21),
+            national_team_id=42,
+            height_in_cm=180,
+        )
+    ]
+
+    candidates = PlayerIdentityMatchingService().match(
+        synthetic, real, national_team_id_by_team_id={10: 99}
+    )
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.match_method == PlayerMatchMethod.FUZZY_NAME
+    assert candidate.match_confidence == Decimal("0.950")
+
+
+def test_corroborated_candidate_preferred_over_higher_raw_score_uncorroborated() -> None:
+    synthetic = [_player(1, "Robert Lewandowski", dob=date(1988, 8, 21), team_id=10)]
+    real = [
+        # Closer name match, but DOB/height don't confirm it.
+        _real_player(
+            500, "Robert", "Lewandowsk", dob=date(1975, 5, 5), national_team_id=42, height_in_cm=175
+        ),
+        # Slightly worse name match, but DOB and height both confirm it.
+        _real_player(
+            501,
+            "Robert",
+            "Lewandovski",
+            dob=date(1988, 8, 21),
+            national_team_id=42,
+            height_in_cm=180,
+        ),
+    ]
+
+    candidates = PlayerIdentityMatchingService().match(
+        synthetic, real, national_team_id_by_team_id={10: 99}
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].real_player_id == 501
+    assert candidates[0].match_confidence == Decimal("0.950")
 
 
 def test_below_floor_match_is_discarded() -> None:

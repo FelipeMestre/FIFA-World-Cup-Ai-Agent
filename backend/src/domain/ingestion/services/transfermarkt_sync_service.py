@@ -177,14 +177,20 @@ class TransfermarktSyncService:
         return row_counts
 
     def _parse_player_candidates(self, player_rows: list[dict[str, str]]) -> list[dict[str, Any]]:
-        # Matching needs typed player_id/date_of_birth, not raw CSV strings.
-        # `current_national_team_id` (when present, see module docstring) is
-        # passed through as-is; `.get()` in the matching service handles its
-        # absence gracefully for rows where it's blank.
+        # Matching needs typed player_id/date_of_birth/height_in_cm/
+        # current_national_team_id, not raw CSV strings -- leaving any of
+        # these as strings makes every comparison against the synthetic
+        # player's typed fields silently False (found live: this broke both
+        # the EXACT_NAME_TEAM tier and fuzzy-match DOB+height corroboration
+        # until fixed here).
         parsed = []
         for row in player_rows:
             entry: dict[str, Any] = dict(row)
             entry["player_id"] = int(row["player_id"])
             entry["date_of_birth"] = parsers.parse_optional_date(row.get("date_of_birth", ""))
+            entry["height_in_cm"] = parsers.parse_optional_int(row.get("height_in_cm", ""))
+            entry["current_national_team_id"] = parsers.parse_optional_int(
+                row.get("current_national_team_id", "")
+            )
             parsed.append(entry)
         return parsed

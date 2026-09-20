@@ -5,8 +5,15 @@ candidates using a 3-tier confidence cascade:
 - `EXACT_NAME_TEAM` (0.950): normalized full name matches, DOB missing or
   mismatched, but the synthetic player's national team resolves to the
   candidate's `current_national_team_id`.
-- `FUZZY_NAME` ([0.850, 0.949)): `rapidfuzz.fuzz.WRatio` name similarity,
-  scaled into the tier range. Below 0.850 emits no candidate.
+- `FUZZY_NAME`: `rapidfuzz.fuzz.WRatio` name similarity. A fuzzy match
+  corroborated by BOTH an exact date-of-birth match AND an exact height
+  match is treated as confidently identified (auto-accept confidence,
+  0.950) even though the name itself isn't byte-exact -- three independent
+  signals agreeing is strong evidence, and this is what actually catches a
+  nickname/transliteration/middle-name difference a byte-exact name check
+  would miss. An uncorroborated fuzzy match is scaled into [0.850, 0.949)
+  and queued for admin review. Below 0.850 (uncorroborated) or below the
+  floor even when corroborated, no candidate is emitted.
 
 Pure function, no DB/HTTP -- fully unit-testable with fixture player lists.
 
@@ -32,6 +39,7 @@ _FUZZY_FLOOR_SCORE = 85.0
 _FUZZY_MIN_CONFIDENCE = Decimal("0.850")
 _FUZZY_MAX_CONFIDENCE = Decimal("0.949")
 _FUZZY_CONFIDENCE_SPAN = _FUZZY_MAX_CONFIDENCE - _FUZZY_MIN_CONFIDENCE
+_CORROBORATED_FUZZY_CONFIDENCE = Decimal("0.950")
 
 
 def _normalize_name(name: str) -> str:
@@ -62,7 +70,11 @@ class PlayerIdentityMatchingService:
         normalized_player_name = _normalize_name(player.name)
         expected_national_team_id = national_team_id_by_team_id.get(player.team_id)
 
-        best_fuzzy: tuple[dict, float] | None = None
+        # (corroborated, score) so a DOB+height-corroborated candidate
+        # always outranks an uncorroborated one, even at a lower raw name
+        # score -- corroboration is a stronger identity signal than string
+        # similarity alone.
+        best_fuzzy: tuple[dict, float, bool] | None = None
         for real_candidate in real_player_candidates:
             real_full_name = f"{real_candidate['first_name']} {real_candidate['last_name']}"
             normalized_real_name = _normalize_name(real_full_name)
@@ -85,14 +97,26 @@ class PlayerIdentityMatchingService:
             else:
                 score = fuzz.WRatio(normalized_player_name, normalized_real_name)
 
-            if score >= _FUZZY_FLOOR_SCORE and (best_fuzzy is None or score > best_fuzzy[1]):
-                best_fuzzy = (real_candidate, score)
+            if score < _FUZZY_FLOOR_SCORE:
+                continue
+            corroborated = self._corroborated(player, real_candidate)
+            candidate_rank = (corroborated, score)
+            if best_fuzzy is None or candidate_rank > (best_fuzzy[2], best_fuzzy[1]):
+                best_fuzzy = (real_candidate, score, corroborated)
 
         if best_fuzzy is None:
             return None
-        real_candidate, score = best_fuzzy
-        confidence = self._scale_fuzzy_confidence(score)
+        real_candidate, score, corroborated = best_fuzzy
+        confidence = (
+            _CORROBORATED_FUZZY_CONFIDENCE if corroborated else self._scale_fuzzy_confidence(score)
+        )
         return self._candidate(player, real_candidate, PlayerMatchMethod.FUZZY_NAME, confidence)
+
+    def _corroborated(self, player: Player, real_candidate: dict) -> bool:
+        dob_matches = real_candidate.get("date_of_birth") == player.date_of_birth
+        real_height = real_candidate.get("height_in_cm")
+        height_matches = real_height is not None and real_height == player.height_cm
+        return dob_matches and height_matches
 
     def _scale_fuzzy_confidence(self, score: float) -> Decimal:
         ratio = Decimal(str(min(score, 100.0) - _FUZZY_FLOOR_SCORE)) / Decimal(
