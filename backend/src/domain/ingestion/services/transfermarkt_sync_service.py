@@ -105,8 +105,13 @@ class TransfermarktSyncService:
 
         # `national_team` base rows come only from the synthetic WC2026
         # upload, never from this sync -- fetch them first so the
-        # Transfermarkt step below can match against them.
-        wc2026_teams = await self._national_team_repository.list(limit=_ROSTER_LIST_LIMIT)
+        # Transfermarkt step below can match against them. The table also
+        # holds Transfermarkt-only rows this sync itself may have created
+        # for an unmatched country (no `fifa_code`) -- those are never
+        # WC2026 teams, so they're excluded here rather than fed into
+        # RosterScopingService, which assumes every team has one.
+        all_national_teams = await self._national_team_repository.list(limit=_ROSTER_LIST_LIMIT)
+        wc2026_teams = [team for team in all_national_teams if team.fifa_code is not None]
 
         # Resume mode: a step whose target table is already populated is
         # skipped -- its (often expensive: players.csv alone is ~50k rows

@@ -522,3 +522,40 @@ async def test_national_teams_step_updates_matched_and_creates_unmatched():
         }
     ]
     assert "team_id" not in create_rows[0]
+
+
+@pytest.mark.asyncio
+async def test_national_teams_step_excludes_auto_created_rows_from_roster_scoping():
+    # A Transfermarkt-only national_team row (no fifa_code, created by an
+    # earlier sync's auto-create path) fed into RosterScopingService would
+    # crash normalizing a None fifa_code -- it must never reach that call.
+    client = _FakeTransfermarktClient(
+        {"national_teams": [_NATIONAL_TEAM_ROW], "clubs": [], "players": []}
+    )
+    job_repository = _FakeJobRepository(_job())
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            ),
+            NationalTeam(id=2, name="San Marino", confederation="UEFA", transfermarkt_id=999),
+        ]
+    )
+    service = _build_service(
+        client,
+        job_repository,
+        national_team_repository,
+        _FakePlayerRepository([]),
+        _FakeDetailSync(),
+    )
+
+    result = await service.run_sync(_job())
+
+    assert result.status == IngestionJobStatus.SUCCEEDED
