@@ -1,18 +1,9 @@
 import { redirect } from "next/navigation";
 
-import { hasSession } from "@/lib/auth/session";
-import { ChatShell } from "@/features/chat";
-
 /**
- * Thin routing shell -- composes the chat feature. `proxy.ts` already
- * redirects unauthenticated requests here to /login; this server check is
- * defense in depth in case this page is ever reached another way (e.g. a
- * proxy matcher change).
+ * The root route has no page of its own: `proxy.ts` sends signed-out
+ * visitors to /login, and everyone else lands on /home.
  */
-export default async function HomePage() {
-  if (!(await hasSession())) {
-    redirect("/login");
-  }
-
-  return <ChatShell />;
+export default function RootPage() {
+  redirect("/home");
 }
