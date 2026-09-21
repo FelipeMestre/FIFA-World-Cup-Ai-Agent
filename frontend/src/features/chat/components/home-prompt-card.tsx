@@ -28,7 +28,7 @@ export function HomePromptCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "focus-ring min-h-[72px] flex items-center gap-ds-3 rounded-xl",
+        "focus-ring min-h-[72px] flex items-center gap-ds-3 rounded-lg px-4 py-3.5",
         "border border-border-subtle bg-surface-900/72",
         "text-ink-primary text-left cursor-pointer",
         "shadow-[inset_0_1px_0_rgba(244,246,249,0.04)]",
