@@ -10,10 +10,10 @@ function isActive(ref: EntityRef, openEntity: EntityRef | null): boolean {
 }
 
 /**
- * Switches on `part.type` to render the right bubble/widget. Only "text"
- * ever arrives from the live backend today -- the four widget branches are
- * implemented for forward-compat with a future analytics-tool phase, and
- * are exercised today only by `/design-preview`.
+ * Switches on `part.type` to render the right bubble/widget. "team_widget"
+ * arrives live from the backend's `get_team_analysis` tool; the other three
+ * widget branches remain forward-compat until their tools exist, and are
+ * exercised today only by `/design-preview`.
  */
 export function MessagePartView({
   part,

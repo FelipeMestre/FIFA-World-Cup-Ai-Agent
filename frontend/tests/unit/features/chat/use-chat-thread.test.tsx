@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChatStreamEvent } from "@/features/chat/api/stream-chat-events";
+import { sampleTeam } from "@/features/chat/sample-data/team";
 import type { ChatMessage } from "@/features/chat/types";
 
 const sendMessageMock = vi.fn();
@@ -126,6 +127,61 @@ describe("useChatThread", () => {
       { type: "text", content: "Based on what I found so far..." },
     ]);
     expect(assistantMessage.isStreaming).toBe(false);
+  });
+
+  it("renders a widget live, before message_done arrives, without duplicating it", async () => {
+    sendMessageMock.mockReturnValue(
+      eventStream([
+        { type: "tool_call", name: "get_team_analysis" },
+        { type: "widget_ready", part: { type: "team_widget", data: sampleTeam } },
+        { type: "content_delta", content: "Here's how they did." },
+        {
+          type: "message_done",
+          conversation_id: "conv-1",
+          parts: [
+            { type: "text", content: "Here's how they did." },
+            { type: "team_widget", data: sampleTeam },
+          ],
+          model: "anthropic/claude-sonnet-4.5",
+        },
+      ]),
+    );
+
+    const { result } = renderHook(() => useChatThread());
+
+    await act(async () => {
+      await result.current.submit("How did Argentina do?");
+    });
+
+    const assistantMessage = lastMessage(result.current.messages);
+    expect(assistantMessage.parts).toEqual([
+      { type: "text", content: "Here's how they did." },
+      { type: "team_widget", data: sampleTeam },
+    ]);
+  });
+
+  it("drops a widget_ready part that fails the widget contract's schema, instead of crashing", async () => {
+    sendMessageMock.mockReturnValue(
+      eventStream([
+        { type: "widget_ready", part: { type: "team_widget", data: { incomplete: true } } },
+        { type: "content_delta", content: "Text still renders." },
+        {
+          type: "message_done",
+          conversation_id: "conv-1",
+          parts: [{ type: "text", content: "Text still renders." }],
+          model: null,
+        },
+      ]),
+    );
+
+    const { result } = renderHook(() => useChatThread());
+
+    await act(async () => {
+      await result.current.submit("How did Argentina do?");
+    });
+
+    const assistantMessage = lastMessage(result.current.messages);
+    expect(assistantMessage.parts).toEqual([{ type: "text", content: "Text still renders." }]);
   });
 
   it("surfaces an error event as the assistant message's error state", async () => {

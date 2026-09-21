@@ -129,6 +129,16 @@ export function useChatThread() {
             case "tool_call":
               updateAssistant((message) => ({ ...message, activeToolName: event.name }));
               break;
+            case "widget_ready": {
+              const result = messagePartSchema.safeParse(event.part);
+              if (result.success) {
+                updateAssistant((message) => ({
+                  ...message,
+                  parts: [...message.parts, result.data],
+                }));
+              }
+              break;
+            }
             case "cap_reached":
               // `content` is the full best-effort partial text (not a delta);
               // the clarification is rendered as a distinct note, not folded

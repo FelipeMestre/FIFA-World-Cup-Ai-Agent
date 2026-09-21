@@ -14,11 +14,13 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 from src.api.v1.auth.services.dependencies import parse_jwt_data
 from src.domain.chat.model.message import Message
 from src.infra.openrouter.client import get_openrouter_client
 from src.infra.openrouter.schemas import ChatCompletionChunk, ToolCall
+from src.infra.postgres.config import SessionFactory
 from src.infra.redis.repositories.conversation_cache_repository import (
     get_conversation_cache_repository,
 )
@@ -26,6 +28,10 @@ from src.main import app
 
 _REPLY_CONTENT = "The 2026 World Cup group stage runs from June to July."
 _TIME_REPLY_CONTENT = "It is currently the time returned by the tool."
+_TEAM_REPLY_CONTENT = "Here's how they did."
+_SEEDED_TEAM_ID = 990501
+_SEEDED_TEAM_NAME = "Test Widget Team"
+_SEEDED_TEAM_CODE = "TWT"
 
 
 def _parse_sse(body: str) -> list[tuple[str, dict]]:
@@ -79,6 +85,39 @@ class _ToolTriggeringOpenRouterClient:
             )
             return
         yield ChatCompletionChunk(delta_content=_TIME_REPLY_CONTENT)
+        yield ChatCompletionChunk(
+            finish_reason="stop", model="anthropic/claude-sonnet-4.5", tool_calls=[]
+        )
+
+
+class _TeamAnalysisTriggeringOpenRouterClient:
+    """First call requests `get_team_analysis`; second call (after the real
+    repository's result is appended) returns a final answer -- proves the
+    widget wiring end to end, through the real DB-backed tool.
+    """
+
+    def __init__(self, team_name: str) -> None:
+        self._team_name = team_name
+        self._call_count = 0
+
+    async def create_chat_completion(
+        self, messages: list[dict], tools: list[dict] | None = None
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        self._call_count += 1
+        if self._call_count == 1:
+            yield ChatCompletionChunk(
+                finish_reason="tool_calls",
+                model="anthropic/claude-sonnet-4.5",
+                tool_calls=[
+                    ToolCall(
+                        id="call-1",
+                        name="get_team_analysis",
+                        arguments=json.dumps({"team_name": self._team_name}),
+                    )
+                ],
+            )
+            return
+        yield ChatCompletionChunk(delta_content=_TEAM_REPLY_CONTENT)
         yield ChatCompletionChunk(
             finish_reason="stop", model="anthropic/claude-sonnet-4.5", tool_calls=[]
         )
@@ -217,6 +256,62 @@ async def test_tool_triggering_message_streams_tool_call_then_message_done(
     assert event_types == ["tool_call", "content_delta", "message_done"]
     assert events[0][1] == {"name": "get_current_utc_time"}
     assert events[-1][1]["parts"] == [{"type": "text", "content": _TIME_REPLY_CONTENT}]
+
+
+@pytest.fixture
+async def seeded_team() -> AsyncGenerator[None]:
+    async with SessionFactory() as session:
+        await session.execute(
+            text(
+                "INSERT INTO national_team (team_id, team_name, fifa_code, confederation) "
+                "VALUES (:id, :name, :code, 'UEFA')"
+            ),
+            {"id": _SEEDED_TEAM_ID, "name": _SEEDED_TEAM_NAME, "code": _SEEDED_TEAM_CODE},
+        )
+        await session.commit()
+    yield
+    async with SessionFactory() as session:
+        await session.execute(
+            text("DELETE FROM national_team WHERE team_id = :id"), {"id": _SEEDED_TEAM_ID}
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_team_analysis_tool_streams_widget_ready_then_message_done(
+    client: AsyncClient, seeded_team: None
+) -> None:
+    app.dependency_overrides[get_openrouter_client] = lambda: (
+        _TeamAnalysisTriggeringOpenRouterClient(_SEEDED_TEAM_NAME)
+    )
+
+    response = await client.post(
+        "/api/v1/chat/messages",
+        json={"message": f"How is {_SEEDED_TEAM_NAME} doing?"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse(response.text)
+
+    event_types = [event_type for event_type, _ in events]
+    # The widget arrives before the final text -- the tool resolves in the
+    # first iteration, well before the model's answer streams in the second.
+    assert event_types == ["tool_call", "widget_ready", "content_delta", "message_done"]
+
+    widget_event_type, widget_data = events[1]
+    assert widget_event_type == "widget_ready"
+    assert widget_data["part"]["type"] == "team_widget"
+    assert widget_data["part"]["data"]["id"] == str(_SEEDED_TEAM_ID)
+    assert widget_data["part"]["data"]["code"] == _SEEDED_TEAM_CODE
+    assert widget_data["part"]["data"]["name"] == _SEEDED_TEAM_NAME
+
+    done_event_type, done_data = events[-1]
+    assert done_event_type == "message_done"
+    assert done_data["parts"] == [
+        {"type": "text", "content": _TEAM_REPLY_CONTENT},
+        widget_data["part"],
+    ]
 
 
 @pytest.mark.asyncio

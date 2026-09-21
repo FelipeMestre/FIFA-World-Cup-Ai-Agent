@@ -1,13 +1,15 @@
 """Dummy tool proving the tool-calling harness end-to-end.
 
 `get_current_utc_time` performs no I/O beyond reading the current UTC clock
--- no repository, database, or real team/match/player data access. It is the
-only tool wired in this change; no real analytics tools are introduced.
+-- no repository, database, or real team/match/player data access, and has
+no widget of its own (`ToolExecutionResult.widget_data` stays `None`).
 """
 
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict
+
+from src.domain.chat.tools.tool_execution_result import ToolExecutionResult
 
 GET_CURRENT_UTC_TIME_SCHEMA: dict = {
     "type": "function",
@@ -33,5 +35,5 @@ class GetCurrentUtcTimeArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-async def get_current_utc_time_handler(_args: GetCurrentUtcTimeArgs) -> str:
-    return datetime.now(UTC).isoformat()
+async def get_current_utc_time_handler(_args: GetCurrentUtcTimeArgs) -> ToolExecutionResult:
+    return ToolExecutionResult(content=datetime.now(UTC).isoformat())

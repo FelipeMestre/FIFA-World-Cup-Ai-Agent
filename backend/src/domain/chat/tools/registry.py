@@ -1,9 +1,21 @@
 """Tool registry for the bounded tool-execution loop.
 
-A plain `dict[str, ToolDefinition]` built at import time -- the simplest
-structure that still generalizes when real tools are added later. Currently
-holds exactly one dummy tool; adding a real analytics tool is out of scope
-for this change.
+Two tiers:
+
+- `STATIC_TOOL_REGISTRY` -- tools whose handler needs no request-scoped
+  dependency (currently just the dummy `get_current_utc_time`). Safe to
+  build once at import time.
+- `build_tool_registry(...)` -- assembles the full per-request registry,
+  adding any tool whose handler is bound to a request-scoped dependency
+  (currently `get_team_analysis`, bound to an `AsyncSession`-backed
+  repository). Called from `get_chat_service` (src/api/v1/chat/routers/
+  chat_router.py), once per request, the same way `get_national_team_repository`
+  et al. are -- never at import time, since the session it closes over
+  doesn't exist yet then.
+
+`ALL_TOOL_SCHEMAS` covers every tool regardless of tier: a JSON schema
+carries no dependency, so it's fine to list statically and send to every
+request as the default `tools` payload.
 """
 
 from collections.abc import Awaitable, Callable
@@ -15,24 +27,62 @@ from src.domain.chat.tools.get_current_utc_time import (
     GetCurrentUtcTimeArgs,
     get_current_utc_time_handler,
 )
+from src.domain.chat.tools.get_team_analysis import (
+    GET_TEAM_ANALYSIS_SCHEMA,
+    GetTeamAnalysisArgs,
+    build_get_team_analysis_handler,
+)
+from src.domain.chat.tools.tool_execution_result import ToolExecutionResult
+from src.infra.postgres.interfaces.team_analytics_repository_interface import (
+    TeamAnalyticsRepositoryInterface,
+)
 
 
 class ToolDefinition(BaseModel):
     """Pairs one tool's OpenAI/OpenRouter tool-calling JSON schema with its
     Pydantic v2 argument-validation model and async handler.
+
+    `widget_type` is the tool's fixed presentation identifier (e.g.
+    `"team_widget"` for `get_team_analysis`), used by `ToolCallExecutor` to
+    tag a successful call's `widget_data` -- `None` for a tool with no
+    widget, like `get_current_utc_time`.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     json_schema: dict
     args_model: type[BaseModel]
-    handler: Callable[[BaseModel], Awaitable[str]]
+    handler: Callable[[BaseModel], Awaitable[ToolExecutionResult]]
+    widget_type: str | None = None
 
 
-TOOL_REGISTRY: dict[str, ToolDefinition] = {
+STATIC_TOOL_REGISTRY: dict[str, ToolDefinition] = {
     "get_current_utc_time": ToolDefinition(
         json_schema=GET_CURRENT_UTC_TIME_SCHEMA,
         args_model=GetCurrentUtcTimeArgs,
         handler=get_current_utc_time_handler,
     ),
 }
+
+ALL_TOOL_SCHEMAS: list[dict] = [
+    GET_CURRENT_UTC_TIME_SCHEMA,
+    GET_TEAM_ANALYSIS_SCHEMA,
+]
+
+
+def build_tool_registry(
+    team_analytics_repository: TeamAnalyticsRepositoryInterface,
+) -> dict[str, ToolDefinition]:
+    """Assembles the full tool registry for one request. Merges the static
+    tier with every dependency-bound tool, freshly bound to this request's
+    repositories.
+    """
+    return {
+        **STATIC_TOOL_REGISTRY,
+        "get_team_analysis": ToolDefinition(
+            json_schema=GET_TEAM_ANALYSIS_SCHEMA,
+            args_model=GetTeamAnalysisArgs,
+            handler=build_get_team_analysis_handler(team_analytics_repository),
+            widget_type="team_widget",
+        ),
+    }

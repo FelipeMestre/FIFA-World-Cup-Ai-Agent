@@ -11,10 +11,13 @@ from src.api.v1.chat.dtos.chat_dtos import (
     ContentDeltaEventDto,
     ErrorEventDto,
     MessageDoneEventDto,
+    MessagePart,
     ReasoningDeltaEventDto,
     SendMessageRequest,
+    TeamWidgetPart,
     TextPart,
     ToolCallEventDto,
+    WidgetReadyEventDto,
 )
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.services.chat_service import (
@@ -25,9 +28,18 @@ from src.domain.chat.services.chat_service import (
     MessageDoneEvent,
     ReasoningDeltaEvent,
     ToolCallRequestedEvent,
+    WidgetReadyEvent,
 )
+from src.domain.chat.services.tool_call_executor import ToolWidgetResult
+from src.domain.chat.tools.registry import ToolDefinition, build_tool_registry
 from src.infra.openrouter.client import get_openrouter_client
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
+from src.infra.postgres.interfaces.team_analytics_repository_interface import (
+    TeamAnalyticsRepositoryInterface,
+)
+from src.infra.postgres.repositories.team_analytics_repository import (
+    get_team_analytics_repository,
+)
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
@@ -39,14 +51,30 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 _UNAVAILABLE_ERROR_DETAIL = "The chat assistant is temporarily unavailable"
 
+# `ToolDefinition.widget_type` -> the `MessagePart` subtype that carries it.
+# Presentation concern, so it lives at the API boundary, not in the domain
+# (the tool/registry layer only knows the string tag, never this DTO).
+_WIDGET_TYPE_TO_PART_CLASS: dict[str, type[TeamWidgetPart]] = {
+    "team_widget": TeamWidgetPart,
+}
+
+
+def get_tool_registry(
+    team_analytics_repository: Annotated[
+        TeamAnalyticsRepositoryInterface, Depends(get_team_analytics_repository)
+    ],
+) -> dict[str, ToolDefinition]:
+    return build_tool_registry(team_analytics_repository)
+
 
 def get_chat_service(
     conversation_cache: Annotated[
         ConversationCacheRepositoryInterface, Depends(get_conversation_cache_repository)
     ],
     openrouter_client: Annotated[OpenRouterClientInterface, Depends(get_openrouter_client)],
+    tool_registry: Annotated[dict[str, ToolDefinition], Depends(get_tool_registry)],
 ) -> ChatService:
-    return ChatService(conversation_cache, openrouter_client)
+    return ChatService(conversation_cache, openrouter_client, tool_registry)
 
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
@@ -59,7 +87,7 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
     description=(
         "Sends a user message to the World Cup AI Scout assistant and streams its reply "
         "via Server-Sent Events (`reasoning_delta`, `content_delta`, `tool_call`, "
-        "`cap_reached`, `message_done`, `error`)."
+        "`widget_ready`, `cap_reached`, `message_done`, `error`)."
     ),
 )
 async def send_message(
@@ -85,6 +113,19 @@ async def _stream_chat_events(
         yield _format_sse(ErrorEventDto(detail=_UNAVAILABLE_ERROR_DETAIL))
 
 
+def _widget_part(widget: ToolWidgetResult) -> MessagePart:
+    part_class = _WIDGET_TYPE_TO_PART_CLASS.get(widget.widget_type)
+    if part_class is None:
+        raise ValueError(f"No MessagePart mapped for widget_type={widget.widget_type!r}")
+    return part_class(data=widget.data)
+
+
+def _segment_to_part(segment: str | ToolWidgetResult) -> MessagePart:
+    if isinstance(segment, str):
+        return TextPart(content=segment)
+    return _widget_part(segment)
+
+
 def _to_dto(event: ChatTurnEvent) -> ChatStreamEvent:
     if isinstance(event, ReasoningDeltaEvent):
         return ReasoningDeltaEventDto(content=event.content)
@@ -92,13 +133,20 @@ def _to_dto(event: ChatTurnEvent) -> ChatStreamEvent:
         return ContentDeltaEventDto(content=event.content)
     if isinstance(event, ToolCallRequestedEvent):
         return ToolCallEventDto(name=event.name)
+    if isinstance(event, WidgetReadyEvent):
+        return WidgetReadyEventDto(part=_widget_part(event.widget))
     if isinstance(event, CapReachedEvent):
         return CapReachedEventDto(content=event.content, clarification=event.clarification)
     if isinstance(event, MessageDoneEvent):
+        # `content_segments` already carries text and widgets in the order
+        # they occurred (see `MessageDoneEvent`'s docstring) -- never
+        # `[all text, *widgets]`, which is what made a widget jump to the
+        # bottom once the turn resolved.
+        parts = [_segment_to_part(s) for s in event.content_segments] or [
+            TextPart(content=event.content)
+        ]
         return MessageDoneEventDto(
-            conversation_id=event.conversation_id,
-            parts=[TextPart(content=event.content)],
-            model=event.model,
+            conversation_id=event.conversation_id, parts=parts, model=event.model
         )
     raise ValueError(f"Unhandled chat stream event: {event!r}")
 

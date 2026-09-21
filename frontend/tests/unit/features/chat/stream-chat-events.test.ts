@@ -57,6 +57,18 @@ describe("streamChatEvents", () => {
     expect(events).toEqual([{ type: "tool_call", name: "get_current_utc_time" }]);
   });
 
+  it("parses a widget_ready frame", async () => {
+    const stream = sseStream([
+      'event: widget_ready\ndata: {"part": {"type": "team_widget", "data": {"id": "team-arg"}}}\n\n',
+    ]);
+
+    const events = await collect(stream);
+
+    expect(events).toEqual([
+      { type: "widget_ready", part: { type: "team_widget", data: { id: "team-arg" } } },
+    ]);
+  });
+
   it("parses a cap_reached frame followed by message_done", async () => {
     const stream = sseStream([
       'event: cap_reached\ndata: {"content": "Based on what I found so far...", "clarification": "Could you clarify what you are looking for?"}\n\n',

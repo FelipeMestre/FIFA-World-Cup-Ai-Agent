@@ -11,8 +11,10 @@ class TextPart(BaseModel):
 
 
 class TeamWidgetPart(BaseModel):
-    """Not implemented yet -- defined for forward-compat with a future
-    analytics-tool phase."""
+    """`data` is `TeamAnalysis.model_dump(mode="json", by_alias=True)` --
+    already camelCased for the frontend's `TeamSummary` contract, kept as a
+    plain `dict` here rather than re-declaring the shape in the API layer.
+    """
 
     type: Literal["team_widget"] = "team_widget"
     data: dict
@@ -89,6 +91,19 @@ class ToolCallEventDto(BaseModel):
     name: str
 
 
+class WidgetReadyEventDto(BaseModel):
+    """SSE `widget_ready` event: a widget-producing tool call resolved
+    inside the loop. `part` is the same shape a `message_done` event's
+    `parts` will carry for this widget -- sent early so the frontend can
+    render it without waiting for the rest of the turn.
+    """
+
+    type: Literal[openrouter_schemas.ChatStreamEventType.WIDGET_READY] = (
+        openrouter_schemas.ChatStreamEventType.WIDGET_READY
+    )
+    part: MessagePart
+
+
 class CapReachedEventDto(BaseModel):
     """SSE `cap_reached` event: the tool loop's iteration cap tripped.
     Carries the best-effort partial content plus a clarification ask. Always
@@ -130,6 +145,7 @@ ChatStreamEvent = Annotated[
     ReasoningDeltaEventDto
     | ContentDeltaEventDto
     | ToolCallEventDto
+    | WidgetReadyEventDto
     | CapReachedEventDto
     | MessageDoneEventDto
     | ErrorEventDto,

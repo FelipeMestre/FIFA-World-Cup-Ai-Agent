@@ -121,3 +121,62 @@ First two worktrees were the integration with OpenRouter and the Ingestion of th
 
 ## The use of PI and Open Router free models
 When runned out of claude code tokens, i have just installed a new tool to learn. Pi, a light harness that can be fully customizable, and together with what i learned about OpenRouter, I will use the free models to implement some UI while claude is reloading my subscription tokens. The same harness I use in Claude, Gentle AI, is available for pi, so i can reuse the long term memory I store in a software named Engram. And continue developing
+
+## Creating the backend tools and the frontend widgets for the tool responses
+Here is a diagram of how the system reacts to a user message. And how tool execution loop processes the tool calling instructions of the model. 
+
+```mermaid
+    sequenceDiagram
+        actor FE as Frontend
+        participant RT as chat_router
+        participant CS as ChatService
+        participant TCE as ToolCallExecutor
+        participant LLM as OpenRouter (LLM)
+        participant REG as tool_registry
+        participant H as Tool handler
+        participant DB as Postgres
+
+        FE->>RT: POST /chat/messages
+        RT->>RT: Depends chain: get_db → get_team_analytics_repository → get_tool_registry → get_chat_service
+        RT->>CS: send_message(conversation_id, message)
+        CS->>CS: load history (Redis) + prepend system prompt
+        CS->>TCE: run(completion_messages, tools=ALL_TOOL_SCHEMAS)
+
+        loop up to MAX_ITERATIONS (5)
+            TCE->>LLM: create_chat_completion(messages, tools)
+            LLM-->>TCE: stream of chunks
+            TCE-->>FE: ReasoningDeltaEvent / ContentDeltaEvent (live)
+            TCE->>TCE: aggregate chunks → ChatCompletionResult
+
+            alt finish_reason == "stop"
+                TCE-->>CS: TurnResolvedEvent(result)
+            else finish_reason == "tool_calls"
+                TCE->>TCE: append assistant tool_call message
+                loop each requested tool_call
+                    TCE-->>FE: ToolCallRequestedEvent(name)
+                    TCE->>REG: lookup by tool_call.name
+                    alt unknown tool
+                        REG-->>TCE: not found
+                        TCE->>TCE: build error "tool" message
+                    else known tool
+                        TCE->>TCE: args_model.model_validate_json(arguments)
+                        alt invalid arguments
+                            TCE->>TCE: build "Invalid arguments" tool message
+                        else valid
+                            TCE->>H: handler(args)
+                            H->>DB: repository query (e.g. get_team_analysis)
+                            DB-->>H: rows
+                            H-->>TCE: JSON string result
+                            TCE->>TCE: wrap as role:"tool" message (tool_call_id)
+                        end
+                    end
+                end
+                Note over TCE,LLM: loop repeats — tool result appended,<br/>full conversation re-sent to the model
+            end
+        end
+
+        TCE-->>CS: TurnResolvedEvent (ChatCompletionResult or ToolLoopCapReached)
+        CS->>CS: persist updated history (Redis)
+        CS-->>RT: MessageDoneEvent (+ CapReachedEvent if capped)
+        RT-->>FE: SSE: event: message_done
+```
