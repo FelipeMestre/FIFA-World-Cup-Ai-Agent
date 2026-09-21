@@ -2,10 +2,10 @@ import { z } from "zod";
 
 /**
  * Runtime validation for the backend's `MessagePart` discriminated union
- * (design/README.md's widget contract). Only `type: "text"` is ever
- * actually sent by the live backend today; the other four are validated
- * defensively so a future analytics-tool payload that doesn't yet match our
- * rich widget shape degrades to a fallback instead of crashing the thread.
+ * (design/README.md's widget contract). `type: "team_widget"` is sent live
+ * by the backend's `get_team_analysis` tool; the other three remain
+ * validated defensively so a payload that doesn't yet match our rich
+ * widget shape degrades to a fallback instead of crashing the thread.
  */
 
 const positionSchema = z.enum(["GK", "DEF", "MID", "FWD"]);

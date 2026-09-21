@@ -24,6 +24,7 @@ class ChatStreamEventType(StrEnum):
     REASONING_DELTA = "reasoning_delta"
     CONTENT_DELTA = "content_delta"
     TOOL_CALL = "tool_call"
+    WIDGET_READY = "widget_ready"
     CAP_REACHED = "cap_reached"
     MESSAGE_DONE = "message_done"
     ERROR = "error"

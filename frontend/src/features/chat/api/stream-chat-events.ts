@@ -22,6 +22,17 @@ export interface ToolCallEvent {
 }
 
 /**
+ * A widget-producing tool call resolved inside the loop -- sent before the
+ * model's final text finishes streaming, so the widget can render without
+ * waiting for the rest of the turn. `part` is the same shape a
+ * `message_done` event's `parts` will carry for this widget.
+ */
+export interface WidgetReadyEvent {
+  type: "widget_ready";
+  part: RawMessagePart;
+}
+
+/**
  * The tool-execution loop's iteration cap tripped. `content` is the
  * best-effort partial text accumulated so far (not a delta); `clarification`
  * is the ask to show the user, rendered as a distinct inline note. Always
@@ -49,6 +60,7 @@ export type ChatStreamEvent =
   | ReasoningDeltaEvent
   | ContentDeltaEvent
   | ToolCallEvent
+  | WidgetReadyEvent
   | CapReachedEvent
   | MessageDoneEvent
   | ErrorEvent;
@@ -57,6 +69,7 @@ const KNOWN_EVENT_TYPES: ReadonlySet<ChatStreamEvent["type"]> = new Set([
   "reasoning_delta",
   "content_delta",
   "tool_call",
+  "widget_ready",
   "cap_reached",
   "message_done",
   "error",
