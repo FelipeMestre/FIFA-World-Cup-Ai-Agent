@@ -33,7 +33,7 @@ export function LoginForm() {
     setIsSubmitting(true);
     try {
       await login(values);
-      router.push("/");
+      router.push("/home");
       router.refresh();
     } catch (error) {
       setFormError(

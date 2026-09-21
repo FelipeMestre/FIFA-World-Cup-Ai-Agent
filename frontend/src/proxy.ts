@@ -12,22 +12,26 @@ import type { NextRequest } from "next/server";
  * checks here are a UX shortcut, not the authorization boundary.
  */
 const SESSION_COOKIE_NAME = "fai_session";
+const PUBLIC_PATHS = new Set(["/login"]);
+const SIGNED_IN_LANDING = "/home";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = request.cookies.has(SESSION_COOKIE_NAME);
 
-  if (pathname === "/" && !hasSession) {
+  if (!hasSession && !PUBLIC_PATHS.has(pathname)) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (pathname === "/login" && hasSession) {
-    return NextResponse.redirect(new URL("/", request.url));
+  // `/` has no page of its own, and a signed-in visitor has no use for the
+  // login form.
+  if (hasSession && (pathname === "/" || pathname === "/login")) {
+    return NextResponse.redirect(new URL(SIGNED_IN_LANDING, request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/", "/login"],
+  matcher: ["/", "/home", "/login"],
 };

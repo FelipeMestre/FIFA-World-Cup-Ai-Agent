@@ -1,4 +1,4 @@
-export { ChatShell } from "@/features/chat/components/chat-shell";
+export { HomeShell } from "@/features/chat/components/home-shell";
 export type {
   ChatMessage,
   EntityRef,
