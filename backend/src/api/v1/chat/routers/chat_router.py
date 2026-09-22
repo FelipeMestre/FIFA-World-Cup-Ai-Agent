@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.auth.services.dependencies import JwtDataDep
 from src.api.v1.chat.dtos.chat_dtos import (
+    WIDGET_TYPE_TO_PART_CLASS,
     CapReachedEventDto,
     ChatStreamEvent,
     CompareWidgetPart,
@@ -97,7 +98,6 @@ _WIDGET_TYPE_TO_PART_CLASS: dict[
     "compare_widget": CompareWidgetPart,
 }
 
-
 def get_tool_registry(
     team_analytics_repository: Annotated[
         TeamAnalyticsRepositoryInterface, Depends(get_team_analytics_repository)
@@ -185,7 +185,7 @@ async def _stream_chat_events(
 
 
 def _widget_part(widget: ToolWidgetResult) -> MessagePart:
-    part_class = _WIDGET_TYPE_TO_PART_CLASS.get(widget.widget_type)
+    part_class = WIDGET_TYPE_TO_PART_CLASS.get(widget.widget_type)
     if part_class is None:
         raise ValueError(f"No MessagePart mapped for widget_type={widget.widget_type!r}")
     return part_class(data=widget.data)

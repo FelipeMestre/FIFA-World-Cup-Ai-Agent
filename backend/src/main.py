@@ -5,6 +5,7 @@ from src.api.v1.admin.routers.identity_link_router import router as identity_lin
 from src.api.v1.admin.routers.ingestion_router import router as ingestion_router
 from src.api.v1.auth.routers.auth_router import router as auth_router
 from src.api.v1.chat.routers.chat_router import router as chat_router
+from src.api.v1.chat.routers.conversation_router import router as conversation_router
 from src.api.v1.matches.routers.match_router import router as match_router
 from src.api.v1.national_teams.routers.national_team_router import (
     router as national_team_router,
@@ -17,6 +18,7 @@ SHOW_DOCS_IN = {"local", "staging"}
 API_V1_ROUTERS = (
     auth_router,
     chat_router,
+    conversation_router,
     national_team_router,
     match_router,
     player_router,

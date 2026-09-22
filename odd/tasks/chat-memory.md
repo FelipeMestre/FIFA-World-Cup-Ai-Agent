@@ -161,9 +161,59 @@ Route legend: [inline] = direct edit, [delegated] = bounded sub-agent writer.
       Gap noticed, not in scope here: there is still no "load/replay a
       conversation's messages" endpoint (T5/T6 territory) -- a page reload
       cannot yet repopulate history from Postgres.
-- [ ] **T5 — Sidebar list + title endpoints**: `GET /conversations`
+- [x] **T5 — Sidebar list, title, and reload endpoints**: `GET /conversations`
       (current user's conversations, ordered by last activity),
-      `PATCH /conversations/{id}` (title edit, ownership-checked).
+      `PATCH /conversations/{id}` (title edit, ownership-checked),
+      `GET /conversations/{id}/messages` (full replay — always reads
+      Postgres directly, never Redis: Redis only caches flat role+content
+      for the LLM prompt, it has no widget data, so a reload endpoint
+      checking cache-first would silently drop widgets on a hit — decided
+      2026-09-22). All three ownership-checked via `get_owned`/`update_title`
+      returning `None` on missing-or-not-owned → 404 (never a 403 that would
+      leak existence, consistent with T3's `get_owned` rationale).
+      Done 2026-09-22: new `conversation_router.py` (`APIRouter(prefix=
+      "/conversations", tags=["conversations"])`), registered in
+      `main.py`'s `API_V1_ROUTERS`. New `conversation_dtos.py`
+      (`ConversationSummaryDto`, `UpdateConversationTitleRequest`,
+      `ConversationMessageDto`, `ConversationMessagesResponse`). `PATCH`
+      injects `AsyncSession` via `get_db` and calls `session.commit()`
+      itself after `update_title` succeeds, per T3's flush-only convention.
+      `GET .../messages` calls `get_owned` before `list_for_conversation`
+      so a non-owner 404s without a data query, even though
+      `list_for_conversation` is already ownership-filtered as
+      defense-in-depth. Promoted the widget_type -> `MessagePart` mapping
+      (previously `chat_router.py`'s module-private `_WIDGET_TYPE_TO_PART_CLASS`)
+      to `chat_dtos.py` as `WIDGET_TYPE_TO_PART_CLASS` -- both routers now
+      import the one dict instead of each keeping its own copy;
+      `chat_router.py` updated accordingly (import-only change, no
+      behavior change). 6 new integration tests in
+      `backend/tests/integration/test_conversation_endpoints.py` (list
+      ordering + per-user scoping, rename + both 404 cases returning an
+      identical body, replay with a widget, replay 404 for another user's
+      conversation), all passing against local docker Postgres. `ruff
+      check`/`ruff format` clean on every touched file.
+      Full suite: 144 passed, 13 failed, 3 errored. This is 6 MORE
+      failures than the previously documented baseline (7 failed/3
+      errored), all 6 inside `test_chat_send_message.py` (previously
+      passing tests now fail with a Postgres FK violation / `error` SSE
+      event / 403 becoming 200). Verified with `git stash` that this
+      reproduces identically on the pre-T5 (T4) code with none of this
+      task's files present -- so it is a pre-existing bug in T4's
+      `chat_service.py`/`get_db`, not something T5 introduced. Root cause:
+      `get_db`'s `async with SessionFactory()` context exits (rolling back
+      anything only flushed, never committed) as soon as the
+      `send_message` endpoint function returns the `StreamingResponse`
+      object -- before `_stream_chat_events`'s generator actually runs and
+      calls `session.commit()`. So `start_turn`'s flush-only
+      `get_or_create()` conversation row is rolled back before
+      `send_message`'s later `chat_message` insert, which then violates
+      the `chat_message_conversation_id_fkey` FK. Not fixed here --
+      `chat_service.py`/`chat_router.py`'s `send_message`/`start_turn`
+      logic is explicitly out of scope for T5. Flagged as a gap for
+      whoever picks up T6 or a dedicated fix task; every other baseline
+      category (`tool_call_executor` x3, `ingestion_repository` x2,
+      `player_identity_link_repository` x1, `identity_link_router` x3
+      errors) is unchanged.
 - [ ] **T6 — Frontend**: client-generated UUID on new chat, URL update,
       sidebar conversation list feature, title rename UI.
 

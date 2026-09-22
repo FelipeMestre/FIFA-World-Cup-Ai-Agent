@@ -58,6 +58,20 @@ MessagePart = Annotated[
     Field(discriminator="type"),
 ]
 
+# `ToolDefinition.widget_type` -> the `MessagePart` subtype that carries it.
+# Presentation concern, so it lives at the API boundary, not in the domain
+# (the tool/registry layer only knows the string tag, never this DTO).
+# Shared by `chat_router.py` (SSE `widget_ready`/`message_done` events) and
+# `conversation_router.py` (`GET /conversations/{id}/messages` replay) so
+# the mapping has exactly one place to drift from.
+WIDGET_TYPE_TO_PART_CLASS: dict[
+    str, type[TeamWidgetPart] | type[PlayerWidgetPart] | type[CompareWidgetPart]
+] = {
+    "team_widget": TeamWidgetPart,
+    "player_widget": PlayerWidgetPart,
+    "compare_widget": CompareWidgetPart,
+}
+
 
 class ChatReply(BaseModel):
     parts: list[MessagePart]
