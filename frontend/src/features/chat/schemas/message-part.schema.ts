@@ -155,13 +155,15 @@ const playerComparisonSchema = z.object({
   rows: z.array(
     z.object({
       label: z.string(),
-      note: z.string().optional(),
+      // Backend sends this key as JSON `null`, never omits it -- `.optional()`
+      // alone rejects `null` and would fail the whole widget's validation.
+      note: z.string().nullable().optional(),
       playerAValue: z.string(),
       playerBValue: z.string(),
       playerAIsBetter: z.boolean(),
       playerBIsBetter: z.boolean(),
-      playerAPercentile: z.number().optional(),
-      playerBPercentile: z.number().optional(),
+      playerAPercentile: z.number().nullable().optional(),
+      playerBPercentile: z.number().nullable().optional(),
     }),
   ),
   insights: z.array(z.string()),

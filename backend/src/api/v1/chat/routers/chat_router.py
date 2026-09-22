@@ -8,6 +8,7 @@ from src.api.v1.auth.services.dependencies import JwtDataDep
 from src.api.v1.chat.dtos.chat_dtos import (
     CapReachedEventDto,
     ChatStreamEvent,
+    CompareWidgetPart,
     ContentDeltaEventDto,
     ErrorEventDto,
     MessageDoneEventDto,
@@ -61,9 +62,12 @@ _UNAVAILABLE_ERROR_DETAIL = "The chat assistant is temporarily unavailable"
 # `ToolDefinition.widget_type` -> the `MessagePart` subtype that carries it.
 # Presentation concern, so it lives at the API boundary, not in the domain
 # (the tool/registry layer only knows the string tag, never this DTO).
-_WIDGET_TYPE_TO_PART_CLASS: dict[str, type[TeamWidgetPart] | type[PlayerWidgetPart]] = {
+_WIDGET_TYPE_TO_PART_CLASS: dict[
+    str, type[TeamWidgetPart] | type[PlayerWidgetPart] | type[CompareWidgetPart]
+] = {
     "team_widget": TeamWidgetPart,
     "player_widget": PlayerWidgetPart,
+    "compare_widget": CompareWidgetPart,
 }
 
 

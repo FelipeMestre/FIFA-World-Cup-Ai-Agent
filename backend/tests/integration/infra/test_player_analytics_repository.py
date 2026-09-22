@@ -1,7 +1,8 @@
 """Integration tests against a real Postgres instance (no mocking, per
 AGENTS.md's testing anti-pattern table): verifies
-`_SqlAlchemyPlayerAnalyticsRepository.get_player_analysis`'s aggregation
-across `player`, `player_stat`, and `national_team`.
+`_SqlAlchemyPlayerAnalyticsRepository.get_player_analysis` and
+`.get_player_comparison`'s aggregation across `player`, `player_stat`, and
+`national_team`.
 """
 
 from collections.abc import AsyncGenerator
@@ -10,6 +11,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.chat.exceptions import chat_exceptions
 from src.infra.postgres.config import SessionFactory, engine
 from src.infra.postgres.repositories.player_analytics_repository import (
     _SqlAlchemyPlayerAnalyticsRepository,
@@ -19,6 +21,7 @@ _TEAM_ID = 990601
 _PLAYER_ID = 990601
 _PEER_ID = 990602
 _GK_ID = 990603
+_ACCENTED_PLAYER_ID = 990604
 
 
 @pytest.fixture
@@ -60,6 +63,15 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
         )
         await session.execute(
             text(
+                "INSERT INTO player (player_id, team_id, player_name, position, club_team, "
+                "market_value_eur, caps, date_of_birth, height_cm, goals) "
+                "VALUES (:id, :team_id, 'Kylian Mbappe', 'FW', 'Test Club', 2000000, 20, "
+                "'1998-12-20', 178, 30)"
+            ),
+            {"id": _ACCENTED_PLAYER_ID, "team_id": _TEAM_ID},
+        )
+        await session.execute(
+            text(
                 "INSERT INTO player_stat (player_id, player_name, team_id, position, "
                 "matches_played, matches_started, minutes_played, goals, assists, shots, "
                 "shots_on_target, yellow_cards, red_cards, penalty_goals, own_goals, "
@@ -91,16 +103,27 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
             ),
             {"id": _GK_ID, "team_id": _TEAM_ID},
         )
+        await session.execute(
+            text(
+                "INSERT INTO player_stat (player_id, player_name, team_id, position, "
+                "matches_played, matches_started, minutes_played, goals, assists, shots, "
+                "shots_on_target, yellow_cards, red_cards, penalty_goals, own_goals, "
+                "clean_sheets, saves, goals_conceded, average_rating, last_verified) "
+                "VALUES (:id, 'Kylian Mbappe', :team_id, 'FW', 5, 5, 450, 8, 3, NULL, NULL, "
+                "0, 0, 2, 0, NULL, NULL, NULL, NULL, now())"
+            ),
+            {"id": _ACCENTED_PLAYER_ID, "team_id": _TEAM_ID},
+        )
         await session.commit()
         yield session
     async with SessionFactory() as cleanup_session:
         await cleanup_session.execute(
-            text("DELETE FROM player_stat WHERE player_id IN (:a, :b, :c)"),
-            {"a": _PLAYER_ID, "b": _PEER_ID, "c": _GK_ID},
+            text("DELETE FROM player_stat WHERE player_id IN (:a, :b, :c, :d)"),
+            {"a": _PLAYER_ID, "b": _PEER_ID, "c": _GK_ID, "d": _ACCENTED_PLAYER_ID},
         )
         await cleanup_session.execute(
-            text("DELETE FROM player WHERE player_id IN (:a, :b, :c)"),
-            {"a": _PLAYER_ID, "b": _PEER_ID, "c": _GK_ID},
+            text("DELETE FROM player WHERE player_id IN (:a, :b, :c, :d)"),
+            {"a": _PLAYER_ID, "b": _PEER_ID, "c": _GK_ID, "d": _ACCENTED_PLAYER_ID},
         )
         await cleanup_session.execute(
             text("DELETE FROM national_team WHERE team_id = :id"), {"id": _TEAM_ID}
@@ -134,6 +157,21 @@ async def test_get_player_analysis_resolves_by_fuzzy_substring(db_session: Async
     analysis = await repository.get_player_analysis("Striker")
     assert analysis is not None
     assert analysis.id == str(_PLAYER_ID)
+
+
+async def test_get_player_analysis_resolves_accented_query_via_unaccent(
+    db_session: AsyncSession,
+) -> None:
+    """DB stores the unaccented 'Kylian Mbappe'; an accented query ('Mbappé')
+    must still resolve via the `unaccent` Postgres extension wrapping both
+    sides of the `ILIKE` comparison in `_resolve_player`.
+    """
+    repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+    analysis = await repository.get_player_analysis("Mbappé")
+
+    assert analysis is not None
+    assert analysis.id == str(_ACCENTED_PLAYER_ID)
+    assert analysis.name == "Kylian Mbappe"
 
 
 async def test_get_player_analysis_computes_totals_and_scope(db_session: AsyncSession) -> None:
@@ -230,3 +268,67 @@ async def test_get_player_analysis_flags_card_prone_discipline(db_session: Async
 
     assert analysis is not None
     assert analysis.discipline_label == "Clean record"
+
+
+async def test_get_player_comparison_raises_for_unmatched_player(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+    with pytest.raises(chat_exceptions.PlayerNotFoundError):
+        await repository.get_player_comparison("Test Striker", "No Such Player")
+
+
+async def test_get_player_comparison_raises_for_same_player(db_session: AsyncSession) -> None:
+    repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+    with pytest.raises(chat_exceptions.SamePlayerComparisonError):
+        await repository.get_player_comparison("Test Striker", "striker")
+
+
+async def test_get_player_comparison_builds_refs_and_rows(db_session: AsyncSession) -> None:
+    repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+    comparison = await repository.get_player_comparison("Test Striker", "Test Peer Forward")
+
+    assert comparison.normalization == "per90"
+    assert comparison.player_a.id == str(_PLAYER_ID)
+    assert comparison.player_a.name == "Test Striker"
+    assert comparison.player_b.id == str(_PEER_ID)
+    assert comparison.player_b.name == "Test Peer Forward"
+
+    goals_row = next(row for row in comparison.rows if row.label == "Goals per 90")
+    # Striker: 6 goals / 450 min -> 1.20 per 90. Peer: 1 goal / 270 min -> 0.33 per 90.
+    assert goals_row.player_a_value == "1.20"
+    assert goals_row.player_b_value == "0.33"
+    assert goals_row.player_a_is_better is True
+    assert goals_row.player_b_is_better is False
+
+    # Goalkeeper-only stats never appear when comparing two outfield players.
+    assert all("Saves" not in row.label for row in comparison.rows)
+    assert all("Conceded" not in row.label for row in comparison.rows)
+
+
+async def test_get_player_comparison_omits_gk_only_rows_for_mixed_positions(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+    comparison = await repository.get_player_comparison("Test Striker", "Test Keeper")
+
+    assert comparison.player_a.position == "FWD"
+    assert comparison.player_b.position == "GK"
+    # The outfield player has no recorded saves/clean sheets/conceded, so
+    # those rows are dropped rather than showing a fabricated 0.
+    assert all(
+        row.label not in {"Saves per 90", "Conceded per 90", "Clean sheets per 90"}
+        for row in comparison.rows
+    )
+    assert any(row.label == "Goals per 90" for row in comparison.rows)
+
+
+async def test_get_player_comparison_builds_insights(db_session: AsyncSession) -> None:
+    repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+    comparison = await repository.get_player_comparison("Test Striker", "Test Peer Forward")
+
+    assert 1 <= len(comparison.insights) <= 3
+    assert all(
+        "Test Striker" in insight or "Test Peer Forward" in insight
+        for insight in comparison.insights
+    )

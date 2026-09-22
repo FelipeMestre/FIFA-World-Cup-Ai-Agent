@@ -38,7 +38,12 @@ class PlayerWidgetPart(BaseModel):
 
 
 class CompareWidgetPart(BaseModel):
-    """Not implemented yet."""
+    """`data` is `PlayerComparison.model_dump(mode="json", by_alias=True)` --
+    already camelCased for the frontend's `PlayerComparison` contract, kept
+    as a plain `dict` here rather than re-declaring the shape in the API
+    layer (same convention as `TeamWidgetPart`/`PlayerWidgetPart`). Produced
+    by the `get_player_comparison` chat tool.
+    """
 
     type: Literal["compare_widget"] = "compare_widget"
     data: dict
