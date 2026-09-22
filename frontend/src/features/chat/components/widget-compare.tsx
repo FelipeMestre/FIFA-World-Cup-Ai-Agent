@@ -56,8 +56,8 @@ export function WidgetCompare({
       <div className="flex grow flex-col gap-3.5 px-4 pt-3.5 pb-4">
         <span className="text-label-sm text-ink-muted">Where they differ most</span>
         {headlineRows.map((row) => {
-          const aNum = Number(row.playerAValue);
-          const bNum = Number(row.playerBValue);
+          const aNum = Number(row.playerAPerNinety);
+          const bNum = Number(row.playerBPerNinety);
           const max = Math.max(aNum, bNum) || 1;
           const aLeads = row.playerAIsBetter;
           const leaderName = aLeads ? playerA.name : playerB.name;
@@ -68,8 +68,8 @@ export function WidgetCompare({
               label={row.label}
               leaderCaption={`▲ +${delta} ${leaderName}`}
               leaderColorClass={aLeads ? "text-accent-live" : "text-ink-secondary"}
-              aValue={row.playerAValue}
-              bValue={row.playerBValue}
+              aValue={row.playerAPerNinety}
+              bValue={row.playerBPerNinety}
               aPct={Math.round((aNum / max) * 100)}
               bPct={Math.round((bNum / max) * 100)}
               aInkClass={aLeads ? "text-ink-primary" : "text-ink-secondary"}

@@ -5,6 +5,7 @@
 from typing import Protocol
 
 from src.domain.player_analytics.model.player_analysis import PlayerAnalysis
+from src.domain.player_analytics.model.player_comparison import PlayerComparison
 
 
 class PlayerAnalyticsRepositoryInterface(Protocol):
@@ -17,5 +18,19 @@ class PlayerAnalyticsRepositoryInterface(Protocol):
 
         Returns `None` when no player matches `player_query`; never raises
         for an unmatched query.
+        """
+        ...
+
+    async def get_player_comparison(
+        self, player_a_query: str, player_b_query: str
+    ) -> PlayerComparison:
+        """Resolve both `player_a_query` and `player_b_query` (case-insensitive
+        names, as supplied by the model from the user's message) against
+        `player`, then build a side-by-side per-90 comparison -- each stat's
+        percentile computed within each player's own position peer group,
+        since the two players may not share a position.
+
+        Raises `PlayerNotFoundError` when either query fails to resolve, and
+        `SamePlayerComparisonError` when both resolve to the same player.
         """
         ...
