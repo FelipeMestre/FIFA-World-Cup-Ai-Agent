@@ -296,10 +296,14 @@ async def test_get_player_comparison_builds_refs_and_rows(db_session: AsyncSessi
 
     goals_row = next(row for row in comparison.rows if row.label == "Goals per 90")
     # Striker: 6 goals / 450 min -> 1.20 per 90. Peer: 1 goal / 270 min -> 0.33 per 90.
-    assert goals_row.player_a_value == "1.20"
-    assert goals_row.player_b_value == "0.33"
+    assert goals_row.player_a_per_ninety == "1.20"
+    assert goals_row.player_b_per_ninety == "0.33"
+    assert goals_row.player_a_total == "6"
+    assert goals_row.player_b_total == "1"
     assert goals_row.player_a_is_better is True
     assert goals_row.player_b_is_better is False
+    assert goals_row.player_a_total_is_better is True
+    assert goals_row.player_b_total_is_better is False
 
     # Goalkeeper-only stats never appear when comparing two outfield players.
     assert all("Saves" not in row.label for row in comparison.rows)

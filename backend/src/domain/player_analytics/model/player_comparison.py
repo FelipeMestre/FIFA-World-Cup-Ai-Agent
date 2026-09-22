@@ -33,10 +33,21 @@ class ComparisonPlayerRef(_CamelModel):
 class ComparisonRowData(_CamelModel):
     label: str
     note: str | None = None
-    player_a_value: str
-    player_b_value: str
+    player_a_per_ninety: str
+    player_b_per_ninety: str
+    player_a_total: str
+    player_b_total: str
+    # Per-90 comparison -- headline/insights basis, and what the percentile
+    # bar below is ranked against.
     player_a_is_better: bool
     player_b_is_better: bool
+    # Raw-total comparison -- independent ordering from the per-90 one above
+    # (a player with more minutes can lead on totals while trailing per-90).
+    player_a_total_is_better: bool
+    player_b_total_is_better: bool
+    # Tied to the per-90 metric only: totals aren't minutes-normalized, so a
+    # "percentile of totals" would misrepresent players with different
+    # minutes played.
     player_a_percentile: int | None = None
     player_b_percentile: int | None = None
 
