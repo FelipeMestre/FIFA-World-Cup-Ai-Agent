@@ -45,8 +45,8 @@ export function PanelPlayer({
           <div className="flex flex-col gap-0.5">
             <span className="text-heading-lg">{player.name}</span>
             <span className="text-body-sm text-ink-secondary">
-              {player.teamCode} · {player.position === "GK" ? "Goalkeeper" : player.position} · #
-              {player.jerseyNumber} · {player.scopeLabel}
+              {player.teamCode} · {player.position === "GK" ? "Goalkeeper" : player.position} ·{" "}
+              {player.scopeLabel}
             </span>
           </div>
         </div>

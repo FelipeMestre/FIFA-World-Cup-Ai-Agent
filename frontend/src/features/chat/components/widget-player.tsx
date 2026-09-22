@@ -33,7 +33,7 @@ export function WidgetPlayer({
         <div className="flex min-w-0 grow flex-col gap-0.5">
           <span className="text-heading-lg">{player.name}</span>
           <span className="text-body-sm text-ink-secondary">
-            {player.teamCode} · {player.position} · #{player.jerseyNumber}
+            {player.teamCode} · {player.position}
           </span>
         </div>
       </div>

@@ -28,7 +28,10 @@ class MatchWidgetPart(BaseModel):
 
 
 class PlayerWidgetPart(BaseModel):
-    """Not implemented yet."""
+    """`data` is `PlayerAnalysis.model_dump(mode="json", by_alias=True)` --
+    already camelCased for the frontend's `PlayerSummary` contract, kept as
+    a plain `dict` here rather than re-declaring the shape in the API layer.
+    """
 
     type: Literal["player_widget"] = "player_widget"
     data: dict

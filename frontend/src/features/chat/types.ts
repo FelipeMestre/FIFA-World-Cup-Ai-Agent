@@ -151,8 +151,8 @@ export interface PlayerStatRow {
   stat: string;
   total: string;
   perNinety: string;
-  /** Percentile within position, undefined for stats with no percentile (e.g. minutes). */
-  percentile?: number;
+  /** Percentile within position; `null` for stats with no percentile (e.g. minutes) -- the wire value, not `undefined` (backend sends the key with a JSON `null`, never omits it). */
+  percentile: number | null;
 }
 
 export interface PlayerBenchmarkRow {
@@ -167,7 +167,6 @@ export interface PlayerSummary {
   initials: string;
   teamCode: string;
   position: Position;
-  jerseyNumber: number;
   appearances: number;
   minutes: number;
   scopeLabel: string;
