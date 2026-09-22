@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowLeftRight, ChevronDown } from "lucide-react";
+import { useState } from "react";
 
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { PanelHeader } from "@/features/chat/components/panel-header";
 import type { PlayerComparison } from "@/features/chat/types";
+
+type Normalization = "per90" | "totals";
 
 /** Player comparison side panel (design/artboards/PanelCompare.dc.html). */
 export function PanelCompare({
@@ -21,6 +23,9 @@ export function PanelCompare({
   isSheet?: boolean;
 }) {
   const { playerA, playerB } = comparison;
+  const [normalization, setNormalization] = useState<Normalization>(
+    comparison.normalization,
+  );
 
   return (
     <aside
@@ -76,42 +81,37 @@ export function PanelCompare({
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                aria-label={`Swap ${slot.toLowerCase()}`}
-                className="focus-ring flex h-11 items-center gap-2 rounded-md border border-border-strong bg-surface-700 px-3 text-label-md text-ink-primary"
-              >
-                <ArrowLeftRight className="size-4" aria-hidden />
-                <span className="grow text-left">Swap player</span>
-                <ChevronDown className="size-4 text-ink-muted" aria-hidden />
-              </button>
             </div>
           ))}
         </div>
         <div className="flex items-center justify-between gap-3">
-          <div
-            role="group"
-            aria-label="Normalization"
-            className="flex gap-0.5 rounded-md border border-border-strong bg-surface-950 p-0.5"
-          >
-            <button
-              type="button"
-              aria-pressed="true"
-              className="h-9 rounded-sm bg-surface-600 px-3.5 text-label-md text-ink-primary"
-            >
-              Per 90
-            </button>
-            <button
-              type="button"
-              aria-pressed="false"
-              className="h-9 rounded-sm px-3.5 text-label-md text-ink-secondary"
-            >
-              Totals
-            </button>
-          </div>
           <span className="text-body-sm text-ink-muted">
             {comparison.scopeLabel}
           </span>
+          <div
+            className="flex rounded-md border border-border-strong bg-surface-800 p-0.5"
+            role="group"
+            aria-label="Value normalization"
+          >
+            {[
+              { key: "per90" as const, label: "Per 90" },
+              { key: "totals" as const, label: "Totals" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={normalization === key}
+                onClick={() => setNormalization(key)}
+                className={`rounded-[4px] px-2.5 py-1 text-label-sm transition-colors ${
+                  normalization === key
+                    ? "bg-surface-700 text-ink-primary"
+                    : "text-ink-muted hover:text-ink-secondary"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -123,7 +123,7 @@ export function PanelCompare({
                 scope="col"
                 className="px-3.5 text-left text-label-sm text-ink-muted"
               >
-                Per 90
+                {normalization === "per90" ? "Per 90" : "Totals"}
               </th>
               <th
                 scope="col"
@@ -142,39 +142,58 @@ export function PanelCompare({
             </tr>
           </thead>
           <tbody>
-            {comparison.rows.map((row) => (
-              <tr
-                key={row.label}
-                className="h-14 border-b border-border-subtle"
-              >
-                <th scope="row" className="px-3.5 text-left font-normal">
-                  <span className="block text-body-md text-ink-primary">
-                    {row.label}
-                  </span>
-                  {row.note ? (
-                    <span className="block text-data-sm text-ink-muted">
-                      {row.note}
+            {comparison.rows.map((row) => {
+              const isPerNinety = normalization === "per90";
+              const valueA = isPerNinety
+                ? row.playerAPerNinety
+                : row.playerATotal;
+              const valueB = isPerNinety
+                ? row.playerBPerNinety
+                : row.playerBTotal;
+              const aIsBetter = isPerNinety
+                ? row.playerAIsBetter
+                : row.playerATotalIsBetter;
+              const bIsBetter = isPerNinety
+                ? row.playerBIsBetter
+                : row.playerBTotalIsBetter;
+              return (
+                <tr
+                  key={row.label}
+                  className="h-14 border-b border-border-subtle"
+                >
+                  <th scope="row" className="px-3.5 text-left font-normal">
+                    <span className="block text-body-md text-ink-primary">
+                      {row.label}
                     </span>
-                  ) : null}
-                </th>
-                <td className="px-3">
-                  <ComparisonCell
-                    value={row.playerAValue}
-                    isBetter={row.playerAIsBetter}
-                    percentile={row.playerAPercentile}
-                    barClass="bg-accent-live"
-                  />
-                </td>
-                <td className="px-3 pr-3.5">
-                  <ComparisonCell
-                    value={row.playerBValue}
-                    isBetter={row.playerBIsBetter}
-                    percentile={row.playerBPercentile}
-                    barClass="bg-ink-secondary"
-                  />
-                </td>
-              </tr>
-            ))}
+                    {row.note ? (
+                      <span className="block text-data-sm text-ink-muted">
+                        {row.note}
+                      </span>
+                    ) : null}
+                  </th>
+                  <td className="px-3">
+                    <ComparisonCell
+                      value={valueA}
+                      isBetter={aIsBetter}
+                      percentile={
+                        isPerNinety ? row.playerAPercentile : undefined
+                      }
+                      barClass="bg-accent-live"
+                    />
+                  </td>
+                  <td className="px-3 pr-3.5">
+                    <ComparisonCell
+                      value={valueB}
+                      isBetter={bIsBetter}
+                      percentile={
+                        isPerNinety ? row.playerBPercentile : undefined
+                      }
+                      barClass="bg-ink-secondary"
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <p className="text-body-sm text-ink-muted">

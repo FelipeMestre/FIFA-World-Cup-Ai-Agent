@@ -195,10 +195,16 @@ export interface ComparisonPlayerRef {
 export interface ComparisonRowData {
   label: string;
   note?: string;
-  playerAValue: string;
-  playerBValue: string;
+  playerAPerNinety: string;
+  playerBPerNinety: string;
+  playerATotal: string;
+  playerBTotal: string;
+  /** Per-90 comparison -- headline/insights basis and what the percentile below is ranked against. */
   playerAIsBetter: boolean;
   playerBIsBetter: boolean;
+  /** Raw-total comparison -- can differ in order from the per-90 one above. */
+  playerATotalIsBetter: boolean;
+  playerBTotalIsBetter: boolean;
   playerAPercentile?: number;
   playerBPercentile?: number;
 }
