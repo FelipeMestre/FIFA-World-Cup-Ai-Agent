@@ -10,6 +10,7 @@ from src.api.v1.chat.dtos.chat_dtos import (
     ChatStreamEvent,
     ContentDeltaEventDto,
     ErrorEventDto,
+    MatchWidgetPart,
     MessageDoneEventDto,
     MessagePart,
     PlayerWidgetPart,
@@ -35,11 +36,17 @@ from src.domain.chat.services.tool_call_executor import ToolWidgetResult
 from src.domain.chat.tools.registry import ToolDefinition, build_tool_registry
 from src.infra.openrouter.client import get_openrouter_client
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
+from src.infra.postgres.interfaces.match_analytics_repository_interface import (
+    MatchAnalyticsRepositoryInterface,
+)
 from src.infra.postgres.interfaces.player_analytics_repository_interface import (
     PlayerAnalyticsRepositoryInterface,
 )
 from src.infra.postgres.interfaces.team_analytics_repository_interface import (
     TeamAnalyticsRepositoryInterface,
+)
+from src.infra.postgres.repositories.match_analytics_repository import (
+    get_match_analytics_repository,
 )
 from src.infra.postgres.repositories.player_analytics_repository import (
     get_player_analytics_repository,
@@ -61,9 +68,12 @@ _UNAVAILABLE_ERROR_DETAIL = "The chat assistant is temporarily unavailable"
 # `ToolDefinition.widget_type` -> the `MessagePart` subtype that carries it.
 # Presentation concern, so it lives at the API boundary, not in the domain
 # (the tool/registry layer only knows the string tag, never this DTO).
-_WIDGET_TYPE_TO_PART_CLASS: dict[str, type[TeamWidgetPart] | type[PlayerWidgetPart]] = {
+_WIDGET_TYPE_TO_PART_CLASS: dict[
+    str, type[TeamWidgetPart] | type[PlayerWidgetPart] | type[MatchWidgetPart]
+] = {
     "team_widget": TeamWidgetPart,
     "player_widget": PlayerWidgetPart,
+    "match_widget": MatchWidgetPart,
 }
 
 
@@ -74,8 +84,13 @@ def get_tool_registry(
     player_analytics_repository: Annotated[
         PlayerAnalyticsRepositoryInterface, Depends(get_player_analytics_repository)
     ],
+    match_analytics_repository: Annotated[
+        MatchAnalyticsRepositoryInterface, Depends(get_match_analytics_repository)
+    ],
 ) -> dict[str, ToolDefinition]:
-    return build_tool_registry(team_analytics_repository, player_analytics_repository)
+    return build_tool_registry(
+        team_analytics_repository, player_analytics_repository, match_analytics_repository
+    )
 
 
 def get_chat_service(
