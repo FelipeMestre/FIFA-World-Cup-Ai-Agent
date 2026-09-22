@@ -4,6 +4,9 @@ Alembic autogenerate (or any `Base.metadata.create_all`) inspects it.
 
 from src.infra.postgres.schemas import (  # noqa: F401
     auth_schema,
+    chat_message_schema,
+    chat_message_widget_schema,
+    conversation_schema,
     ingestion_job_schema,
     match_schema,
     national_team_schema,
