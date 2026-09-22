@@ -1,20 +1,19 @@
 "use client";
 
 import { useState, type KeyboardEvent } from "react";
-import { ArrowUp, Share } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 
 import { MessageList } from "@/features/chat/components/message-list";
 import type { ChatMessage, EntityRef } from "@/features/chat/types";
 
 /**
- * The active-thread state of the home page (HomeActive.dc.html): thread
- * header, the question/answer turns, and a sticky follow-up composer that
- * fades the thread out behind it.
- *
- * Share is presentational -- no share/permalink backend exists yet.
+ * The active-thread state of the home page (HomeActive.dc.html): the
+ * question/answer turns and a sticky follow-up composer that fades the
+ * thread out behind it. The thread's own top bar lives in `ThreadHeader`,
+ * rendered by home-shell.tsx above this AND the side panel -- see that
+ * component's docstring for why.
  */
 export function HomeThread({
-  title,
   messages,
   isSending,
   openEntity,
@@ -22,7 +21,6 @@ export function HomeThread({
   onOpenEntity,
   onRegenerate,
 }: {
-  title: string;
   messages: ChatMessage[];
   isSending: boolean;
   openEntity: EntityRef | null;
@@ -31,7 +29,6 @@ export function HomeThread({
   onRegenerate: (question: string) => void;
 }) {
   const [draft, setDraft] = useState("");
-  const answerCount = messages.filter((message) => message.role === "assistant").length;
 
   function send() {
     const trimmed = draft.trim();
@@ -49,21 +46,6 @@ export function HomeThread({
 
   return (
     <>
-      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-950/72 px-7 backdrop-blur-[12px]">
-        <span className="truncate text-heading-sm">{title}</span>
-        <span className="flex h-6 shrink-0 items-center rounded-full border border-border-subtle bg-surface-800 px-2 font-mono text-[12px] text-ink-muted">
-          {answerCount} {answerCount === 1 ? "answer" : "answers"}
-        </span>
-        <div className="grow" />
-        <button
-          type="button"
-          className="focus-ring flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border-strong px-3 text-body-sm font-semibold text-ink-primary hover:bg-surface-800"
-        >
-          <Share className="size-4" aria-hidden />
-          Share
-        </button>
-      </header>
-
       <div className="mx-auto flex w-full max-w-[760px] grow flex-col px-4 py-10 md:px-0">
         <MessageList
           messages={messages}
@@ -106,7 +88,8 @@ export function HomeThread({
         </div>
         {/* Absent on mobile in MobileChat.dc.html. */}
         <span className="hidden text-body-sm text-ink-muted md:block">
-          Covers results, events, lineups and match stats. No passing or tracking data.
+          Covers results, events, lineups and match stats. No passing or
+          tracking data.
         </span>
       </div>
     </>

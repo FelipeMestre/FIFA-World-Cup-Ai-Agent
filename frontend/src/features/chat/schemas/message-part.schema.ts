@@ -2,10 +2,12 @@ import { z } from "zod";
 
 /**
  * Runtime validation for the backend's `MessagePart` discriminated union
- * (design/README.md's widget contract). `type: "team_widget"` is sent live
- * by the backend's `get_team_analysis` tool; the other three remain
- * validated defensively so a payload that doesn't yet match our rich
- * widget shape degrades to a fallback instead of crashing the thread.
+ * (design/README.md's widget contract). `type: "team_widget"`,
+ * `"match_widget"`, and `"player_widget"` are sent live by the backend's
+ * `get_team_analysis`, `get_match_analysis`, and `get_player_analysis`
+ * tools; `"compare_widget"` remains validated defensively so a payload that
+ * doesn't yet match our rich widget shape degrades to a fallback instead of
+ * crashing the thread.
  */
 
 const positionSchema = z.enum(["GK", "DEF", "MID", "FWD"]);
@@ -62,16 +64,19 @@ const matchEventSchema = z.object({
   kind: z.enum(["goal", "card", "var", "sub"]),
   teamCode: z.string(),
   title: z.string(),
-  detail: z.string().optional(),
-  subOn: z.string().optional(),
-  subOff: z.string().optional(),
+  // Backend sends these keys as JSON `null`, never omits them -- `.optional()`
+  // alone rejects `null` and would fail the whole widget's validation (same
+  // gotcha as playerSummarySchema's `percentile` below).
+  detail: z.string().nullable().optional(),
+  subOn: z.string().nullable().optional(),
+  subOff: z.string().nullable().optional(),
 });
 
 const matchSummarySchema = z.object({
   id: z.string(),
   stageLabel: z.string(),
   dateLabel: z.string(),
-  venueLabel: z.string().optional(),
+  venueLabel: z.string().nullable().optional(),
   homeTeam: z.object({ code: z.string(), name: z.string() }),
   awayTeam: z.object({ code: z.string(), name: z.string() }),
   homeScore: z.number(),
@@ -99,7 +104,11 @@ const matchSummarySchema = z.object({
         z.object({
           name: z.union([positionSchema, z.literal("Subs used")]),
           players: z.array(
-            z.object({ number: z.number(), name: z.string(), mark: z.string().optional() }),
+            z.object({
+              number: z.number(),
+              name: z.string(),
+              mark: z.string().nullable().optional(),
+            }),
           ),
         }),
       ),

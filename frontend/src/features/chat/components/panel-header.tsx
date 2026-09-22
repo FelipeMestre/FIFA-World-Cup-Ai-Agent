@@ -1,17 +1,18 @@
 "use client";
 
-import { PanelLeftClose, X } from "lucide-react";
+import { X } from "lucide-react";
 
 /**
- * Side-panel header: entity-type label + title, collapse/close, and the
- * "From: <message> · Jump to message" strip that ties the panel back to the
- * message that opened it. Collapse is hidden on the mobile sheet.
+ * Side-panel header: entity-type label + title, close (mobile sheet only),
+ * and the "From: <message> · Jump to message" strip that ties the panel
+ * back to the message that opened it. The collapse/expand toggle lives on
+ * `SidePanel`'s own persistent left rail instead of here -- see that
+ * component's docstring for why.
  */
 export function PanelHeader({
   entityLabel,
   title,
   fromMessage,
-  onCollapse,
   onClose,
   onJumpToMessage,
   isSheet = false,
@@ -19,7 +20,6 @@ export function PanelHeader({
   entityLabel: string;
   title: string;
   fromMessage: string;
-  onCollapse?: () => void;
   onClose: () => void;
   onJumpToMessage: () => void;
   isSheet?: boolean;
@@ -31,24 +31,16 @@ export function PanelHeader({
           <span className="text-label-sm text-ink-muted">{entityLabel}</span>
           <h2 className="truncate text-heading-md">{title}</h2>
         </div>
-        {isSheet ? null : (
+        {isSheet && (
           <button
             type="button"
-            aria-label="Collapse panel"
-            onClick={onCollapse}
+            aria-label="Close sheet"
+            onClick={onClose}
             className="focus-ring flex size-11 items-center justify-center rounded-md text-ink-secondary hover:bg-surface-800"
           >
-            <PanelLeftClose className="size-5" aria-hidden />
+            <X className="size-5" aria-hidden />
           </button>
         )}
-        <button
-          type="button"
-          aria-label={isSheet ? "Close sheet" : "Close panel"}
-          onClick={onClose}
-          className="focus-ring flex size-11 items-center justify-center rounded-md text-ink-secondary hover:bg-surface-800"
-        >
-          <X className="size-5" aria-hidden />
-        </button>
       </header>
       <div className="flex shrink-0 items-center gap-ds-3 border-b border-border-subtle px-ds-5 py-ds-2 text-body-sm">
         <span className="min-w-0 grow truncate text-ink-muted">

@@ -10,11 +10,11 @@ function isActive(ref: EntityRef, openEntity: EntityRef | null): boolean {
 }
 
 /**
- * Switches on `part.type` to render the right bubble/widget. "team_widget"
- * and "player_widget" arrive live from the backend's `get_team_analysis` and
- * `get_player_analysis` tools; the remaining two widget branches remain
- * forward-compat until their tools exist, and are exercised today only by
- * `/design-preview`.
+ * Switches on `part.type` to render the right bubble/widget. "team_widget",
+ * "match_widget", and "player_widget" arrive live from the backend's
+ * `get_team_analysis`, `get_match_analysis`, and `get_player_analysis`
+ * tools; "compare_widget" remains forward-compat until its tool exists, and
+ * is exercised today only by `/design-preview`.
  */
 export function MessagePartView({
   part,
