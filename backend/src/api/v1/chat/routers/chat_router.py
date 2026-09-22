@@ -1,8 +1,10 @@
 from collections.abc import AsyncIterator
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.auth.services.dependencies import JwtDataDep
 from src.api.v1.chat.dtos.chat_dtos import (
@@ -22,13 +24,17 @@ from src.api.v1.chat.dtos.chat_dtos import (
     ToolCallEventDto,
     WidgetReadyEventDto,
 )
-from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
+from src.domain.chat.exceptions.chat_exceptions import (
+    ChatServiceUnavailable,
+    ConversationOwnershipError,
+)
 from src.domain.chat.services.chat_service import (
     CapReachedEvent,
     ChatService,
     ChatTurnEvent,
     ContentDeltaEvent,
     MessageDoneEvent,
+    PersistenceFailedEvent,
     ReasoningDeltaEvent,
     ToolCallRequestedEvent,
     WidgetReadyEvent,
@@ -37,8 +43,16 @@ from src.domain.chat.services.tool_call_executor import ToolWidgetResult
 from src.domain.chat.tools.registry import ToolDefinition, build_tool_registry
 from src.infra.openrouter.client import get_openrouter_client
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
+
 from src.infra.postgres.interfaces.match_analytics_repository_interface import (
     MatchAnalyticsRepositoryInterface,
+)
+from src.infra.postgres.config import get_db
+from src.infra.postgres.interfaces.chat_message_repository_interface import (
+    ChatMessageRepositoryInterface,
+)
+from src.infra.postgres.interfaces.conversation_repository_interface import (
+    ConversationRepositoryInterface,
 )
 from src.infra.postgres.interfaces.player_analytics_repository_interface import (
     PlayerAnalyticsRepositoryInterface,
@@ -46,9 +60,13 @@ from src.infra.postgres.interfaces.player_analytics_repository_interface import 
 from src.infra.postgres.interfaces.team_analytics_repository_interface import (
     TeamAnalyticsRepositoryInterface,
 )
+
 from src.infra.postgres.repositories.match_analytics_repository import (
-    get_match_analytics_repository,
+        get_match_analytics_repository,
 )
+from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
+from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
+
 from src.infra.postgres.repositories.player_analytics_repository import (
     get_player_analytics_repository,
 )
@@ -102,8 +120,22 @@ def get_chat_service(
     ],
     openrouter_client: Annotated[OpenRouterClientInterface, Depends(get_openrouter_client)],
     tool_registry: Annotated[dict[str, ToolDefinition], Depends(get_tool_registry)],
+    conversation_repository: Annotated[
+        ConversationRepositoryInterface, Depends(get_conversation_repository)
+    ],
+    chat_message_repository: Annotated[
+        ChatMessageRepositoryInterface, Depends(get_chat_message_repository)
+    ],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> ChatService:
-    return ChatService(conversation_cache, openrouter_client, tool_registry)
+    return ChatService(
+        conversation_cache,
+        openrouter_client,
+        tool_registry,
+        conversation_repository,
+        chat_message_repository,
+        session,
+    )
 
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
@@ -122,20 +154,30 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 async def send_message(
     payload: SendMessageRequest,
     chat_service: ChatServiceDep,
-    _: JwtDataDep,
+    jwt_data: JwtDataDep,
 ) -> StreamingResponse:
+    user_id = int(jwt_data["sub"])
+    try:
+        await chat_service.start_turn(
+            conversation_id=payload.conversation_id,
+            user_id=user_id,
+            first_message=payload.message,
+        )
+    except ConversationOwnershipError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
     return StreamingResponse(
-        _stream_chat_events(chat_service, payload.conversation_id, payload.message),
+        _stream_chat_events(chat_service, payload.conversation_id, user_id, payload.message),
         media_type="text/event-stream",
     )
 
 
 async def _stream_chat_events(
-    chat_service: ChatService, conversation_id: str | None, message: str
+    chat_service: ChatService, conversation_id: UUID, user_id: int, message: str
 ) -> AsyncIterator[bytes]:
     try:
         async for event in chat_service.send_message(
-            conversation_id=conversation_id, user_message=message
+            conversation_id=conversation_id, user_id=user_id, user_message=message
         ):
             yield _format_sse(_to_dto(event))
     except ChatServiceUnavailable:
@@ -166,6 +208,12 @@ def _to_dto(event: ChatTurnEvent) -> ChatStreamEvent:
         return WidgetReadyEventDto(part=_widget_part(event.widget))
     if isinstance(event, CapReachedEvent):
         return CapReachedEventDto(content=event.content, clarification=event.clarification)
+    if isinstance(event, PersistenceFailedEvent):
+        # Reuses the existing `error` SSE event vocabulary -- unlike the
+        # `ChatServiceUnavailable` case (caught in `_stream_chat_events`),
+        # this is yielded mid-stream as a non-fatal warning and is always
+        # followed by a `message_done` event for the same turn.
+        return ErrorEventDto(detail=event.detail)
     if isinstance(event, MessageDoneEvent):
         # `content_segments` already carries text and widgets in the order
         # they occurred (see `MessageDoneEvent`'s docstring) -- never

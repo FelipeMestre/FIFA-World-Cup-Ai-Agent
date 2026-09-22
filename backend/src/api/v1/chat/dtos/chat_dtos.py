@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -63,7 +64,11 @@ class ChatReply(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    conversation_id: str | None = None
+    """`conversation_id` is always client-generated (`crypto.randomUUID()`),
+    even for a brand-new conversation -- the server no longer generates one.
+    """
+
+    conversation_id: UUID
     message: str = Field(min_length=1)
 
 

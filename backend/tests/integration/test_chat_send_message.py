@@ -11,6 +11,7 @@ iteration-cap trip all stream the expected `event:`/`data:` frame sequence.
 import json
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -21,6 +22,9 @@ from src.domain.chat.model.message import Message
 from src.infra.openrouter.client import get_openrouter_client
 from src.infra.openrouter.schemas import ChatCompletionChunk, ToolCall
 from src.infra.postgres.config import SessionFactory
+from src.infra.postgres.repositories.chat_message_repository import (
+    _SqlAlchemyChatMessageRepository,
+)
 from src.infra.redis.repositories.conversation_cache_repository import (
     get_conversation_cache_repository,
 )
@@ -32,6 +36,8 @@ _TEAM_REPLY_CONTENT = "Here's how they did."
 _SEEDED_TEAM_ID = 990501
 _SEEDED_TEAM_NAME = "Test Widget Team"
 _SEEDED_TEAM_CODE = "TWT"
+_USER_ID = 990601
+_OTHER_USER_ID = 990602
 
 
 def _parse_sse(body: str) -> list[tuple[str, dict]]:
@@ -200,11 +206,58 @@ def fake_conversation_cache() -> _FakeConversationCacheRepository:
 
 
 @pytest.fixture(autouse=True)
+async def _seed_chat_users() -> AsyncGenerator[None]:
+    """`conversation.user_id` is a real FK to `user.id` -- T4 makes
+    `POST /chat/messages` write a `conversation` row, so a fake JWT `sub`
+    with no backing `user` row now fails the FK constraint. Seeds real
+    `user` rows for the fake JWT `sub`s used below and cleans up everything
+    a test run creates under them (widgets -> messages -> conversations ->
+    users, respecting FK order), mirroring
+    `test_chat_message_repository.py`'s `db_session` fixture.
+    """
+    async with SessionFactory() as session:
+        for user_id in (_USER_ID, _OTHER_USER_ID):
+            await session.execute(
+                text(
+                    'INSERT INTO "user" (id, email, password_hash, is_admin, created_at) '
+                    "VALUES (:id, :email, 'hash', false, now())"
+                ),
+                {"id": user_id, "email": f"chat-send-message-test-{user_id}@example.test"},
+            )
+        await session.commit()
+    yield
+    async with SessionFactory() as cleanup_session:
+        await cleanup_session.execute(
+            text(
+                "DELETE FROM chat_message_widget WHERE message_id IN "
+                "(SELECT id FROM chat_message WHERE conversation_id IN "
+                "(SELECT id FROM conversation WHERE user_id IN (:a, :b)))"
+            ),
+            {"a": _USER_ID, "b": _OTHER_USER_ID},
+        )
+        await cleanup_session.execute(
+            text(
+                "DELETE FROM chat_message WHERE conversation_id IN "
+                "(SELECT id FROM conversation WHERE user_id IN (:a, :b))"
+            ),
+            {"a": _USER_ID, "b": _OTHER_USER_ID},
+        )
+        await cleanup_session.execute(
+            text("DELETE FROM conversation WHERE user_id IN (:a, :b)"),
+            {"a": _USER_ID, "b": _OTHER_USER_ID},
+        )
+        await cleanup_session.execute(
+            text('DELETE FROM "user" WHERE id IN (:a, :b)'), {"a": _USER_ID, "b": _OTHER_USER_ID}
+        )
+        await cleanup_session.commit()
+
+
+@pytest.fixture(autouse=True)
 def _override_chat_dependencies(
     fake_conversation_cache: _FakeConversationCacheRepository,
 ) -> AsyncGenerator[None]:
     def fake_jwt_data() -> dict[str, Any]:
-        return {"sub": "1", "is_admin": False}
+        return {"sub": str(_USER_ID), "is_admin": False}
 
     app.dependency_overrides[parse_jwt_data] = fake_jwt_data
     app.dependency_overrides[get_openrouter_client] = lambda: _FakeOpenRouterClient()
@@ -217,9 +270,13 @@ def _override_chat_dependencies(
 async def test_plain_message_streams_content_delta_then_message_done(
     client: AsyncClient,
 ) -> None:
+    conversation_id = str(uuid4())
     response = await client.post(
         "/api/v1/chat/messages",
-        json={"message": "When does the 2026 World Cup group stage run?"},
+        json={
+            "conversation_id": conversation_id,
+            "message": "When does the 2026 World Cup group stage run?",
+        },
         headers={"Authorization": "Bearer test-token"},
     )
 
@@ -232,7 +289,7 @@ async def test_plain_message_streams_content_delta_then_message_done(
     assert content_data == {"content": _REPLY_CONTENT}
 
     done_event_type, done_data = events[1]
-    assert done_data["conversation_id"]
+    assert done_data["conversation_id"] == conversation_id
     assert done_data["parts"] == [{"type": "text", "content": _REPLY_CONTENT}]
     assert done_data["model"] == "anthropic/claude-sonnet-4.5"
 
@@ -245,7 +302,7 @@ async def test_tool_triggering_message_streams_tool_call_then_message_done(
 
     response = await client.post(
         "/api/v1/chat/messages",
-        json={"message": "What time is it right now?"},
+        json={"conversation_id": str(uuid4()), "message": "What time is it right now?"},
         headers={"Authorization": "Bearer test-token"},
     )
 
@@ -287,7 +344,7 @@ async def test_team_analysis_tool_streams_widget_ready_then_message_done(
 
     response = await client.post(
         "/api/v1/chat/messages",
-        json={"message": f"How is {_SEEDED_TEAM_NAME} doing?"},
+        json={"conversation_id": str(uuid4()), "message": f"How is {_SEEDED_TEAM_NAME} doing?"},
         headers={"Authorization": "Bearer test-token"},
     )
 
@@ -320,7 +377,7 @@ async def test_malformed_tool_arguments_do_not_crash_the_stream(client: AsyncCli
 
     response = await client.post(
         "/api/v1/chat/messages",
-        json={"message": "What time is it right now?"},
+        json={"conversation_id": str(uuid4()), "message": "What time is it right now?"},
         headers={"Authorization": "Bearer test-token"},
     )
 
@@ -341,7 +398,7 @@ async def test_iteration_cap_emits_cap_reached_then_message_done(
 
     response = await client.post(
         "/api/v1/chat/messages",
-        json={"message": "Keep looping forever"},
+        json={"conversation_id": str(uuid4()), "message": "Keep looping forever"},
         headers={"Authorization": "Bearer test-token"},
     )
 
@@ -368,15 +425,115 @@ async def test_iteration_cap_emits_cap_reached_then_message_done(
 async def test_conversation_history_persisted_to_cache_after_stream_completes(
     client: AsyncClient, fake_conversation_cache: _FakeConversationCacheRepository
 ) -> None:
+    conversation_id = str(uuid4())
     response = await client.post(
         "/api/v1/chat/messages",
-        json={"message": "When does the 2026 World Cup group stage run?"},
+        json={
+            "conversation_id": conversation_id,
+            "message": "When does the 2026 World Cup group stage run?",
+        },
         headers={"Authorization": "Bearer test-token"},
     )
 
     events = _parse_sse(response.text)
-    conversation_id = events[-1][1]["conversation_id"]
+    assert events[-1][1]["conversation_id"] == conversation_id
 
     persisted = fake_conversation_cache.store[conversation_id]
     assert [m.role for m in persisted] == ["user", "assistant"]
     assert persisted[-1].content == _REPLY_CONTENT
+
+
+@pytest.mark.asyncio
+async def test_conversation_history_persisted_to_postgres_after_stream_completes(
+    client: AsyncClient,
+) -> None:
+    """(c) -- the Postgres write happens after a successful `send_message`
+    call: assert rows exist via the T3 repository rather than mocking
+    anything, per AGENTS.md's testing anti-pattern table."""
+    conversation_id = str(uuid4())
+    response = await client.post(
+        "/api/v1/chat/messages",
+        json={
+            "conversation_id": conversation_id,
+            "message": "When does the 2026 World Cup group stage run?",
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+
+    async with SessionFactory() as session:
+        chat_message_repository = _SqlAlchemyChatMessageRepository(session)
+        messages = await chat_message_repository.list_for_conversation(
+            UUID(conversation_id), _USER_ID
+        )
+
+    assert [(m.sequence, m.role, m.content) for m in messages] == [
+        (1, "user", "When does the 2026 World Cup group stage run?"),
+        (2, "assistant", _REPLY_CONTENT),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_two_messages_in_same_conversation_persist_both_turns_in_sequence(
+    client: AsyncClient,
+) -> None:
+    """(a) -- sending two messages in the same conversation persists both
+    turns with correct `sequence`."""
+    conversation_id = str(uuid4())
+
+    first_response = await client.post(
+        "/api/v1/chat/messages",
+        json={"conversation_id": conversation_id, "message": "First message"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert first_response.status_code == 200
+
+    second_response = await client.post(
+        "/api/v1/chat/messages",
+        json={"conversation_id": conversation_id, "message": "Second message"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert second_response.status_code == 200
+
+    async with SessionFactory() as session:
+        chat_message_repository = _SqlAlchemyChatMessageRepository(session)
+        messages = await chat_message_repository.list_for_conversation(
+            UUID(conversation_id), _USER_ID
+        )
+
+    assert [(m.sequence, m.role, m.content) for m in messages] == [
+        (1, "user", "First message"),
+        (2, "assistant", _REPLY_CONTENT),
+        (3, "user", "Second message"),
+        (4, "assistant", _REPLY_CONTENT),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_posting_to_another_users_conversation_id_is_forbidden(
+    client: AsyncClient,
+) -> None:
+    """(b) -- a second user attempting to post to another user's
+    `conversation_id` gets a 403."""
+    conversation_id = str(uuid4())
+
+    owner_response = await client.post(
+        "/api/v1/chat/messages",
+        json={"conversation_id": conversation_id, "message": "First message"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert owner_response.status_code == 200
+
+    app.dependency_overrides[parse_jwt_data] = lambda: {
+        "sub": str(_OTHER_USER_ID),
+        "is_admin": False,
+    }
+
+    intruder_response = await client.post(
+        "/api/v1/chat/messages",
+        json={"conversation_id": conversation_id, "message": "Trying to hijack this thread"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert intruder_response.status_code == 403

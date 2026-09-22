@@ -127,10 +127,40 @@ Route legend: [inline] = direct edit, [delegated] = bounded sub-agent writer.
       (`tool_call_executor`, `ingestion_repository`,
       `identity_link_router`, `test_chat_send_message`) are unrelated to
       this task's files and were not introduced by it.
-- [ ] **T4 — Wire chat endpoint**: accept client-supplied conversation UUID,
+- [x] **T4 — Wire chat endpoint**: accept client-supplied conversation UUID,
       get-or-create conversation + insert messages/widgets in one
       transaction, ownership check, then best-effort Redis write-through
       (log + swallow failure).
+      Done 2026-09-22: `SendMessageRequest.conversation_id` is now a required
+      `UUID` (422 on an invalid string; server-side `uuid.uuid4()` generation
+      removed). `ChatService` gained `conversation_repo`/`chat_message_repo`/
+      `session` constructor deps and a new `start_turn(conversation_id,
+      user_id, first_message)` method the router awaits *before* opening the
+      `StreamingResponse` -- so `ConversationOwnershipError` can still become
+      a clean 403 (once SSE streaming starts, headers are already committed
+      to 200). `send_message` now takes `user_id`, persists both messages +
+      widgets + `touch()` + one `session.commit()` right before
+      `message_done`, wrapped in try/except: a Postgres failure yields a new
+      `PersistenceFailedEvent` domain event (mapped to the existing `error`
+      SSE vocabulary via `ErrorEventDto` in the router -- no new DTO needed)
+      then still finishes the turn; a Redis failure is logged and swallowed
+      per the already-agreed cache design. Router extracts `user_id =
+      int(jwt_data["sub"])`. Files touched: `chat_dtos.py`, `chat_router.py`,
+      `chat_service.py`, `tests/integration/test_chat_send_message.py`.
+      Test suite (local venv against the docker-compose Postgres/Redis on
+      `localhost:55432`/`56379`, since the running `world-cup-ai-scout-backend`
+      container mounts the main checkout, not this worktree): 144 passed, 7
+      failed, 3 errored -- exactly the pre-existing baseline from T3's entry
+      (`tool_call_executor` x3, `ingestion_repository` x2,
+      `identity_link_router` x3 errors, and the one known
+      `test_team_analysis_tool_streams_widget_ready_then_message_done`
+      widget-ordering failure). All 3 new tests added for T4's acceptance
+      criteria (two-message sequencing, cross-user 403, Postgres-row
+      assertion) pass; all pre-existing `test_chat_send_message.py` tests
+      updated to send a required `conversation_id` and pass.
+      Gap noticed, not in scope here: there is still no "load/replay a
+      conversation's messages" endpoint (T5/T6 territory) -- a page reload
+      cannot yet repopulate history from Postgres.
 - [ ] **T5 — Sidebar list + title endpoints**: `GET /conversations`
       (current user's conversations, ordered by last activity),
       `PATCH /conversations/{id}` (title edit, ownership-checked).
