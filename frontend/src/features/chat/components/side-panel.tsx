@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelRightOpen } from "lucide-react";
+import { PanelLeftClose } from "lucide-react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { PanelCompare } from "@/features/chat/components/panel-compare";
@@ -22,19 +22,48 @@ function renderPanelBody(
   entity: EntityRef,
   data: unknown,
   fromMessage: string,
-  handlers: { onCollapse?: () => void; onClose: () => void; onJumpToMessage: () => void },
+  handlers: {
+    onClose: () => void;
+    onJumpToMessage: () => void;
+  },
   isSheet: boolean,
 ) {
   switch (entity.type) {
     case "team":
-      return <PanelTeam team={data as TeamSummary} isSheet={isSheet} fromMessage={fromMessage} {...handlers} />;
+      return (
+        <PanelTeam
+          team={data as TeamSummary}
+          isSheet={isSheet}
+          fromMessage={fromMessage}
+          {...handlers}
+        />
+      );
     case "match":
-      return <PanelMatch match={data as MatchSummary} isSheet={isSheet} fromMessage={fromMessage} {...handlers} />;
+      return (
+        <PanelMatch
+          match={data as MatchSummary}
+          isSheet={isSheet}
+          fromMessage={fromMessage}
+          {...handlers}
+        />
+      );
     case "player":
-      return <PanelPlayer player={data as PlayerSummary} isSheet={isSheet} fromMessage={fromMessage} {...handlers} />;
+      return (
+        <PanelPlayer
+          player={data as PlayerSummary}
+          isSheet={isSheet}
+          fromMessage={fromMessage}
+          {...handlers}
+        />
+      );
     case "compare":
       return (
-        <PanelCompare comparison={data as PlayerComparison} isSheet={isSheet} fromMessage={fromMessage} {...handlers} />
+        <PanelCompare
+          comparison={data as PlayerComparison}
+          isSheet={isSheet}
+          fromMessage={fromMessage}
+          {...handlers}
+        />
       );
     default:
       return null;
@@ -46,6 +75,13 @@ function renderPanelBody(
  * panel state machine: one entity at a time, stays open across turns,
  * collapse keeps it one click away, close clears it. Mobile has no collapse
  * control -- it's a full-height sheet over a scrim instead.
+ *
+ * On desktop the toggle lives on a persistent left rail (`w-12`, always
+ * mounted) instead of inside the panel's own header: the header is a
+ * different DOM subtree that unmounts/remounts across collapsed <-> expanded
+ * (its content depends on `openEntity`'s data), so a button living there
+ * can't smoothly animate across that swap -- same button, same position,
+ * same size in both states, just spins in place via `rotate-180`.
  */
 export function SidePanel({
   panelState,
@@ -72,34 +108,52 @@ export function SidePanel({
   if (!data) return null;
 
   if (isDesktop) {
-    if (collapsed) {
-      return (
-        <button
-          type="button"
-          onClick={onExpand}
-          aria-label="Expand panel"
-          className="focus-ring fixed top-1/2 right-0 flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-l-md border border-r-0 border-border-strong bg-surface-800 text-ink-secondary hover:bg-surface-700"
-        >
-          <PanelRightOpen className="size-4" aria-hidden />
-        </button>
-      );
-    }
     return (
-      <div className="w-[481px] shrink-0 overflow-y-auto border-l border-border-strong bg-surface-900">
-        {renderPanelBody(
-          openEntity,
-          data,
-          fromMessagePreview,
-          { onCollapse, onClose, onJumpToMessage },
-          false,
-        )}
+      <div className="flex shrink-0 border-l border-border-strong bg-surface-900">
+        <div className="flex w-12 shrink-0 flex-col items-center border-r border-border-subtle pt-1">
+          <button
+            type="button"
+            onClick={collapsed ? onExpand : onCollapse}
+            aria-label={collapsed ? "Expand panel" : "Collapse panel"}
+            className="focus-ring flex size-11 items-center justify-center rounded-md text-ink-secondary hover:bg-surface-800"
+          >
+            <PanelLeftClose
+              className={`size-5 transition-transform duration-300 ease-in-out ${
+                collapsed ? "rotate-180" : ""
+              }`}
+              aria-hidden
+            />
+          </button>
+        </div>
+        {/* Fixed-width inner content clipped by the outer's overflow-hidden
+            as its width animates -- a slide/wipe reveal instead of the
+            content itself squishing during the transition. */}
+        <div
+          className={`overflow-hidden transition-[width] duration-300 ease-in-out ${
+            collapsed ? "w-0" : "w-[433px]"
+          }`}
+        >
+          <div className="h-full w-[433px] overflow-y-auto">
+            {renderPanelBody(
+              openEntity,
+              data,
+              fromMessagePreview,
+              { onClose, onJumpToMessage },
+              false,
+            )}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="fixed inset-0 z-40">
-      <div className="absolute inset-0 bg-overlay-scrim" onClick={onClose} aria-hidden />
+      <div
+        className="absolute inset-0 bg-overlay-scrim"
+        onClick={onClose}
+        aria-hidden
+      />
       <div
         role="dialog"
         aria-modal="true"
@@ -110,7 +164,13 @@ export function SidePanel({
           <span className="h-1 w-9 rounded-full bg-border-strong" />
         </div>
         <div className="min-h-0 grow overflow-y-auto">
-          {renderPanelBody(openEntity, data, fromMessagePreview, { onClose, onJumpToMessage }, true)}
+          {renderPanelBody(
+            openEntity,
+            data,
+            fromMessagePreview,
+            { onClose, onJumpToMessage },
+            true,
+          )}
         </div>
       </div>
     </div>
