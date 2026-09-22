@@ -21,12 +21,15 @@ from src.domain.chat.tools.registry import ALL_TOOL_SCHEMAS, ToolDefinition
 from src.infra.openrouter.exceptions import OpenRouterRequestFailed
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
 from src.infra.openrouter.schemas import ChatCompletionResult, ToolLoopCapReached
+from src.infra.postgres.config import SessionFactory
 from src.infra.postgres.interfaces.chat_message_repository_interface import (
     ChatMessageRepositoryInterface,
 )
 from src.infra.postgres.interfaces.conversation_repository_interface import (
     ConversationRepositoryInterface,
 )
+from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
+from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
@@ -151,9 +154,19 @@ class ChatService:
         default_title = first_message[:_TITLE_MAX_LENGTH].strip()
         if len(first_message) > _TITLE_MAX_LENGTH:
             default_title += "…"
-        return await self._conversation_repo.get_or_create(
+        conversation = await self._conversation_repo.get_or_create(
             conversation_id, user_id, default_title=default_title
         )
+        # Commit *here*, before returning to the router -- not deferred to
+        # `send_message`'s eventual persistence step. FastAPI closes (and
+        # therefore rolls back) request-scoped `Depends(get_db)` sessions as
+        # soon as this endpoint function *returns*, which for a
+        # `StreamingResponse` happens well before the response's async
+        # generator actually runs. An uncommitted `get_or_create` here would
+        # silently vanish by the time `send_message` tries to insert against
+        # it (see `send_message`'s docstring for the other half of this).
+        await self._session.commit()
+        return conversation
 
     async def send_message(
         self,
@@ -203,19 +216,30 @@ class ChatService:
             message_parts_segments = final_content_segments
 
         try:
-            await self._chat_message_repo.append_message(
-                conversation_id, role="user", content=user_message
-            )
-            widgets = [
-                (w.tool_name, w.widget_type, w.data)
-                for w in message_parts_segments
-                if isinstance(w, ToolWidgetResult)
-            ]
-            await self._chat_message_repo.append_message(
-                conversation_id, role="assistant", content=reply_content, widgets=widgets
-            )
-            await self._conversation_repo.touch(conversation_id)
-            await self._session.commit()
+            # Deliberately NOT using `self._chat_message_repo`/
+            # `self._conversation_repo`/`self._session` here -- those are
+            # bound to the request-scoped `Depends(get_db)` session, which
+            # FastAPI has already closed (rolled back) by the time this
+            # generator runs, for the same `StreamingResponse`-vs-`yield`-
+            # dependency-cleanup-ordering reason documented on `start_turn`.
+            # This block opens its own short-lived session so the write
+            # survives independently of the request's dependency lifecycle.
+            async with SessionFactory() as turn_session:
+                chat_message_repo = get_chat_message_repository(turn_session)
+                conversation_repo = get_conversation_repository(turn_session)
+                await chat_message_repo.append_message(
+                    conversation_id, role="user", content=user_message
+                )
+                widgets = [
+                    (w.tool_name, w.widget_type, w.data)
+                    for w in message_parts_segments
+                    if isinstance(w, ToolWidgetResult)
+                ]
+                await chat_message_repo.append_message(
+                    conversation_id, role="assistant", content=reply_content, widgets=widgets
+                )
+                await conversation_repo.touch(conversation_id)
+                await turn_session.commit()
         except Exception:
             logger.exception(
                 "Failed to persist chat turn to Postgres for conversation %s", conversation_id
