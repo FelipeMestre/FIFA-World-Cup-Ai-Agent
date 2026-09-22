@@ -103,11 +103,30 @@ Route legend: [inline] = direct edit, [delegated] = bounded sub-agent writer.
       (`world-cup-ai-scout-postgres`): `alembic upgrade head` →
       `downgrade -1` → `upgrade head` all succeeded; generated constraint/
       index names confirmed to match `POSTGRES_INDEXES_NAMING_CONVENTION`.
-- [ ] **T3 — Repository interfaces + implementations** (delegated)
-      `ConversationRepositoryInterface` (get-or-create by id+user, list by
-      user for sidebar, update title), `ChatMessageRepositoryInterface`
-      (append message(s) + widgets in one transaction, list by conversation
-      for replay), following the existing 3-file repo pattern.
+- [x] **T3 — Repository interfaces + implementations**
+      `ConversationRepositoryInterface`/`_SqlAlchemyConversationRepository`
+      (`get_or_create`, `get_owned`, `list_for_user`, `update_title`,
+      `touch`) and `ChatMessageRepositoryInterface`/
+      `_SqlAlchemyChatMessageRepository` (`append_message`,
+      `list_for_conversation`), following the existing 3-file repo pattern.
+      Done 2026-09-22: all write methods flush-only (no commit), documented
+      per-method as a deliberate deviation for T4's single-transaction
+      design. Added `ChatMessage`/`ChatMessageWidget` domain dataclasses and
+      `ConversationOwnershipError` (`domain/chat/exceptions/chat_exceptions.py`).
+      Updated the previously-dead `Conversation` dataclass in place
+      (`id: UUID`, `user_id`, `title`, `updated_at`) after confirming via
+      `rg -n "Conversation\("` that nothing constructs it yet (`chat_service.py`
+      only passes a plain `conversation_id: str`, never the dataclass).
+      Added a `ChatMessageSchema.widgets` relationship (`lazy="raise"`, no
+      prior `relationship()` precedent in this codebase) for
+      `selectinload` in `list_for_conversation`. 16 new integration tests
+      in `backend/tests/integration/infra/test_conversation_repository.py`
+      and `test_chat_message_repository.py`, run against local docker
+      Postgres — all passing; `ruff check`/`ruff format` clean. 7
+      pre-existing failures/3 errors elsewhere in the suite
+      (`tool_call_executor`, `ingestion_repository`,
+      `identity_link_router`, `test_chat_send_message`) are unrelated to
+      this task's files and were not introduced by it.
 - [ ] **T4 — Wire chat endpoint**: accept client-supplied conversation UUID,
       get-or-create conversation + insert messages/widgets in one
       transaction, ownership check, then best-effort Redis write-through

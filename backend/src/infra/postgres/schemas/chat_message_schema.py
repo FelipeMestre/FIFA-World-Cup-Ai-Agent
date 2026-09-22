@@ -5,14 +5,18 @@ monotonic per-conversation ordering, assigned by the repository layer.
 
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from uuid import UUID as PyUUID
 
 from sqlalchemy import DateTime, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infra.postgres.schemas.base import Base
+
+if TYPE_CHECKING:
+    from src.infra.postgres.schemas.chat_message_widget_schema import ChatMessageWidgetSchema
 
 
 class ChatMessageRole(StrEnum):
@@ -38,4 +42,7 @@ class ChatMessageSchema(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    widgets: Mapped[list["ChatMessageWidgetSchema"]] = relationship(
+        "ChatMessageWidgetSchema", order_by="ChatMessageWidgetSchema.id", lazy="raise"
     )
