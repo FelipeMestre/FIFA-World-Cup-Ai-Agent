@@ -114,7 +114,6 @@ const playerSummarySchema = z.object({
   initials: z.string(),
   teamCode: z.string(),
   position: positionSchema,
-  jerseyNumber: z.number(),
   appearances: z.number(),
   minutes: z.number(),
   scopeLabel: z.string(),
@@ -128,7 +127,9 @@ const playerSummarySchema = z.object({
       stat: z.string(),
       total: z.string(),
       perNinety: z.string(),
-      percentile: z.number().optional(),
+      // Backend sends this key as JSON `null`, never omits it -- `.optional()`
+      // alone rejects `null` and would fail the whole widget's validation.
+      percentile: z.number().nullable(),
     }),
   ),
   perNinetyVsPositionAverage: z.array(

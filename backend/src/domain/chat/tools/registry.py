@@ -27,12 +27,20 @@ from src.domain.chat.tools.get_current_utc_time import (
     GetCurrentUtcTimeArgs,
     get_current_utc_time_handler,
 )
+from src.domain.chat.tools.get_player_analysis import (
+    GET_PLAYER_ANALYSIS_SCHEMA,
+    GetPlayerAnalysisArgs,
+    build_get_player_analysis_handler,
+)
 from src.domain.chat.tools.get_team_analysis import (
     GET_TEAM_ANALYSIS_SCHEMA,
     GetTeamAnalysisArgs,
     build_get_team_analysis_handler,
 )
 from src.domain.chat.tools.tool_execution_result import ToolExecutionResult
+from src.infra.postgres.interfaces.player_analytics_repository_interface import (
+    PlayerAnalyticsRepositoryInterface,
+)
 from src.infra.postgres.interfaces.team_analytics_repository_interface import (
     TeamAnalyticsRepositoryInterface,
 )
@@ -67,11 +75,13 @@ STATIC_TOOL_REGISTRY: dict[str, ToolDefinition] = {
 ALL_TOOL_SCHEMAS: list[dict] = [
     GET_CURRENT_UTC_TIME_SCHEMA,
     GET_TEAM_ANALYSIS_SCHEMA,
+    GET_PLAYER_ANALYSIS_SCHEMA,
 ]
 
 
 def build_tool_registry(
     team_analytics_repository: TeamAnalyticsRepositoryInterface,
+    player_analytics_repository: PlayerAnalyticsRepositoryInterface,
 ) -> dict[str, ToolDefinition]:
     """Assembles the full tool registry for one request. Merges the static
     tier with every dependency-bound tool, freshly bound to this request's
@@ -84,5 +94,11 @@ def build_tool_registry(
             args_model=GetTeamAnalysisArgs,
             handler=build_get_team_analysis_handler(team_analytics_repository),
             widget_type="team_widget",
+        ),
+        "get_player_analysis": ToolDefinition(
+            json_schema=GET_PLAYER_ANALYSIS_SCHEMA,
+            args_model=GetPlayerAnalysisArgs,
+            handler=build_get_player_analysis_handler(player_analytics_repository),
+            widget_type="player_widget",
         ),
     }
