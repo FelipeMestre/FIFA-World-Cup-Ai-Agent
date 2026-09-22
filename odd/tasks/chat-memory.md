@@ -207,13 +207,24 @@ Route legend: [inline] = direct edit, [delegated] = bounded sub-agent writer.
       calls `session.commit()`. So `start_turn`'s flush-only
       `get_or_create()` conversation row is rolled back before
       `send_message`'s later `chat_message` insert, which then violates
-      the `chat_message_conversation_id_fkey` FK. Not fixed here --
-      `chat_service.py`/`chat_router.py`'s `send_message`/`start_turn`
-      logic is explicitly out of scope for T5. Flagged as a gap for
-      whoever picks up T6 or a dedicated fix task; every other baseline
+      the `chat_message_conversation_id_fkey` FK.
+
+      **Fixed same day (commit `2775962`, orchestrator-verified, not
+      delegated):** confirmed independently in an isolated worktree at the
+      T4 commit (before T5 existed) that this predates T5 entirely -- a
+      real T4 regression, not a test artifact of T5's new fixture. Fix:
+      `start_turn` now commits immediately after `get_or_create` (its own
+      atomic unit, safe before the endpoint returns). `send_message`'s
+      persistence block no longer uses the request-scoped
+      `self._chat_message_repo`/`self._conversation_repo`/`self._session`
+      at all -- it opens its own `SessionFactory()`-backed session,
+      independent of the request's dependency lifecycle, for the
+      message/widget inserts + `touch()` + commit. Full suite back to the
+      documented baseline exactly: 150 passed, 7 failed, 3 errored (the
+      150 includes T5's 6 new tests, all green). Every other baseline
       category (`tool_call_executor` x3, `ingestion_repository` x2,
       `player_identity_link_repository` x1, `identity_link_router` x3
-      errors) is unchanged.
+      errors, one widget-ordering test) is unchanged and pre-existing.
 - [ ] **T6 — Frontend**: client-generated UUID on new chat, URL update,
       sidebar conversation list feature, title rename UI.
 
