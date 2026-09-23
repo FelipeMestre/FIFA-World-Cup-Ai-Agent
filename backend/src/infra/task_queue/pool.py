@@ -31,3 +31,8 @@ async def enqueue_transfermarkt_sync(job_id: int, skip_populated: bool = False) 
     # `TransfermarktSyncService._run_pipeline`), not a breaking change.
     pool = await get_arq_pool()
     await pool.enqueue_job("transfermarkt_sync_task", job_id, skip_populated)
+
+
+async def enqueue_chat_reply(conversation_id: str, user_id: int, user_message: str) -> None:
+    pool = await get_arq_pool()
+    await pool.enqueue_job("generate_chat_reply_task", conversation_id, user_id, user_message)
