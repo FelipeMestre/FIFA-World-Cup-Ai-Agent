@@ -56,8 +56,9 @@ export function parseConversationReplay(payload: unknown): ConversationReplay {
 
 export async function getConversationMessages(
   conversationId: string,
+  signal?: AbortSignal,
 ): Promise<ConversationReplay> {
   return parseConversationReplay(
-    await fetchJson<unknown>(`/api/conversations/${conversationId}/messages`),
+    await fetchJson<unknown>(`/api/conversations/${conversationId}/messages`, { signal }),
   );
 }

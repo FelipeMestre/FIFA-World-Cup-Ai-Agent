@@ -18,7 +18,16 @@ vi.mock("@/features/chat/api/get-conversation-messages", () => ({
   getConversationMessages: (...args: unknown[]) => getConversationMessagesMock(...args),
 }));
 
-// Import after the mock above so the hook picks it up.
+const watchConversationMock = vi.fn();
+vi.mock("@/lib/api/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
+  return {
+    ...actual,
+    watchConversation: (...args: unknown[]) => watchConversationMock(...args),
+  };
+});
+
+// Import after the mocks above so the hook picks them up.
 const { useChatThread } = await import("@/features/chat/hooks/use-chat-thread");
 
 /** Turns a list of events into the async generator `sendMessage` normally returns. */
@@ -28,6 +37,27 @@ function eventStream(events: ChatStreamEvent[]) {
       yield event;
     }
   })();
+}
+
+/** A no-turn-in-progress watch response -- the default so existing tests,
+ * none of which exercise reattachment, see the same "nothing to reattach
+ * to" behavior as before `watchConversation` existed. */
+function noTurnInProgress(): Response {
+  return new Response(null, { status: 204 });
+}
+
+/** A live watch response streaming the given SSE frames. */
+function watchStreamResponse(frames: string[]): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames) {
+        controller.enqueue(encoder.encode(frame));
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200 });
 }
 
 function lastMessage(messages: ChatMessage[]): ChatMessage {
@@ -85,6 +115,8 @@ describe("useChatThread", () => {
       title: "New chat",
       messages: [],
     });
+    watchConversationMock.mockReset();
+    watchConversationMock.mockResolvedValue(noTurnInProgress());
     clearInFlightTurns();
   });
 
@@ -427,7 +459,7 @@ describe("useChatThread", () => {
     expect(result.current.messages[0]?.parts).toEqual([
       { type: "text", content: "How did Argentina do?" },
     ]);
-    expect(getConversationMessagesMock).toHaveBeenCalledWith(urlId);
+    expect(getConversationMessagesMock).toHaveBeenCalledWith(urlId, expect.any(AbortSignal));
   });
 
   it("keeps the in-flight user message when the URL has not yet caught up", async () => {
@@ -586,5 +618,119 @@ describe("useChatThread", () => {
 
     expect(result.current.conversationId).toBe(urlId);
     expect(result.current.messages).toHaveLength(0);
+  });
+
+  it("reattaches to a background job still generating on load, appending a live assistant message after history", async () => {
+    const urlId = "550e8400-e29b-41d4-a716-446655440000";
+    getConversationMessagesMock.mockResolvedValue({
+      conversationId: urlId,
+      title: "Argentina defence",
+      messages: [
+        {
+          id: `${urlId}:0`,
+          role: "user",
+          parts: [{ type: "text", content: "How did Argentina do?" }],
+        },
+      ],
+    });
+    watchConversationMock.mockResolvedValue(
+      watchStreamResponse([
+        'event: content_delta\ndata: {"content": "They kept a clean sheet."}\n\n',
+        'event: message_done\ndata: {"conversation_id": "' +
+          urlId +
+          '", "parts": [{"type": "text", "content": "They kept a clean sheet."}], "model": null}\n\n',
+      ]),
+    );
+
+    const { result } = renderHook(() => useChatThread({ urlConversationId: urlId }));
+
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+      expect(result.current.isSending).toBe(false);
+    });
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[0]?.role).toBe("user");
+    const assistantMessage = lastMessage(result.current.messages);
+    expect(assistantMessage.role).toBe("assistant");
+    expect(assistantMessage.parts).toEqual([
+      { type: "text", content: "They kept a clean sheet." },
+    ]);
+    expect(assistantMessage.isStreaming).toBe(false);
+  });
+
+  it("does not let a late, stale hydrate() clobber an already-reattached live reply", async () => {
+    // `ConversationHydrator` mounts behind a Suspense boundary and its
+    // `hydrate()` call can land *after* the client's own reattach effect
+    // already appended and finished streaming the live reply -- `hydrate`
+    // must defer to that, not overwrite it with SSR's now-stale snapshot
+    // (fetched before the turn finished, so it only has the question).
+    const urlId = "550e8400-e29b-41d4-a716-446655440000";
+    getConversationMessagesMock.mockResolvedValue({
+      conversationId: urlId,
+      title: "Argentina defence",
+      messages: [
+        {
+          id: `${urlId}:0`,
+          role: "user",
+          parts: [{ type: "text", content: "How did Argentina do?" }],
+        },
+      ],
+    });
+    watchConversationMock.mockResolvedValue(
+      watchStreamResponse([
+        'event: content_delta\ndata: {"content": "They kept a clean sheet."}\n\n',
+        'event: message_done\ndata: {"conversation_id": "' +
+          urlId +
+          '", "parts": [{"type": "text", "content": "They kept a clean sheet."}], "model": null}\n\n',
+      ]),
+    );
+
+    const { result } = renderHook(() => useChatThread({ urlConversationId: urlId }));
+
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(2);
+      expect(result.current.isSending).toBe(false);
+    });
+
+    act(() => {
+      result.current.hydrate(urlId, {
+        conversationId: urlId,
+        title: "Argentina defence",
+        messages: [
+          {
+            id: `${urlId}:0`,
+            role: "user",
+            parts: [{ type: "text", content: "How did Argentina do?" }],
+          },
+        ],
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(2);
+    const assistantMessage = lastMessage(result.current.messages);
+    expect(assistantMessage.role).toBe("assistant");
+    expect(assistantMessage.parts).toEqual([
+      { type: "text", content: "They kept a clean sheet." },
+    ]);
+  });
+
+  it("does not reattach when watch reports nothing in progress (the default, no-turn case)", async () => {
+    const urlId = "550e8400-e29b-41d4-a716-446655440000";
+    getConversationMessagesMock.mockResolvedValue({
+      conversationId: urlId,
+      title: "Argentina defence",
+      messages: [
+        { id: `${urlId}:0`, role: "user", parts: [{ type: "text", content: "How did Argentina do?" }] },
+        { id: `${urlId}:1`, role: "assistant", parts: [{ type: "text", content: "They won." }] },
+      ],
+    });
+
+    const { result } = renderHook(() => useChatThread({ urlConversationId: urlId }));
+
+    await waitFor(() => {
+      expect(result.current.isLoadingHistory).toBe(false);
+    });
+    expect(result.current.isSending).toBe(false);
+    expect(result.current.messages).toHaveLength(2);
   });
 });
