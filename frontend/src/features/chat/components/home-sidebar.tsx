@@ -1,17 +1,118 @@
+import Link from "next/link";
+import { Pencil } from "lucide-react";
+
 import { AssistantMark } from "@/components/shared/assistant-mark";
+import { groupConversations } from "@/features/chat/group-conversations";
+import type { ConversationSummary } from "@/features/chat/types";
+
+function ConversationRow({
+  conversation,
+  isActive,
+  onRename,
+}: {
+  conversation: ConversationSummary;
+  isActive: boolean;
+  onRename: (conversation: ConversationSummary) => void;
+}) {
+  return (
+    <div
+      className={
+        isActive
+          ? "group flex h-10 items-center gap-0.5 rounded-md bg-surface-800 pr-1"
+          : "group flex h-10 items-center gap-0.5 rounded-md pr-1 hover:bg-surface-800"
+      }
+    >
+      <Link
+        href={`/home/${conversation.id}`}
+        className={
+          isActive
+            ? "focus-ring flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-primary"
+            : "focus-ring flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary"
+        }
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          className={isActive ? "text-brand" : "text-ink-muted"}
+          strokeWidth="1.5"
+          strokeLinecap="square"
+          aria-hidden="true"
+        >
+          <path d="M3 4h14v10H8l-3 3v-3H3z" />
+        </svg>
+        <span className="flex-1 truncate">{conversation.title || "New chat"}</span>
+      </Link>
+      <button
+        type="button"
+        aria-label={`Rename ${conversation.title || "chat"}`}
+        onClick={() => onRename(conversation)}
+        className="focus-ring flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted opacity-0 hover:bg-surface-700 hover:text-ink-primary group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        <Pencil className="size-3.5" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function ConversationGroup({
+  label,
+  conversations,
+  activeId,
+  onRename,
+}: {
+  label: string;
+  conversations: ConversationSummary[];
+  activeId: string | null;
+  onRename: (conversation: ConversationSummary) => void;
+}) {
+  if (conversations.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 px-2.5">
+      <span className="px-2.5 pb-1.5 text-label-sm">{label}</span>
+      {conversations.map((conversation) => (
+        <ConversationRow
+          key={conversation.id}
+          conversation={conversation}
+          isActive={conversation.id === activeId}
+          onRename={onRename}
+        />
+      ))}
+    </div>
+  );
+}
 
 /**
  * The conversations sidebar (AppSidebar.dc.html): branding, new chat,
  * grouped history, dataset counts and the profile row. Desktop only --
  * the mobile artboards have no sidebar.
- *
- * The history entries and profile are presentational: no threads
- * persistence or account data exists in this build yet.
  */
-export function HomeSidebar() {
+export function HomeSidebar({
+  conversations,
+  activeId,
+  isLoading,
+  loadError,
+  onNewChat,
+  onRename,
+}: {
+  conversations: ConversationSummary[];
+  activeId: string | null;
+  isLoading: boolean;
+  loadError: string | null;
+  onNewChat?: () => void;
+  onRename: (conversation: ConversationSummary) => void;
+}) {
+  const grouped = groupConversations(conversations);
+  const isEmpty = !isLoading && conversations.length === 0 && loadError === null;
+
   return (
         <aside
-          className="hidden shrink-0 w-[264px] border-r border-border-subtle bg-surface-900 md:flex md:flex-col"
+          className="hidden w-[264px] shrink-0 border-r border-border-subtle bg-surface-900 md:flex md:flex-col"
           aria-label="Conversations"
         >
           <div className="flex min-h-0 grow flex-col gap-5 p-5 pt-6">
@@ -24,7 +125,8 @@ export function HomeSidebar() {
               </div>
               <button
                 type="button"
-                className="focus-ring flex h-11 items-center gap-2.5 rounded-lg border border-border-strong bg-surface-800 px-3 text-body-md text-ink-primary font-semibold hover:bg-surface-700"
+                onClick={onNewChat}
+                className="focus-ring flex h-11 items-center gap-2.5 rounded-lg border border-border-strong bg-surface-800 px-3 text-body-md font-semibold text-ink-primary hover:bg-surface-700"
               >
                 <svg
                   width="18"
@@ -39,133 +141,34 @@ export function HomeSidebar() {
                   <path d="M10 4v12M4 10h12" />
                 </svg>
                 <span className="flex-1 text-left">New chat</span>
-                <span className="text-label-sm text-ink-muted border border-border-strong px-1.5 rounded">⌘K</span>
+                <span className="rounded border border-border-strong px-1.5 text-label-sm text-ink-muted">⌘K</span>
               </button>
-              <div className="flex-1 min-h-0 overflow-hidden flex flex-col gap-4">
-                <div className="flex flex-col gap-0.5 px-2.5">
-                  <span className="text-label-sm px-2.5 pb-1.5">Today</span>
-                  <a
-                    href="#"
-                    className="focus-ring flex h-10 items-center gap-2.5 rounded-md bg-surface-800 px-2.5 text-body-md text-ink-primary"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-brand"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M10 3l6 2.5V10c0 3.5-2.6 6-6 7-3.4-1-6-3.5-6-7V5.5z" />
-                    </svg>
-                    <span className="flex-1 truncate">Argentina defence</span>
-                  </a>
-                  <a
-                    href="#"
-                    className="focus-ring flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary hover:bg-surface-800"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-ink-muted"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 5h14v10H3zM10 5v10" />
-                    </svg>
-                    <span className="flex-1 truncate">France vs Spain semifinal</span>
-                  </a>
-                  <a
-                    href="#"
-                    className="focus-ring flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary hover:bg-surface-800"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-ink-muted"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M5 16V9M10 16V4M15 16v-5" />
-                    </svg>
-                    <span className="flex-1 truncate">Messi vs Mbappé</span>
-                  </a>
-                </div>
-                <div className="flex flex-col gap-0.5 px-2.5">
-                  <span className="text-label-sm px-2.5 pb-1.5">Earlier</span>
-                  <a
-                    href="#"
-                    className="focus-ring flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary hover:bg-surface-800"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-ink-muted"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M10 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6M4.5 16.5c0.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5" />
-                    </svg>
-                    <span className="flex-1 truncate">Top keepers by saves</span>
-                  </a>
-                  <a
-                    href="#"
-                    className="focus-ring flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary hover:bg-surface-800"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-ink-muted"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 5h14v10H3zM10 5v10" />
-                    </svg>
-                    <span className="flex-1 truncate">Knockout upsets</span>
-                  </a>
-                  <a
-                    href="#"
-                    className="focus-ring flex h-10 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary hover:bg-surface-800"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="text-ink-muted"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="square"
-                      aria-hidden="true"
-                    >
-                      <path d="M10 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6M4.5 16.5c0.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5" />
-                    </svg>
-                    <span className="flex-1 truncate">Mbappé tournament</span>
-                  </a>
-                </div>
+              <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+                {isLoading && (
+                  <p className="px-5 text-label-sm text-ink-muted">Loading conversations…</p>
+                )}
+                {loadError && (
+                  <p className="px-5 text-label-sm text-ink-muted">{loadError}</p>
+                )}
+                {isEmpty && (
+                  <p className="px-5 text-label-sm text-ink-muted">No conversations yet</p>
+                )}
+                <ConversationGroup
+                  label="Today"
+                  conversations={grouped.today}
+                  activeId={activeId}
+                  onRename={onRename}
+                />
+                <ConversationGroup
+                  label="Earlier"
+                  conversations={grouped.earlier}
+                  activeId={activeId}
+                  onRename={onRename}
+                />
               </div>
               <div className="rounded-lg border border-border-subtle bg-surface-800 p-3.5 shadow-[inset_0_1px_0_rgba(244,246,249,0.04)]">
                 <span className="text-label-sm">Dataset</span>
-                <div className="grid grid-cols-3 gap-2 mt-2.5">
+                <div className="mt-2.5 grid grid-cols-3 gap-2">
                   <div className="flex flex-col items-center">
                     <span className="text-data-lg">104</span>
                     <span className="text-label-sm text-ink-muted">matches</span>
@@ -181,10 +184,10 @@ export function HomeSidebar() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5 px-1.5">
-                <div className="size-8 rounded-full border border-border-strong bg-surface-700 flex items-center justify-center text-heading-sm">
+                <div className="flex size-8 items-center justify-center rounded-full border border-border-strong bg-surface-700 text-heading-sm">
                   AB
                 </div>
-                <span className="flex-1 text-body-md text-ink-secondary truncate">Your name</span>
+                <span className="flex-1 truncate text-body-md text-ink-secondary">Your name</span>
                 <button
                   type="button"
                   aria-label="Settings"

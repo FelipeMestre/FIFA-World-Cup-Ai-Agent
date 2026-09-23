@@ -180,3 +180,50 @@ Here is a diagram of how the system reacts to a user message. And how tool execu
         CS-->>RT: MessageDoneEvent (+ CapReachedEvent if capped)
         RT-->>FE: SSE: event: message_done
 ```
+
+# Sept 22, Creating the chat memory management system
+When managing conversations, there are a few concerns to attend appart from making the agent call tools and correcly format the messages. How the state of the conversation is kept, recovered and stored in a way that allows fast reads, consistent writes and openess to evolve the system are important non functional requirements. 
+
+As the conversations must be created an loaded many times, even from different devices (if the system has a mobile app and a web version for example).
+
+Also the user can leave a conversation running, and comeback, having to see the state of the conversation in the sidebar
+
+Auto updating the conversation if the system has a mobile app and a web app with the same backend. Could SSR in the frontend help me with that ? 
+
+Having a cache in the backend and a Store in the frontend would make the state of the frontend and the cache to be sync. 
+
+Worth remembering: the model of the graph conversation that OpenAI uses in ChatGPT:
+
+) Minimal schema sketch (for developers)
+This is a faithful conceptual model of what the browser treats as the conversation state:
+
+``` JS
+Conversation {
+  id
+  title
+  current_node: NodeId
+  mapping: { NodeId: Node }
+}
+
+Node {
+  id
+  parent: NodeId | null
+  children: NodeId[]
+  message: Message | null
+}
+
+Message {
+  id
+  author: { role: "user" | "assistant" | "system" | "tool" }
+  content: { parts: string[] | structured_blocks[] }
+  metadata: {
+    model_slug?
+    citations?
+    search_result_groups?
+    invoked_resource?
+    async_task_id?
+    ...feature flags and render hints...
+  }
+  create_time?
+  update_time?
+```

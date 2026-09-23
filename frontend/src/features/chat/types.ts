@@ -232,6 +232,13 @@ export type MessagePart =
 
 export type ChatRole = "user" | "assistant";
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+  createdAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;

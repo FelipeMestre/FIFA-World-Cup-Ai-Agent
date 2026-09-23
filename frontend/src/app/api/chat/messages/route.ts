@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isConversationId } from "@/features/chat/conversation-id";
 import { BACKEND_API_URL } from "@/lib/api/config";
 import { getSessionToken } from "@/lib/auth/session";
 
@@ -30,6 +31,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "Message is required" }, { status: 400 });
   }
 
+  if (!body.conversation_id || !isConversationId(body.conversation_id)) {
+    return NextResponse.json({ detail: "conversation_id is required" }, { status: 400 });
+  }
+
   let backendResponse: Response;
   try {
     backendResponse = await fetch(`${BACKEND_API_URL}/chat/messages`, {
@@ -39,7 +44,7 @@ export async function POST(request: Request) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        conversation_id: body.conversation_id ?? null,
+        conversation_id: body.conversation_id,
         message: body.message,
       }),
     });

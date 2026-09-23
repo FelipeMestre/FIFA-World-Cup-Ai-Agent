@@ -12,12 +12,13 @@ import {
  * see `use-chat-thread.ts`.
  */
 export async function* sendMessage(
-  conversationId: string | null,
+  conversationId: string,
   message: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   let response: Response;
   try {
-    response = await sendChatMessage({ conversationId, message });
+    response = await sendChatMessage({ conversationId, message }, signal);
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;

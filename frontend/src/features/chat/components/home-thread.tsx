@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { ArrowUp } from "lucide-react";
 
 import { MessageList } from "@/features/chat/components/message-list";
@@ -20,6 +20,7 @@ export function HomeThread({
   onSubmit,
   onOpenEntity,
   onRegenerate,
+  children,
 }: {
   messages: ChatMessage[];
   isSending: boolean;
@@ -27,6 +28,14 @@ export function HomeThread({
   onSubmit: (message: string) => void;
   onOpenEntity: (ref: EntityRef, sourceMessageId: string) => void;
   onRegenerate: (question: string) => void;
+  /**
+   * The routed page's SSR-resolved content -- `ConversationHydrator` today,
+   * which renders `null` once hydrated. Rendered here, in the same wrapper
+   * as `MessageList`, so its loading `<Suspense>` fallback (the message
+   * skeleton) actually appears inside the chat surface instead of above
+   * the whole page.
+   */
+  children?: ReactNode;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -47,6 +56,7 @@ export function HomeThread({
   return (
     <>
       <div className="mx-auto flex w-full max-w-[760px] grow flex-col px-4 py-10 md:px-0">
+        {children}
         <MessageList
           messages={messages}
           openEntity={openEntity}
