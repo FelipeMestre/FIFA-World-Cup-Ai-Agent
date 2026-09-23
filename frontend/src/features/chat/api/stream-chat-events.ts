@@ -102,9 +102,10 @@ function parseFrame(frame: string): ChatStreamEvent | null {
 /**
  * Reads a `text/event-stream` body and yields typed events as SSE frames
  * arrive, splitting on the blank-line frame terminator. A manual reader is
- * required (instead of `EventSource`) because the Next.js route handler is a
- * JWT-bearing POST proxy, and `EventSource` only supports GET -- see
- * design.md's "SSE frontend consumption" decision.
+ * used instead of `EventSource` so callers (`send-message.ts`) can cancel
+ * the connection via `AbortSignal` -- `EventSource` has no cancellation
+ * hook of its own and manages its own reconnection, which would fight the
+ * one-watch-per-submit lifecycle here.
  */
 export async function* streamChatEvents(
   body: ReadableStream<Uint8Array>,

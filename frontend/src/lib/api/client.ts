@@ -47,6 +47,11 @@ export interface SendChatMessagePayload {
   message: string;
 }
 
+export interface SendChatMessageAck {
+  conversationId: string;
+  title: string;
+}
+
 /**
  * JSON fetch against our own Route Handlers. Throws `ApiError` on a
  * non-2xx so feature clients don't each reimplement status parsing.
@@ -60,15 +65,15 @@ export async function fetchJson<T>(input: string, init?: RequestInit): Promise<T
 }
 
 /**
- * Sends a chat message and returns the raw streaming `Response` -- the
- * backend replies over Server-Sent Events (`text/event-stream`), not one
- * final JSON blob. Callers read `.body` themselves (see
- * `features/chat/api/stream-chat-events.ts`).
+ * Sends a chat message. The backend persists it and enqueues a background
+ * reply-generation job, returning an ack -- not the reply itself. Callers
+ * connect to `watchConversation` right after to observe the reply (see
+ * `features/chat/api/send-message.ts`).
  */
 export async function sendChatMessage(
   payload: SendChatMessagePayload,
   signal?: AbortSignal,
-): Promise<Response> {
+): Promise<SendChatMessageAck> {
   const response = await fetch("/api/chat/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -80,6 +85,27 @@ export async function sendChatMessage(
   });
 
   if (!response.ok) {
+    throw new ApiError(await parseErrorDetail(response), response.status);
+  }
+
+  const body = (await response.json()) as { conversation_id: string; title: string };
+  return { conversationId: body.conversation_id, title: body.title };
+}
+
+/**
+ * Attaches to a conversation's in-progress reply generation and returns the
+ * raw streaming `Response` -- the backend replies over Server-Sent Events
+ * (`text/event-stream`). A 204 means no turn is currently in progress;
+ * callers must check for it before reading `.body` (see
+ * `features/chat/api/stream-chat-events.ts` for the frame parser).
+ */
+export async function watchConversation(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const response = await fetch(`/api/conversations/${conversationId}/watch`, { signal });
+
+  if (response.status !== 204 && !response.ok) {
     throw new ApiError(await parseErrorDetail(response), response.status);
   }
 

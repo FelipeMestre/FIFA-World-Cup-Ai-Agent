@@ -103,17 +103,15 @@ export function useChatThread({
       return;
     }
     previousUrlIdRef.current = urlConversationId;
-    // Deliberately NOT aborting the in-flight stream here. Aborting the
-    // fetch doesn't just stop the client from watching it -- it disconnects
-    // the request, and FastAPI's StreamingResponse cancels its generator
-    // task the moment it detects that, killing the turn server-side before
-    // it ever reaches the Postgres persistence step (which only runs after
-    // the LLM finishes). Switching conversations mid-stream was silently
-    // losing the message entirely, not just hiding it. Let the old stream
-    // keep running in the background so the backend finishes and persists
-    // the turn normally; `submit`'s `finally` guard (conversationIdRef
-    // check) already stops it from touching isSending/messages for
-    // whatever conversation is active by the time it resolves.
+    // Deliberately NOT aborting the in-flight stream here. Generation now
+    // runs as a background job (`generate_chat_reply_task`) fully decoupled
+    // from any HTTP connection -- aborting the `watch` fetch only stops
+    // this client from observing it, it can no longer kill the turn or lose
+    // the message server-side. Not aborting is still the simpler choice:
+    // `submit`'s `finally` guard (conversationIdRef check) already stops a
+    // stale watch from touching isSending/messages for whatever
+    // conversation is active by the time it resolves, so there is nothing
+    // to gain from tearing down the old connection early.
     //
     // `isSending` is reset here regardless, since that guard means the old
     // turn's own `finally` will not clear it once the conversation has
@@ -343,8 +341,8 @@ export function useChatThread({
 
   const reset = useCallback(() => {
     // Does not abort an in-flight turn -- see the conversation-switch
-    // effect's comment: aborting the fetch kills the backend's persistence
-    // work for that turn before it can save the message.
+    // effect's comment: generation is a background job, so there is
+    // nothing to gain from tearing down the watch connection early.
     if (conversationIdRef.current) {
       forgetInFlightTurn(conversationIdRef.current);
     }
