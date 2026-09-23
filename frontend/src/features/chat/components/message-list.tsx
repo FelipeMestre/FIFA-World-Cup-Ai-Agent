@@ -65,9 +65,16 @@ export function MessageList({
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Depends on `messages` itself, not `messages.length` -- a streaming
+  // reply's content grows in place (same array length, new array/message
+  // references on every delta, since state updates are immutable), so
+  // keying off length alone only scrolls once per turn, at the moment the
+  // empty draft message is appended. The reply then grows past the bottom
+  // of the scroll area without ever being followed, ending up hidden below
+  // the fold next to the composer.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length]);
+  }, [messages]);
 
   return (
     <div className="flex w-full flex-col gap-9">

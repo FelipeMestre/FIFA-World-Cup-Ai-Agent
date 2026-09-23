@@ -9,6 +9,7 @@ import { HomeSidebar } from "@/features/chat/components/home-sidebar";
 import { HomeThread } from "@/features/chat/components/home-thread";
 import { RenameConversationDialog } from "@/features/chat/components/rename-conversation-dialog";
 import { SidePanel } from "@/features/chat/components/side-panel";
+import { ThreadComposer } from "@/features/chat/components/thread-composer";
 import { ThreadHeader } from "@/features/chat/components/thread-header";
 import { isConversationId } from "@/features/chat/conversation-id";
 import { ThreadHydrationProvider } from "@/features/chat/thread-hydration-context";
@@ -232,9 +233,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
                   {hasThread && (
                     <HomeThread
                       messages={messages}
-                      isSending={isSending}
                       openEntity={panel.state.openEntity}
-                      onSubmit={submit}
                       onOpenEntity={panel.openEntity}
                       onRegenerate={submit}
                     >
@@ -378,6 +377,8 @@ export function HomeShell({ children }: { children?: ReactNode }) {
                     </div>
                   )}
                 </div>
+
+                {hasThread && <ThreadComposer isSending={isSending} onSubmit={submit} />}
               </main>
 
               <SidePanel
