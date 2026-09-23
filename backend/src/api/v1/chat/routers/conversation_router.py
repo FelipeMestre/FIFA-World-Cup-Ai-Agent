@@ -23,10 +23,16 @@ from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.chat_message_repository_interface import (
     ChatMessageRepositoryInterface,
 )
+from src.infra.postgres.interfaces.chat_turn_failure_repository_interface import (
+    ChatTurnFailureRepositoryInterface,
+)
 from src.infra.postgres.interfaces.conversation_repository_interface import (
     ConversationRepositoryInterface,
 )
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
+from src.infra.postgres.repositories.chat_turn_failure_repository import (
+    get_chat_turn_failure_repository,
+)
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.redis.config import redis_client
 from src.infra.task_queue.chat_tasks import turn_in_progress_key, turn_stream_key
@@ -45,15 +51,19 @@ ConversationRepositoryDep = Annotated[
 ChatMessageRepositoryDep = Annotated[
     ChatMessageRepositoryInterface, Depends(get_chat_message_repository)
 ]
+ChatTurnFailureRepositoryDep = Annotated[
+    ChatTurnFailureRepositoryInterface, Depends(get_chat_turn_failure_repository)
+]
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 
-def _to_summary_dto(conversation: Conversation) -> ConversationSummaryDto:
+def _to_summary_dto(conversation: Conversation, is_generating: bool) -> ConversationSummaryDto:
     return ConversationSummaryDto(
         id=conversation.id,
         title=conversation.title,
         updated_at=conversation.updated_at,
         created_at=conversation.created_at,
+        is_generating=is_generating,
     )
 
 
@@ -88,7 +98,19 @@ async def list_conversations(
 ) -> list[ConversationSummaryDto]:
     user_id = int(jwt_data["sub"])
     conversations = await conversation_repo.list_for_user(user_id)
-    return [_to_summary_dto(conversation) for conversation in conversations]
+    if not conversations:
+        return []
+
+    # One MGET for the whole list instead of one EXISTS per row -- the
+    # sidebar renders every conversation on every fetch, so this avoids an
+    # N-round-trip fan-out to Redis.
+    flags = await redis_client.mget(
+        [turn_in_progress_key(str(conversation.id)) for conversation in conversations]
+    )
+    return [
+        _to_summary_dto(conversation, is_generating=flag is not None)
+        for conversation, flag in zip(conversations, flags, strict=True)
+    ]
 
 
 @router.patch(
@@ -110,7 +132,8 @@ async def update_conversation_title(
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     await session.commit()
-    return _to_summary_dto(updated)
+    is_generating = await redis_client.exists(turn_in_progress_key(str(updated.id)))
+    return _to_summary_dto(updated, is_generating=bool(is_generating))
 
 
 @router.get(
@@ -125,6 +148,7 @@ async def get_conversation_messages(
     conversation_id: UUID,
     conversation_repo: ConversationRepositoryDep,
     chat_message_repo: ChatMessageRepositoryDep,
+    chat_turn_failure_repo: ChatTurnFailureRepositoryDep,
     jwt_data: JwtDataDep,
 ) -> ConversationMessagesResponse:
     user_id = int(jwt_data["sub"])
@@ -133,9 +157,18 @@ async def get_conversation_messages(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
     messages = await chat_message_repo.list_for_conversation(conversation_id, user_id)
+
+    # Only the last message can still have a live failure -- a later
+    # message (a retry, or an assistant reply that did land) means an
+    # older `chat_turn_failure` row, if any, is stale and stays hidden.
+    last_turn_failure = None
+    if messages and messages[-1].role == "user":
+        last_turn_failure = await chat_turn_failure_repo.get_detail_for_message(messages[-1].id)
+
     return ConversationMessagesResponse(
         conversation_id=conversation.id,
         title=conversation.title,
+        last_turn_failure=last_turn_failure,
         messages=[_to_message_dto(message) for message in messages],
     )
 

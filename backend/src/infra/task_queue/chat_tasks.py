@@ -27,6 +27,14 @@ message and never re-attempts the `NX` reservation -- it only refreshes the
 flag's TTL to a full window from when generation actually starts (the
 router's own TTL may have partly ticked down while queued) and is
 responsible for clearing it.
+
+A turn that fails outright (no reply produced at all -- `ChatServiceUnavailable`
+or any other exception) also records a `chat_turn_failure` row against
+`user_message_id`, in its own independent session (never the outer
+`session_scope()` one, which may be left in an aborted transaction state by
+whatever just failed). This is distinct from `PersistenceFailedEvent`, which
+means a reply *was* generated and shown but only failed to save -- that path
+already ends in a normal `MessageDoneEvent` and never touches this table.
 """
 
 import json
@@ -50,7 +58,11 @@ from src.domain.chat.services.tool_call_executor import (
 )
 from src.domain.chat.tools.registry import build_tool_registry
 from src.infra.openrouter.client import get_openrouter_client
+from src.infra.postgres.config import SessionFactory
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
+from src.infra.postgres.repositories.chat_turn_failure_repository import (
+    get_chat_turn_failure_repository,
+)
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.postgres.repositories.match_analytics_repository import (
     get_match_analytics_repository,
@@ -139,8 +151,26 @@ async def _publish_error(stream_key: str, event_type: str, detail: str) -> None:
     await redis_client.xadd(stream_key, {"event_type": event_type, "payload": payload})
 
 
+async def _record_turn_failure(conversation_id: str, user_message_id: int, detail: str) -> None:
+    # Its own independent session, same rationale as `send_message`'s
+    # assistant-reply persistence: the outer `session_scope()` session may
+    # be left in an aborted-transaction state by whatever just failed, and
+    # this write must not depend on that.
+    try:
+        async with SessionFactory() as session:
+            await get_chat_turn_failure_repository(session).record_failure(
+                UUID(conversation_id), user_message_id, detail
+            )
+    except Exception:
+        logger.exception(
+            "Failed to record chat_turn_failure for conversation %s, message %s",
+            conversation_id,
+            user_message_id,
+        )
+
+
 async def generate_chat_reply_task(
-    ctx: dict, conversation_id: str, user_id: int, user_message: str
+    ctx: dict, conversation_id: str, user_id: int, user_message: str, user_message_id: int
 ) -> None:
     stream_key = turn_stream_key(conversation_id)
     progress_key = turn_in_progress_key(conversation_id)
@@ -191,6 +221,11 @@ async def generate_chat_reply_task(
             await _publish_error(
                 stream_key, exc.__class__.__name__, str(exc) or exc.__class__.__name__
             )
+        # No reply was produced at all -- distinct from `PersistenceFailedEvent`,
+        # which means a reply *was* generated and shown, just failed to save.
+        await _record_turn_failure(
+            conversation_id, user_message_id, str(exc) or exc.__class__.__name__
+        )
         raise
     finally:
         # Always runs, success or failure, independent of the Postgres

@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
+from src.domain.chat.model.chat_message import ChatMessage
 from src.domain.chat.model.conversation import Conversation
 from src.domain.chat.model.message import Message
 from src.domain.chat.services.tool_call_executor import (
@@ -168,7 +169,7 @@ class ChatService:
         await self._session.commit()
         return conversation
 
-    async def persist_user_message(self, conversation_id: UUID, content: str) -> None:
+    async def persist_user_message(self, conversation_id: UUID, content: str) -> ChatMessage:
         """Persists the user's own message synchronously, independent of
         whether the reply is ever generated -- called by the router right
         before enqueueing `generate_chat_reply_task`, so the user's message
@@ -177,9 +178,16 @@ class ChatService:
         `start_turn` -- this runs and finishes before the endpoint returns,
         unlike `send_message`'s own persistence step below, which must open
         its own independent session (see that docstring).
+
+        Returns the persisted message so the router can pass its `id` on to
+        `generate_chat_reply_task` -- the only thing a `chat_turn_failure`
+        row can be recorded against on a failed turn.
         """
-        await self._chat_message_repo.append_message(conversation_id, role="user", content=content)
+        message = await self._chat_message_repo.append_message(
+            conversation_id, role="user", content=content
+        )
         await self._session.commit()
+        return message
 
     async def send_message(
         self,

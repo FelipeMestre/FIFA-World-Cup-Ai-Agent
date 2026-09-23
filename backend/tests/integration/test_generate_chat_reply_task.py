@@ -20,6 +20,9 @@ from src.infra.postgres.config import SessionFactory
 from src.infra.postgres.repositories.chat_message_repository import (
     _SqlAlchemyChatMessageRepository,
 )
+from src.infra.postgres.repositories.chat_turn_failure_repository import (
+    _SqlAlchemyChatTurnFailureRepository,
+)
 from src.infra.postgres.repositories.conversation_repository import (
     _SqlAlchemyConversationRepository,
 )
@@ -75,6 +78,13 @@ async def _seed_user_and_cleanup():
         )
         await cleanup_session.execute(
             text(
+                "DELETE FROM chat_turn_failure WHERE conversation_id IN "
+                "(SELECT id FROM conversation WHERE user_id = :uid)"
+            ),
+            {"uid": _USER_ID},
+        )
+        await cleanup_session.execute(
+            text(
                 "DELETE FROM chat_message WHERE conversation_id IN "
                 "(SELECT id FROM conversation WHERE user_id = :uid)"
             ),
@@ -95,6 +105,17 @@ async def _create_conversation() -> str:
         return str(conversation.id)
 
 
+async def _persist_user_message(conversation_id: str, content: str) -> int:
+    # Mimics what `ChatService.persist_user_message` does synchronously in
+    # the router before this task is ever enqueued -- the task itself no
+    # longer writes the user's message.
+    async with SessionFactory() as session:
+        repo = _SqlAlchemyChatMessageRepository(session)
+        message = await repo.append_message(UUID(conversation_id), role="user", content=content)
+        await session.commit()
+        return message.id
+
+
 async def _stream_entries(conversation_id: str) -> list[tuple[str, dict]]:
     raw = await redis_client.xrange(turn_stream_key(conversation_id))
     return [(fields["event_type"], json.loads(fields["payload"])) for _entry_id, fields in raw]
@@ -107,18 +128,21 @@ async def test_generate_chat_reply_task_persists_and_publishes_on_success(monkey
         lambda: _FakeOpenRouterClient(),
     )
     conversation_id = await _create_conversation()
+    user_message_id = await _persist_user_message(conversation_id, "How is the tournament going?")
 
-    await generate_chat_reply_task({}, conversation_id, _USER_ID, "How is the tournament going?")
+    await generate_chat_reply_task(
+        {}, conversation_id, _USER_ID, "How is the tournament going?", user_message_id
+    )
 
     async with SessionFactory() as session:
         chat_message_repo = _SqlAlchemyChatMessageRepository(session)
         messages = await chat_message_repo.list_for_conversation(UUID(conversation_id), _USER_ID)
 
-    # The task no longer persists the user's own message -- that happens
-    # synchronously in the router (`ChatService.persist_user_message`)
-    # before this task is even enqueued. Only the assistant's reply lands
-    # here.
+    # The task itself only appends the assistant's reply -- the user's
+    # message (persisted above via `_persist_user_message`, mimicking the
+    # router) is already there.
     assert [(m.role, m.content) for m in messages] == [
+        ("user", "How is the tournament going?"),
         ("assistant", _REPLY_CONTENT),
     ]
 
@@ -141,9 +165,12 @@ async def test_generate_chat_reply_task_clears_progress_flag_and_publishes_error
         lambda: _FailingOpenRouterClient(),
     )
     conversation_id = await _create_conversation()
+    user_message_id = await _persist_user_message(conversation_id, "This will fail")
 
     with pytest.raises(RuntimeError, match="simulated OpenRouter failure"):
-        await generate_chat_reply_task({}, conversation_id, _USER_ID, "This will fail")
+        await generate_chat_reply_task(
+            {}, conversation_id, _USER_ID, "This will fail", user_message_id
+        )
 
     entries = await _stream_entries(conversation_id)
     assert entries, "expected at least one error entry published to the stream"
@@ -152,3 +179,9 @@ async def test_generate_chat_reply_task_clears_progress_flag_and_publishes_error
     # The flag must be cleared even though the run failed -- it is not tied
     # to the Postgres session's rollback at all.
     assert await redis_client.get(turn_in_progress_key(conversation_id)) is None
+
+    async with SessionFactory() as session:
+        failure_repo = _SqlAlchemyChatTurnFailureRepository(session)
+        detail = await failure_repo.get_detail_for_message(user_message_id)
+    assert detail is not None
+    assert "simulated OpenRouter failure" in detail

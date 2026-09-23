@@ -136,7 +136,9 @@ async def send_message(
             status_code=status.HTTP_409_CONFLICT, detail=_TURN_ALREADY_IN_PROGRESS_DETAIL
         )
 
-    await chat_service.persist_user_message(payload.conversation_id, payload.message)
-    await enqueue_chat_reply(str(payload.conversation_id), user_id, payload.message)
+    user_message = await chat_service.persist_user_message(payload.conversation_id, payload.message)
+    await enqueue_chat_reply(
+        str(payload.conversation_id), user_id, payload.message, user_message.id
+    )
 
     return SendMessageAckResponse(conversation_id=str(conversation.id), title=conversation.title)

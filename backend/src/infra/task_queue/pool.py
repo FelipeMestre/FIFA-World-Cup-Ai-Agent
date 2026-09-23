@@ -48,6 +48,10 @@ async def enqueue_transfermarkt_sync(job_id: int, skip_populated: bool = False) 
     await pool.enqueue_job("transfermarkt_sync_task", job_id, skip_populated)
 
 
-async def enqueue_chat_reply(conversation_id: str, user_id: int, user_message: str) -> None:
+async def enqueue_chat_reply(
+    conversation_id: str, user_id: int, user_message: str, user_message_id: int
+) -> None:
     pool = await get_arq_pool()
-    await pool.enqueue_job("generate_chat_reply_task", conversation_id, user_id, user_message)
+    await pool.enqueue_job(
+        "generate_chat_reply_task", conversation_id, user_id, user_message, user_message_id
+    )

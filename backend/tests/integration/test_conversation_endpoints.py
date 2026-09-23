@@ -19,9 +19,14 @@ from src.infra.postgres.config import SessionFactory
 from src.infra.postgres.repositories.chat_message_repository import (
     _SqlAlchemyChatMessageRepository,
 )
+from src.infra.postgres.repositories.chat_turn_failure_repository import (
+    _SqlAlchemyChatTurnFailureRepository,
+)
 from src.infra.postgres.repositories.conversation_repository import (
     _SqlAlchemyConversationRepository,
 )
+from src.infra.redis.config import redis_client
+from src.infra.task_queue.chat_tasks import turn_in_progress_key
 from src.main import app
 
 _USER_ID = 990701
@@ -47,6 +52,13 @@ async def _seed_users() -> AsyncGenerator[None]:
                 "DELETE FROM chat_message_widget WHERE message_id IN "
                 "(SELECT id FROM chat_message WHERE conversation_id IN "
                 "(SELECT id FROM conversation WHERE user_id IN (:a, :b)))"
+            ),
+            {"a": _USER_ID, "b": _OTHER_USER_ID},
+        )
+        await cleanup_session.execute(
+            text(
+                "DELETE FROM chat_turn_failure WHERE conversation_id IN "
+                "(SELECT id FROM conversation WHERE user_id IN (:a, :b))"
             ),
             {"a": _USER_ID, "b": _OTHER_USER_ID},
         )
@@ -223,3 +235,62 @@ async def test_get_conversation_messages_404_for_another_users_conversation(
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_reports_is_generating_from_the_redis_flag(
+    client: AsyncClient,
+) -> None:
+    generating = await _create_conversation(_USER_ID, "Generating")
+    idle = await _create_conversation(_USER_ID, "Idle")
+    await redis_client.set(turn_in_progress_key(str(generating.id)), "1", ex=60)
+
+    response = await client.get(
+        "/api/v1/conversations", headers={"Authorization": "Bearer test-token"}
+    )
+
+    assert response.status_code == 200
+    flags = {item["id"]: item["is_generating"] for item in response.json()}
+    assert flags[str(generating.id)] is True
+    assert flags[str(idle.id)] is False
+
+    await redis_client.delete(turn_in_progress_key(str(generating.id)))
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_messages_surfaces_failure_only_on_the_last_message(
+    client: AsyncClient,
+) -> None:
+    conversation = await _create_conversation(_USER_ID, "Failed turn")
+
+    async with SessionFactory() as session:
+        chat_message_repo = _SqlAlchemyChatMessageRepository(session)
+        failed_user_message = await chat_message_repo.append_message(
+            conversation.id, "user", "This one failed"
+        )
+        await session.commit()
+
+    async with SessionFactory() as session:
+        failure_repo = _SqlAlchemyChatTurnFailureRepository(session)
+        await failure_repo.record_failure(
+            conversation.id, failed_user_message.id, "The chat assistant is unavailable"
+        )
+
+    stale_response = await client.get(
+        f"/api/v1/conversations/{conversation.id}/messages",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert stale_response.json()["last_turn_failure"] == "The chat assistant is unavailable"
+
+    # A retry appends a new user message -- the old failure is now stale
+    # and must no longer be surfaced, even though its row still exists.
+    async with SessionFactory() as session:
+        chat_message_repo = _SqlAlchemyChatMessageRepository(session)
+        await chat_message_repo.append_message(conversation.id, "user", "Retrying")
+        await session.commit()
+
+    retried_response = await client.get(
+        f"/api/v1/conversations/{conversation.id}/messages",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert retried_response.json()["last_turn_failure"] is None

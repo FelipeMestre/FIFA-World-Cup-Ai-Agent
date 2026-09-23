@@ -6,6 +6,7 @@ from src.infra.postgres.schemas import (  # noqa: F401
     auth_schema,
     chat_message_schema,
     chat_message_widget_schema,
+    chat_turn_failure_schema,
     conversation_schema,
     ingestion_job_schema,
     match_schema,
