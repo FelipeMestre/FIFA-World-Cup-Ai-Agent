@@ -276,7 +276,7 @@ describe("useChatThread", () => {
     expect(mintedId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
-    expect(sendMessageMock).toHaveBeenCalledWith(mintedId, "Hi there", expect.any(AbortSignal));
+    expect(sendMessageMock).toHaveBeenCalledWith(mintedId, "Hi there");
   });
 
   it("reuses the URL conversation id and does not mint another", async () => {
@@ -295,7 +295,7 @@ describe("useChatThread", () => {
     });
 
     expect(onConversationCreated).not.toHaveBeenCalled();
-    expect(sendMessageMock).toHaveBeenCalledWith(urlId, "Follow up", expect.any(AbortSignal));
+    expect(sendMessageMock).toHaveBeenCalledWith(urlId, "Follow up");
   });
 
   it("does not let an abandoned turn's finally clear isSending for the conversation switched to", async () => {

@@ -82,14 +82,6 @@ export function useChatThread({
   const skipHistoryLoadRef = useRef(Boolean(restored?.length));
   const historyRequestIdRef = useRef(0);
   const hydratedConversationIdRef = useRef<string | null>(null);
-  /**
-   * The in-flight turn's stream, if any. Aborted whenever the viewed
-   * conversation changes (switch or reset) so an abandoned turn can't touch
-   * `isSending`/messages for whatever conversation is now active -- see
-   * `submit`'s `finally` guard below for why aborting the fetch alone isn't
-   * enough (the abort's own catch/finally still run and need gating too).
-   */
-  const activeStreamControllerRef = useRef<AbortController | null>(null);
 
   const setMessages = useCallback(
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -111,14 +103,22 @@ export function useChatThread({
       return;
     }
     previousUrlIdRef.current = urlConversationId;
-    // Leaving whatever conversation was active -- stop its stream, if any,
-    // so it can't keep writing into what's about to become a different
-    // conversation's state. `isSending` is reset here too: the `finally` in
-    // `submit` deliberately will not clear it once the conversation has
-    // moved on (see its guard), so this is the only place that does for a
-    // switch -- otherwise a turn abandoned mid-stream would leave
-    // `isSending` stuck `true` forever for whatever's viewed next.
-    activeStreamControllerRef.current?.abort();
+    // Deliberately NOT aborting the in-flight stream here. Aborting the
+    // fetch doesn't just stop the client from watching it -- it disconnects
+    // the request, and FastAPI's StreamingResponse cancels its generator
+    // task the moment it detects that, killing the turn server-side before
+    // it ever reaches the Postgres persistence step (which only runs after
+    // the LLM finishes). Switching conversations mid-stream was silently
+    // losing the message entirely, not just hiding it. Let the old stream
+    // keep running in the background so the backend finishes and persists
+    // the turn normally; `submit`'s `finally` guard (conversationIdRef
+    // check) already stops it from touching isSending/messages for
+    // whatever conversation is active by the time it resolves.
+    //
+    // `isSending` is reset here regardless, since that guard means the old
+    // turn's own `finally` will not clear it once the conversation has
+    // moved on -- otherwise a turn still in flight would leave `isSending`
+    // stuck `true` for whatever's viewed next.
     setIsSending(false);
 
     if (urlConversationId === null) {
@@ -231,14 +231,6 @@ export function useChatThread({
       setIsSending(true);
       historyRequestIdRef.current += 1;
 
-      // Defensive: a second submit while one is already in flight (shouldn't
-      // happen -- the composer disables during isSending -- but this keeps
-      // the invariant "at most one live stream per hook instance" true
-      // regardless of how it's triggered.
-      activeStreamControllerRef.current?.abort();
-      const controller = new AbortController();
-      activeStreamControllerRef.current = controller;
-
       const updateAssistant = (updater: (message: ChatMessage) => ChatMessage) => {
         setMessages((prev) =>
           prev.map((message) => (message.id === assistantId ? updater(message) : message)),
@@ -246,7 +238,7 @@ export function useChatThread({
       };
 
       try {
-        for await (const event of sendMessage(activeConversationId, text, controller.signal)) {
+        for await (const event of sendMessage(activeConversationId, text)) {
           switch (event.type) {
             case "reasoning_delta":
               updateAssistant((message) => ({
@@ -308,8 +300,10 @@ export function useChatThread({
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          // Deliberately cancelled (conversation switch or reset) -- not a
-          // real failure, nothing to show the user.
+          // We never abort this fetch ourselves (see the conversation-switch
+          // effect's comment on why) -- this only fires for a genuinely
+          // external cancellation, e.g. the browser tab closing. Not a
+          // failure worth showing the user.
         } else {
           const detail =
             error instanceof ApiError
@@ -331,9 +325,6 @@ export function useChatThread({
         if (conversationIdRef.current === activeConversationId) {
           setIsSending(false);
         }
-        if (activeStreamControllerRef.current === controller) {
-          activeStreamControllerRef.current = null;
-        }
       }
     },
     [conversationId],
@@ -351,7 +342,9 @@ export function useChatThread({
   );
 
   const reset = useCallback(() => {
-    activeStreamControllerRef.current?.abort();
+    // Does not abort an in-flight turn -- see the conversation-switch
+    // effect's comment: aborting the fetch kills the backend's persistence
+    // work for that turn before it can save the message.
     if (conversationIdRef.current) {
       forgetInFlightTurn(conversationIdRef.current);
     }
