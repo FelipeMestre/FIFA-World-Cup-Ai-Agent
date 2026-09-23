@@ -172,6 +172,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
                     title: threadTitle,
                     updatedAt: new Date().toISOString(),
                     createdAt: new Date().toISOString(),
+                    isGenerating: false,
                   });
                 }}
               />

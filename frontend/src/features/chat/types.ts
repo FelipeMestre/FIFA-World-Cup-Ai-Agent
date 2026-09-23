@@ -237,6 +237,8 @@ export interface ConversationSummary {
   title: string;
   updatedAt: string;
   createdAt: string;
+  /** True while a background reply is being generated for this conversation -- a snapshot from the last `GET /conversations` fetch, not a live subscription. */
+  isGenerating: boolean;
 }
 
 export interface ChatMessage {

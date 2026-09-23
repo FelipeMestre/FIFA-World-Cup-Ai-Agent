@@ -7,6 +7,7 @@ export const conversationSummarySchema = z.object({
   title: z.string(),
   updated_at: z.string(),
   created_at: z.string(),
+  is_generating: z.boolean().default(false),
 });
 
 export const conversationSummaryListSchema = z.array(conversationSummarySchema);
@@ -19,5 +20,6 @@ export function toConversationSummary(
     title: row.title,
     updatedAt: row.updated_at,
     createdAt: row.created_at,
+    isGenerating: row.is_generating,
   };
 }

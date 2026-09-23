@@ -8,7 +8,7 @@ function summary(
   title: string,
   updatedAt: string,
 ): ConversationSummary {
-  return { id, title, updatedAt, createdAt: updatedAt };
+  return { id, title, updatedAt, createdAt: updatedAt, isGenerating: false };
 }
 
 describe("groupConversations", () => {

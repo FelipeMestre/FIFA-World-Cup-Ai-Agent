@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { Loader2, Pencil } from "lucide-react";
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
 import { groupConversations } from "@/features/chat/group-conversations";
@@ -30,20 +30,30 @@ function ConversationRow({
             : "focus-ring flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 text-body-md text-ink-secondary"
         }
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          className={isActive ? "text-brand" : "text-ink-muted"}
-          strokeWidth="1.5"
-          strokeLinecap="square"
-          aria-hidden="true"
-        >
-          <path d="M3 4h14v10H8l-3 3v-3H3z" />
-        </svg>
+        {conversation.isGenerating ? (
+          <Loader2
+            className={isActive ? "size-4 shrink-0 animate-spin text-brand" : "size-4 shrink-0 animate-spin text-ink-muted"}
+            aria-hidden="true"
+          />
+        ) : (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            className={isActive ? "text-brand" : "text-ink-muted"}
+            strokeWidth="1.5"
+            strokeLinecap="square"
+            aria-hidden="true"
+          >
+            <path d="M3 4h14v10H8l-3 3v-3H3z" />
+          </svg>
+        )}
         <span className="flex-1 truncate">{conversation.title || "New chat"}</span>
+        {conversation.isGenerating ? (
+          <span className="sr-only">Generating a reply</span>
+        ) : null}
       </Link>
       <button
         type="button"
