@@ -11,17 +11,22 @@ Progress is published to a per-conversation Redis Stream instead of yielded
 to an SSE response, so any number of watchers can attach or detach without
 affecting the run itself. `chat:turn-in-progress:{conversation_id}` is the
 signal both the sidebar spinner and the one-turn-per-conversation guard
-read; it is set with `NX` (only if absent) so a stray duplicate enqueue
-can't stomp on an already-running turn's flag, and always cleared in
-`finally`, independent of Postgres session state -- clearing a Redis key
-has no dependency on whether the session needs rolling back first (that
-rule only applies to a *second* write on the *same* aborted session).
+read; it is always cleared in `finally`, independent of Postgres session
+state -- clearing a Redis key has no dependency on whether the session
+needs rolling back first (that rule only applies to a *second* write on the
+*same* aborted session).
 
-This task assumes `ChatService.start_turn` (ownership check + get-or-create)
-has already run synchronously, before this job was enqueued -- same
-contract `ChatService.send_message` already documents. Which caller enqueues
-this job, and how the ownership check stays synchronous, is not decided
-here; see odd/tasks/chat-memory.md.
+This task assumes its caller (`POST /chat/messages`, see `chat_router.py`)
+has already, synchronously and in this order: run `ChatService.start_turn`
+(ownership check + get-or-create), reserved the turn by setting
+`turn_in_progress_key` with `SET NX` (the actual one-turn-per-conversation
+guard -- a duplicate enqueue is rejected there with a 409, before it ever
+reaches this task), and persisted the user's own message via
+`ChatService.persist_user_message`. This task never re-persists the user's
+message and never re-attempts the `NX` reservation -- it only refreshes the
+flag's TTL to a full window from when generation actually starts (the
+router's own TTL may have partly ticked down while queued) and is
+responsible for clearing it.
 """
 
 import json
@@ -140,18 +145,10 @@ async def generate_chat_reply_task(
     stream_key = turn_stream_key(conversation_id)
     progress_key = turn_in_progress_key(conversation_id)
 
-    acquired = await redis_client.set(progress_key, "1", nx=True, ex=TURN_IN_PROGRESS_TTL_SECONDS)
-    if not acquired:
-        # A turn is already in progress for this conversation -- the
-        # one-turn-per-conversation guard should have stopped this job from
-        # ever being enqueued twice; this is a defensive no-op, not the
-        # primary enforcement point.
-        logger.warning(
-            "generate_chat_reply_task skipped: a turn is already in progress for conversation %s",
-            conversation_id,
-        )
-        return
-
+    # The router already reserved this turn with `SET NX` before enqueueing
+    # -- refresh (not acquire) the flag's TTL now that generation is
+    # actually starting, so queueing delay never eats into the window.
+    await redis_client.set(progress_key, "1", ex=TURN_IN_PROGRESS_TTL_SECONDS)
     await redis_client.delete(stream_key)  # drop any stale entries from a prior turn
 
     try:
@@ -176,10 +173,8 @@ async def generate_chat_reply_task(
                 ):
                     await redis_client.xadd(stream_key, serialize_chat_turn_event(event))
             except ChatServiceUnavailable as exc:
-                # Mirrors chat_router.py's `_stream_chat_events`, which
-                # catches this same exception and emits an `error` SSE
-                # event for the live path -- same non-recoverable-turn
-                # signal, just published for a watcher instead of streamed.
+                # Non-recoverable-turn signal, published to the stream for
+                # any watcher instead of raised into a live SSE response.
                 await _publish_error(stream_key, "ChatServiceUnavailable", str(exc))
                 raise
     except BaseException as exc:

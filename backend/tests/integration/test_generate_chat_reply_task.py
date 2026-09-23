@@ -114,8 +114,11 @@ async def test_generate_chat_reply_task_persists_and_publishes_on_success(monkey
         chat_message_repo = _SqlAlchemyChatMessageRepository(session)
         messages = await chat_message_repo.list_for_conversation(UUID(conversation_id), _USER_ID)
 
+    # The task no longer persists the user's own message -- that happens
+    # synchronously in the router (`ChatService.persist_user_message`)
+    # before this task is even enqueued. Only the assistant's reply lands
+    # here.
     assert [(m.role, m.content) for m in messages] == [
-        ("user", "How is the tournament going?"),
         ("assistant", _REPLY_CONTENT),
     ]
 
@@ -149,23 +152,3 @@ async def test_generate_chat_reply_task_clears_progress_flag_and_publishes_error
     # The flag must be cleared even though the run failed -- it is not tied
     # to the Postgres session's rollback at all.
     assert await redis_client.get(turn_in_progress_key(conversation_id)) is None
-
-
-@pytest.mark.asyncio
-async def test_generate_chat_reply_task_skips_when_a_turn_is_already_in_progress(monkeypatch):
-    monkeypatch.setattr(
-        "src.infra.task_queue.chat_tasks.get_openrouter_client",
-        lambda: _FakeOpenRouterClient(),
-    )
-    conversation_id = await _create_conversation()
-    key = turn_in_progress_key(conversation_id)
-    await redis_client.set(key, "1", ex=60)
-
-    await generate_chat_reply_task({}, conversation_id, _USER_ID, "Should be skipped")
-
-    async with SessionFactory() as session:
-        chat_message_repo = _SqlAlchemyChatMessageRepository(session)
-        messages = await chat_message_repo.list_for_conversation(UUID(conversation_id), _USER_ID)
-    assert messages == []
-
-    await redis_client.delete(key)

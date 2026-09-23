@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from src.infra.postgres.config import engine
 from src.infra.redis.config import redis_client
+from src.infra.task_queue.pool import close_pool_for_testing
 from src.main import app
 
 
@@ -43,3 +44,12 @@ async def _disconnect_redis_client_after_test() -> AsyncGenerator[None]:
     # close).
     yield
     await redis_client.aclose()
+
+
+@pytest.fixture(autouse=True)
+async def _close_arq_pool_after_test() -> AsyncGenerator[None]:
+    # Same class of bug as the two fixtures above, for `pool.py`'s
+    # module-level arq connection pool -- see `close_pool_for_testing`'s
+    # docstring. A no-op for tests that never enqueue a job.
+    yield
+    await close_pool_for_testing()

@@ -18,6 +18,21 @@ async def get_arq_pool() -> ArqRedis:
     return _pool
 
 
+async def close_pool_for_testing() -> None:
+    """Test-only: closes and clears the module-level pool. Same class of
+    fix as `conftest.py`'s postgres-engine/redis-client fixtures -- this
+    pool is a process-wide singleton whose connection binds to whatever
+    event loop is running when it is first created, but pytest-asyncio
+    gives each test function its own loop. Without this, a later test
+    reusing the pool against an already-closed earlier loop raises
+    "Event loop is closed". Nothing in the running app calls this.
+    """
+    global _pool
+    if _pool is not None:
+        await _pool.aclose()
+        _pool = None
+
+
 async def enqueue_synthetic_upload(table_name: str, job_id: int, csv_bytes: bytes) -> None:
     pool = await get_arq_pool()
     await pool.enqueue_job("synthetic_upload_task", job_id, table_name, csv_bytes)

@@ -75,10 +75,6 @@ WIDGET_TYPE_TO_PART_CLASS: dict[
 }
 
 
-class ChatReply(BaseModel):
-    parts: list[MessagePart]
-
-
 class SendMessageRequest(BaseModel):
     """`conversation_id` is always client-generated (`crypto.randomUUID()`),
     even for a brand-new conversation -- the server no longer generates one.
@@ -88,9 +84,17 @@ class SendMessageRequest(BaseModel):
     message: str = Field(min_length=1)
 
 
-class SendMessageResponse(BaseModel):
+class SendMessageAckResponse(BaseModel):
+    """`POST /chat/messages`'s response: the user's message has been
+    persisted and a reply generation job has been enqueued, but the reply
+    itself has not been generated yet. Callers should connect to
+    `GET /conversations/{id}/watch` to observe it. `title` is included so
+    the frontend can update the sidebar/header immediately for a brand-new
+    conversation, without waiting on anything else.
+    """
+
     conversation_id: str
-    reply: ChatReply
+    title: str
 
 
 class ReasoningDeltaEventDto(BaseModel):

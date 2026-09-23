@@ -1,18 +1,11 @@
-from collections.abc import AsyncIterator
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.auth.services.dependencies import JwtDataDep
-from src.api.v1.chat.dtos.chat_dtos import ErrorEventDto, SendMessageRequest
-from src.api.v1.chat.sse import format_sse, to_dto
-from src.domain.chat.exceptions.chat_exceptions import (
-    ChatServiceUnavailable,
-    ConversationOwnershipError,
-)
+from src.api.v1.chat.dtos.chat_dtos import SendMessageAckResponse, SendMessageRequest
+from src.domain.chat.exceptions.chat_exceptions import ConversationOwnershipError
 from src.domain.chat.services.chat_service import ChatService
 from src.domain.chat.tools.registry import ToolDefinition, build_tool_registry
 from src.infra.openrouter.client import get_openrouter_client
@@ -44,16 +37,19 @@ from src.infra.postgres.repositories.player_analytics_repository import (
 from src.infra.postgres.repositories.team_analytics_repository import (
     get_team_analytics_repository,
 )
+from src.infra.redis.config import redis_client
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
 from src.infra.redis.repositories.conversation_cache_repository import (
     get_conversation_cache_repository,
 )
+from src.infra.task_queue.chat_tasks import TURN_IN_PROGRESS_TTL_SECONDS, turn_in_progress_key
+from src.infra.task_queue.pool import enqueue_chat_reply
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-_UNAVAILABLE_ERROR_DETAIL = "The chat assistant is temporarily unavailable"
+_TURN_ALREADY_IN_PROGRESS_DETAIL = "A reply is already being generated for this conversation"
 
 
 def get_tool_registry(
@@ -101,22 +97,23 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 
 @router.post(
     "/messages",
-    status_code=200,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="Send a chat message",
     description=(
-        "Sends a user message to the World Cup AI Scout assistant and streams its reply "
-        "via Server-Sent Events (`reasoning_delta`, `content_delta`, `tool_call`, "
-        "`widget_ready`, `cap_reached`, `message_done`, `error`)."
+        "Persists the user's message and enqueues `generate_chat_reply_task` to generate "
+        "the assistant's reply in the background -- this endpoint does not stream the "
+        "reply itself. Connect to `GET /conversations/{id}/watch` right after this "
+        "returns to observe the reply as it is generated."
     ),
 )
 async def send_message(
     payload: SendMessageRequest,
     chat_service: ChatServiceDep,
     jwt_data: JwtDataDep,
-) -> StreamingResponse:
+) -> SendMessageAckResponse:
     user_id = int(jwt_data["sub"])
     try:
-        await chat_service.start_turn(
+        conversation = await chat_service.start_turn(
             conversation_id=payload.conversation_id,
             user_id=user_id,
             first_message=payload.message,
@@ -124,19 +121,22 @@ async def send_message(
     except ConversationOwnershipError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
-    return StreamingResponse(
-        _stream_chat_events(chat_service, payload.conversation_id, user_id, payload.message),
-        media_type="text/event-stream",
+    # The one-turn-per-conversation guard: `SET NX` is the actual authority
+    # here (see chat_tasks.py's module docstring) -- the job itself no
+    # longer attempts its own reservation, it only refreshes and clears
+    # this flag.
+    reserved = await redis_client.set(
+        turn_in_progress_key(str(payload.conversation_id)),
+        "1",
+        nx=True,
+        ex=TURN_IN_PROGRESS_TTL_SECONDS,
     )
+    if not reserved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_TURN_ALREADY_IN_PROGRESS_DETAIL
+        )
 
+    await chat_service.persist_user_message(payload.conversation_id, payload.message)
+    await enqueue_chat_reply(str(payload.conversation_id), user_id, payload.message)
 
-async def _stream_chat_events(
-    chat_service: ChatService, conversation_id: UUID, user_id: int, message: str
-) -> AsyncIterator[bytes]:
-    try:
-        async for event in chat_service.send_message(
-            conversation_id=conversation_id, user_id=user_id, user_message=message
-        ):
-            yield format_sse(to_dto(event))
-    except ChatServiceUnavailable:
-        yield format_sse(ErrorEventDto(detail=_UNAVAILABLE_ERROR_DETAIL))
+    return SendMessageAckResponse(conversation_id=str(conversation.id), title=conversation.title)

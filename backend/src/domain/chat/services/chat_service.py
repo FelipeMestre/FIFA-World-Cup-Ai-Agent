@@ -168,6 +168,19 @@ class ChatService:
         await self._session.commit()
         return conversation
 
+    async def persist_user_message(self, conversation_id: UUID, content: str) -> None:
+        """Persists the user's own message synchronously, independent of
+        whether the reply is ever generated -- called by the router right
+        before enqueueing `generate_chat_reply_task`, so the user's message
+        survives even if the job never runs. Uses `self._session` (the
+        request-scoped session) and commits immediately, same pattern as
+        `start_turn` -- this runs and finishes before the endpoint returns,
+        unlike `send_message`'s own persistence step below, which must open
+        its own independent session (see that docstring).
+        """
+        await self._chat_message_repo.append_message(conversation_id, role="user", content=content)
+        await self._session.commit()
+
     async def send_message(
         self,
         conversation_id: UUID,
@@ -176,9 +189,11 @@ class ChatService:
         tools: list[dict] | None = None,
     ) -> AsyncIterator[ChatTurnEvent]:
         """Streams reasoning/content deltas as they arrive from the tool
-        loop, then persists the finished conversation and yields the
-        terminal event(s). Assumes `start_turn` has already been awaited for
-        this `conversation_id`/`user_id` pair.
+        loop, then persists the assistant's reply and yields the terminal
+        event(s). Assumes `start_turn` has already been awaited, and that
+        the user's own message has already been persisted via
+        `persist_user_message` -- this method only ever appends the
+        assistant's reply, never the user's turn.
         """
         resolved_conversation_id = str(conversation_id)
         history = await self._conversation_cache.get_history(resolved_conversation_id)
@@ -227,9 +242,6 @@ class ChatService:
             async with SessionFactory() as turn_session:
                 chat_message_repo = get_chat_message_repository(turn_session)
                 conversation_repo = get_conversation_repository(turn_session)
-                await chat_message_repo.append_message(
-                    conversation_id, role="user", content=user_message
-                )
                 widgets = [
                     (w.tool_name, w.widget_type, w.data)
                     for w in message_parts_segments
