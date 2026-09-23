@@ -202,8 +202,8 @@ async def test_get_conversation_messages_returns_ordered_parts_including_a_widge
     assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
     assert body["messages"][0]["parts"] == [{"type": "text", "content": "How is Test Team doing?"}]
     assert body["messages"][1]["parts"] == [
-        {"type": "text", "content": "Here's how they did."},
         {"type": "team_widget", "data": {"id": "1", "name": "Test Team"}},
+        {"type": "text", "content": "Here's how they did."},
     ]
 
 

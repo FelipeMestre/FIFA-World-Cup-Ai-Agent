@@ -53,8 +53,13 @@ def _widget_to_part(widget: ChatMessageWidget) -> MessagePart:
 
 
 def _to_message_dto(message: ChatMessage) -> ConversationMessageDto:
-    parts: list[MessagePart] = [TextPart(content=message.content)]
-    parts.extend(_widget_to_part(widget) for widget in message.widgets)
+    # Widgets first, then text -- the true interleaved order from the live
+    # stream isn't persisted (chat_message.content is one flat final
+    # string), so a reload can't reconstruct it exactly. Putting widgets
+    # ahead of the text matches how a live turn actually reads: the widget
+    # resolves during the tool call, before the model's prose about it.
+    parts: list[MessagePart] = [_widget_to_part(widget) for widget in message.widgets]
+    parts.append(TextPart(content=message.content))
     return ConversationMessageDto(role=message.role, parts=parts, created_at=message.created_at)
 
 
