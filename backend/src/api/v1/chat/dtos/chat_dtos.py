@@ -65,9 +65,11 @@ MessagePart = Annotated[
 # `conversation_router.py` (`GET /conversations/{id}/messages` replay) so
 # the mapping has exactly one place to drift from.
 WIDGET_TYPE_TO_PART_CLASS: dict[
-    str, type[TeamWidgetPart] | type[PlayerWidgetPart] | type[CompareWidgetPart]
+    str,
+    type[TeamWidgetPart] | type[MatchWidgetPart] | type[PlayerWidgetPart] | type[CompareWidgetPart],
 ] = {
     "team_widget": TeamWidgetPart,
+    "match_widget": MatchWidgetPart,
     "player_widget": PlayerWidgetPart,
     "compare_widget": CompareWidgetPart,
 }
