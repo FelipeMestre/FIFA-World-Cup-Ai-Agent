@@ -1,7 +1,10 @@
+import json
+from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.auth.services.dependencies import JwtDataDep
@@ -12,6 +15,7 @@ from src.api.v1.chat.dtos.conversation_dtos import (
     ConversationSummaryDto,
     UpdateConversationTitleRequest,
 )
+from src.api.v1.chat.sse import format_sse, is_terminal_event_type, redis_entry_to_dto
 from src.domain.chat.model.chat_message import ChatMessage
 from src.domain.chat.model.chat_message_widget import ChatMessageWidget
 from src.domain.chat.model.conversation import Conversation
@@ -24,6 +28,14 @@ from src.infra.postgres.interfaces.conversation_repository_interface import (
 )
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
+from src.infra.redis.config import redis_client
+from src.infra.task_queue.chat_tasks import turn_in_progress_key, turn_stream_key
+
+# How long to wait for a new stream entry before re-checking whether the
+# turn is still marked in-progress. Not a hard cap on total watch time --
+# just how often to notice a job that vanished without a clean terminal
+# write (crashed, or its in-progress TTL lapsed).
+_WATCH_POLL_TIMEOUT_MS = 10_000
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -126,3 +138,59 @@ async def get_conversation_messages(
         title=conversation.title,
         messages=[_to_message_dto(message) for message in messages],
     )
+
+
+@router.get(
+    "/{conversation_id}/watch",
+    summary="Reattach to a conversation's in-progress turn, if any",
+    description="Streams the same SSE vocabulary as `POST /chat/messages` "
+    "(`reasoning_delta`, `content_delta`, `tool_call`, `widget_ready`, `cap_reached`, "
+    "`message_done`, `error`), sourced from `generate_chat_reply_task`'s Redis stream "
+    "instead of a live generation -- any number of watchers can attach or detach without "
+    "affecting the job itself. Catches up on everything already generated, then continues "
+    "live until a terminal event lands. Responds 204 with no body if no turn is currently "
+    "in progress for this conversation -- callers should fall back to the ordinary reload "
+    "endpoint in that case, not treat 204 as an error.",
+)
+async def watch_conversation_turn(
+    conversation_id: UUID,
+    conversation_repo: ConversationRepositoryDep,
+    jwt_data: JwtDataDep,
+) -> Response:
+    user_id = int(jwt_data["sub"])
+    conversation = await conversation_repo.get_owned(conversation_id, user_id)
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    if not await redis_client.exists(turn_in_progress_key(str(conversation_id))):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    return StreamingResponse(
+        _watch_turn_stream(str(conversation_id)), media_type="text/event-stream"
+    )
+
+
+async def _watch_turn_stream(conversation_id: str) -> AsyncIterator[bytes]:
+    stream_key = turn_stream_key(conversation_id)
+    progress_key = turn_in_progress_key(conversation_id)
+    last_id = "0"  # start from the beginning -- catch up on everything already generated
+
+    while True:
+        response = await redis_client.xread({stream_key: last_id}, block=_WATCH_POLL_TIMEOUT_MS)
+        if not response:
+            # No new entry within the poll window. If the job is no longer
+            # marked in-progress, it ended without a clean terminal write
+            # (crashed, or the flag's own TTL lapsed) -- stop waiting rather
+            # than hold the connection open forever.
+            if not await redis_client.exists(progress_key):
+                return
+            continue
+
+        _stream_name, entries = response[0]
+        for entry_id, fields in entries:
+            last_id = entry_id
+            event_type = fields["event_type"]
+            dto = redis_entry_to_dto(event_type, json.loads(fields["payload"]))
+            yield format_sse(dto)
+            if is_terminal_event_type(event_type):
+                return
