@@ -9,6 +9,7 @@ from src.domain.ingestion.exceptions.ingestion_exceptions import (
     IdentityLinkNotFoundError,
 )
 from src.domain.ingestion.model.player_identity_link import LinkReviewStatus, PlayerIdentityLink
+from src.domain.ingestion.model.player_identity_link_review import PlayerIdentityLinkReview
 from src.infra.postgres.interfaces.player_identity_link_repository_interface import (
     PlayerIdentityLinkRepositoryInterface,
 )
@@ -18,7 +19,9 @@ class PlayerIdentityLinkReviewService:
     def __init__(self, repository: PlayerIdentityLinkRepositoryInterface) -> None:
         self._repository = repository
 
-    async def list_pending(self, limit: int = 100, offset: int = 0) -> list[PlayerIdentityLink]:
+    async def list_pending(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[PlayerIdentityLinkReview]:
         return await self._repository.list_pending(limit=limit, offset=offset)
 
     async def approve(self, link_id: int, admin_user_id: int) -> PlayerIdentityLink:
