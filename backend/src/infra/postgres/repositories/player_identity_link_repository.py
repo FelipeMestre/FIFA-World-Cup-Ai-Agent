@@ -17,6 +17,9 @@ from src.domain.ingestion.model.player_identity_link import (
     PlayerIdentityLink,
     PlayerMatchMethod,
 )
+from src.domain.ingestion.model.player_identity_link_review import PlayerIdentityLinkReview
+from src.domain.ingestion.model.real_player import RealPlayer
+from src.domain.players.model.player import Player
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.ingestion_repository_interface import UpsertResult
 from src.infra.postgres.interfaces.player_identity_link_repository_interface import (
@@ -32,6 +35,8 @@ from src.infra.postgres.schemas.player_identity_link_schema import (
 from src.infra.postgres.schemas.player_identity_link_schema import (
     PlayerMatchMethod as SchemaPlayerMatchMethod,
 )
+from src.infra.postgres.schemas.player_schema import PlayerSchema
+from src.infra.postgres.schemas.real_player_schema import RealPlayerSchema
 
 # Auto-accept threshold shared with the spec's confidence-tiered matching
 # requirement: candidates at or above this confidence are persisted as
@@ -77,20 +82,77 @@ def _to_domain(row: PlayerIdentityLinkSchema) -> PlayerIdentityLink:
     )
 
 
+def _synthetic_player_to_domain(row: PlayerSchema) -> Player:
+    return Player(
+        id=row.player_id,
+        team_id=row.team_id,
+        name=row.player_name,
+        position=row.position,
+        club_team=row.club_team,
+        market_value_eur=row.market_value_eur,
+        caps=row.caps,
+        date_of_birth=row.date_of_birth,
+        height_cm=row.height_cm,
+        goals=row.goals,
+    )
+
+
+def _real_player_to_domain(row: RealPlayerSchema) -> RealPlayer:
+    return RealPlayer(
+        player_id=row.player_id,
+        first_name=row.first_name,
+        last_name=row.last_name,
+        date_of_birth=row.date_of_birth,
+        country_of_birth=row.country_of_birth,
+        country_of_citizenship=row.country_of_citizenship,
+        position=row.position,
+        sub_position=row.sub_position,
+        foot=row.foot,
+        height_cm=row.height_cm,
+        current_club_id=row.current_club_id,
+        current_national_team_id=row.current_national_team_id,
+        international_caps=row.international_caps,
+        international_goals=row.international_goals,
+        market_value_eur=row.market_value_eur,
+        highest_market_value_eur=row.highest_market_value_eur,
+        contract_expiration_date=row.contract_expiration_date,
+        profile_url=row.profile_url,
+        last_synced_at=row.last_synced_at,
+    )
+
+
 class _SqlAlchemyPlayerIdentityLinkRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._ingestion_repository = _SqlAlchemyIngestionRepository(session)
 
-    async def list_pending(self, limit: int = 100, offset: int = 0) -> list[PlayerIdentityLink]:
+    async def list_pending(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[PlayerIdentityLinkReview]:
+        # Joins in both sides of the proposed match (the synthetic roster
+        # player and the Transfermarkt real_player) so the admin review list
+        # carries every comparison field in one call -- no per-row follow-up
+        # lookup for either side.
         result = await self._session.execute(
-            select(PlayerIdentityLinkSchema)
+            select(PlayerIdentityLinkSchema, PlayerSchema, RealPlayerSchema)
+            .join(PlayerSchema, PlayerSchema.player_id == PlayerIdentityLinkSchema.player_id)
+            .join(
+                RealPlayerSchema,
+                RealPlayerSchema.player_id == PlayerIdentityLinkSchema.real_player_id,
+            )
             .where(PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus.PENDING)
             .order_by(PlayerIdentityLinkSchema.id)
             .limit(limit)
             .offset(offset)
         )
-        return [_to_domain(row) for row in result.scalars().all()]
+        return [
+            PlayerIdentityLinkReview(
+                link=_to_domain(link_row),
+                synthetic_player=_synthetic_player_to_domain(player_row),
+                real_player=_real_player_to_domain(real_player_row),
+            )
+            for link_row, player_row, real_player_row in result.all()
+        ]
 
     async def get(self, link_id: int) -> PlayerIdentityLink | None:
         row = await self._session.get(PlayerIdentityLinkSchema, link_id)

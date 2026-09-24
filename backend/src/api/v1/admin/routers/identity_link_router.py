@@ -6,7 +6,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from src.api.v1.admin.dtos.identity_link_dtos import IdentityLinkResponse
+from src.api.v1.admin.dtos.identity_link_dtos import (
+    IdentityLinkResponse,
+    IdentityLinkReviewResponse,
+)
 from src.api.v1.auth.services.dependencies import require_admin
 from src.domain.ingestion.exceptions.ingestion_exceptions import (
     IdentityLinkAlreadyReviewedError,
@@ -42,14 +45,14 @@ ReviewServiceDep = Annotated[
 
 @router.get(
     "/pending",
-    response_model=list[IdentityLinkResponse],
-    summary="List pending identity-link matches",
+    response_model=list[IdentityLinkReviewResponse],
+    summary="List pending identity-link matches with full comparison data",
 )
 async def list_pending_links(
     service: ReviewServiceDep, admin: AdminDep, limit: int = 100, offset: int = 0
-) -> list[IdentityLinkResponse]:
-    links = await service.list_pending(limit=limit, offset=offset)
-    return [IdentityLinkResponse.from_domain(link) for link in links]
+) -> list[IdentityLinkReviewResponse]:
+    reviews = await service.list_pending(limit=limit, offset=offset)
+    return [IdentityLinkReviewResponse.from_domain(review) for review in reviews]
 
 
 @router.post(

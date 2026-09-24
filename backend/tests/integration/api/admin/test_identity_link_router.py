@@ -68,15 +68,22 @@ async def pending_link() -> AsyncGenerator[dict]:
 
 
 @pytest.mark.asyncio
-async def test_list_pending_includes_seeded_link(client: AsyncClient, pending_link: dict) -> None:
+async def test_list_pending_includes_seeded_link_with_comparison_data(
+    client: AsyncClient, pending_link: dict
+) -> None:
     app.dependency_overrides[parse_jwt_data] = _admin_token_data
 
     response = await client.get("/api/v1/admin/identity-links/pending")
 
     app.dependency_overrides.clear()
     assert response.status_code == 200
-    ids = [item["id"] for item in response.json()]
+    body = response.json()
+    ids = [item["id"] for item in body]
     assert pending_link["link_id"] in ids
+    seeded = next(item for item in body if item["id"] == pending_link["link_id"])
+    assert seeded["synthetic_player"]["id"] == pending_link["player_id"]
+    assert seeded["real_player"]["player_id"] == _REAL_PLAYER_ID
+    assert seeded["real_player"]["first_name"] == "Test"
 
 
 @pytest.mark.asyncio

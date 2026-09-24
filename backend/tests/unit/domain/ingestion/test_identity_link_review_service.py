@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -11,9 +11,12 @@ from src.domain.ingestion.model.player_identity_link import (
     PlayerIdentityLink,
     PlayerMatchMethod,
 )
+from src.domain.ingestion.model.player_identity_link_review import PlayerIdentityLinkReview
+from src.domain.ingestion.model.real_player import RealPlayer
 from src.domain.ingestion.services.identity_link_review_service import (
     PlayerIdentityLinkReviewService,
 )
+from src.domain.players.model.player import Player
 
 
 def _link(link_id: int, status: LinkReviewStatus) -> PlayerIdentityLink:
@@ -29,13 +32,55 @@ def _link(link_id: int, status: LinkReviewStatus) -> PlayerIdentityLink:
     )
 
 
+def _synthetic_player() -> Player:
+    return Player(1, 1, "Test Player", "FWD", "Test FC", 1000000, 5, date(2000, 1, 1), 180, 3)
+
+
+def _real_player() -> RealPlayer:
+    return RealPlayer(
+        player_id=100,
+        first_name="Test",
+        last_name="Player",
+        date_of_birth=date(2000, 1, 1),
+        country_of_birth=None,
+        country_of_citizenship=None,
+        position="Forward",
+        sub_position=None,
+        foot=None,
+        height_cm=180,
+        current_club_id=None,
+        current_national_team_id=None,
+        international_caps=None,
+        international_goals=None,
+        market_value_eur=None,
+        highest_market_value_eur=None,
+        contract_expiration_date=None,
+        profile_url="https://example.test",
+        last_synced_at=datetime.now(UTC),
+    )
+
+
+def _review(link_id: int, status: LinkReviewStatus) -> PlayerIdentityLinkReview:
+    return PlayerIdentityLinkReview(
+        link=_link(link_id, status),
+        synthetic_player=_synthetic_player(),
+        real_player=_real_player(),
+    )
+
+
 class _FakeRepository:
     def __init__(self, links: dict[int, PlayerIdentityLink]) -> None:
         self._links = links
         self.update_calls: list[tuple[int, LinkReviewStatus, int | None]] = []
 
-    async def list_pending(self, limit: int = 100, offset: int = 0) -> list[PlayerIdentityLink]:
-        pending = [link for link in self._links.values() if link.status == LinkReviewStatus.PENDING]
+    async def list_pending(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[PlayerIdentityLinkReview]:
+        pending = [
+            _review(link.id, link.status)
+            for link in self._links.values()
+            if link.status == LinkReviewStatus.PENDING
+        ]
         return pending[offset : offset + limit]
 
     async def get(self, link_id: int) -> PlayerIdentityLink | None:
@@ -62,7 +107,7 @@ async def test_list_pending_returns_only_pending_links():
 
     result = await service.list_pending()
 
-    assert [link.id for link in result] == [1]
+    assert [review.link.id for review in result] == [1]
 
 
 @pytest.mark.asyncio
