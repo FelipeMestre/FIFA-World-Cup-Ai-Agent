@@ -7,22 +7,30 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.ingestion.exceptions.ingestion_exceptions import IdentityLinkNotFoundError
+from src.domain.ingestion.exceptions.ingestion_exceptions import (
+    IdentityLinkNotFoundError,
+    RealPlayerAlreadyLinkedError,
+    RealPlayerNotFoundError,
+)
 from src.domain.ingestion.model.player_identity_candidate import PlayerIdentityCandidate
 from src.domain.ingestion.model.player_identity_link import (
     LinkReviewStatus,
     PlayerIdentityLink,
     PlayerMatchMethod,
 )
+from src.domain.ingestion.model.player_identity_link_review import PlayerIdentityLinkReview
+from src.domain.ingestion.model.real_player import RealPlayer
+from src.domain.players.model.player import Player
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.ingestion_repository_interface import UpsertResult
 from src.infra.postgres.interfaces.player_identity_link_repository_interface import (
     PlayerIdentityLinkRepositoryInterface,
 )
 from src.infra.postgres.repositories.ingestion_repository import _SqlAlchemyIngestionRepository
+from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 from src.infra.postgres.schemas.player_identity_link_schema import (
     LinkReviewStatus as SchemaLinkReviewStatus,
 )
@@ -32,6 +40,8 @@ from src.infra.postgres.schemas.player_identity_link_schema import (
 from src.infra.postgres.schemas.player_identity_link_schema import (
     PlayerMatchMethod as SchemaPlayerMatchMethod,
 )
+from src.infra.postgres.schemas.player_schema import PlayerSchema
+from src.infra.postgres.schemas.real_player_schema import RealPlayerSchema
 
 # Auto-accept threshold shared with the spec's confidence-tiered matching
 # requirement: candidates at or above this confidence are persisted as
@@ -77,20 +87,99 @@ def _to_domain(row: PlayerIdentityLinkSchema) -> PlayerIdentityLink:
     )
 
 
+def _synthetic_player_to_domain(row: PlayerSchema) -> Player:
+    return Player(
+        id=row.player_id,
+        team_id=row.team_id,
+        name=row.player_name,
+        position=row.position,
+        club_team=row.club_team,
+        market_value_eur=row.market_value_eur,
+        caps=row.caps,
+        date_of_birth=row.date_of_birth,
+        height_cm=row.height_cm,
+        goals=row.goals,
+    )
+
+
+def _real_player_to_domain(row: RealPlayerSchema) -> RealPlayer:
+    return RealPlayer(
+        player_id=row.player_id,
+        first_name=row.first_name,
+        last_name=row.last_name,
+        date_of_birth=row.date_of_birth,
+        country_of_birth=row.country_of_birth,
+        country_of_citizenship=row.country_of_citizenship,
+        position=row.position,
+        sub_position=row.sub_position,
+        foot=row.foot,
+        height_cm=row.height_cm,
+        current_club_id=row.current_club_id,
+        current_national_team_id=row.current_national_team_id,
+        international_caps=row.international_caps,
+        international_goals=row.international_goals,
+        market_value_eur=row.market_value_eur,
+        highest_market_value_eur=row.highest_market_value_eur,
+        contract_expiration_date=row.contract_expiration_date,
+        profile_url=row.profile_url,
+        last_synced_at=row.last_synced_at,
+    )
+
+
 class _SqlAlchemyPlayerIdentityLinkRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._ingestion_repository = _SqlAlchemyIngestionRepository(session)
 
-    async def list_pending(self, limit: int = 100, offset: int = 0) -> list[PlayerIdentityLink]:
-        result = await self._session.execute(
-            select(PlayerIdentityLinkSchema)
-            .where(PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus.PENDING)
-            .order_by(PlayerIdentityLinkSchema.id)
-            .limit(limit)
-            .offset(offset)
+    async def list_by_status(
+        self, status: LinkReviewStatus | None, limit: int = 100, offset: int = 0
+    ) -> list[PlayerIdentityLinkReview]:
+        # Joins in both sides of the proposed match (the synthetic roster
+        # player and the Transfermarkt real_player), plus the roster
+        # player's national_team for its country name (Player.team_id
+        # alone isn't a nationality an admin can read), so the admin review
+        # list carries every comparison field in one call -- no per-row
+        # follow-up lookup for any side. `status=None` is the admin's "all
+        # statuses" filter option, not just the default "pending" view.
+        query = (
+            select(
+                PlayerIdentityLinkSchema,
+                PlayerSchema,
+                RealPlayerSchema,
+                NationalTeamSchema.team_name,
+            )
+            .join(PlayerSchema, PlayerSchema.player_id == PlayerIdentityLinkSchema.player_id)
+            .join(
+                RealPlayerSchema,
+                RealPlayerSchema.player_id == PlayerIdentityLinkSchema.real_player_id,
+            )
+            .join(NationalTeamSchema, NationalTeamSchema.team_id == PlayerSchema.team_id)
         )
-        return [_to_domain(row) for row in result.scalars().all()]
+        if status is not None:
+            query = query.where(
+                PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus(status.value)
+            )
+        result = await self._session.execute(
+            query.order_by(PlayerIdentityLinkSchema.id).limit(limit).offset(offset)
+        )
+        return [
+            PlayerIdentityLinkReview(
+                link=_to_domain(link_row),
+                synthetic_player=_synthetic_player_to_domain(player_row),
+                synthetic_player_nationality=team_name,
+                real_player=_real_player_to_domain(real_player_row),
+            )
+            for link_row, player_row, real_player_row, team_name in result.all()
+        ]
+
+    async def count_by_status(self, status: LinkReviewStatus | None) -> int:
+        query = select(func.count(PlayerIdentityLinkSchema.id))
+        if status is not None:
+            query = query.where(
+                PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus(status.value)
+            )
+        result = await self._session.execute(query)
+        return result.scalar_one()
 
     async def get(self, link_id: int) -> PlayerIdentityLink | None:
         row = await self._session.get(PlayerIdentityLinkSchema, link_id)
@@ -105,6 +194,42 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
         row.status = SchemaLinkReviewStatus(status.value)
         row.reviewed_by_user_id = reviewed_by_user_id
         row.reviewed_by_admin = reviewed_by_user_id is not None
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _to_domain(row)
+
+    async def reassign(
+        self, link_id: int, new_real_player_id: int, admin_user_id: int
+    ) -> PlayerIdentityLink:
+        row = await self._session.get(PlayerIdentityLinkSchema, link_id)
+        if row is None:
+            raise IdentityLinkNotFoundError(f"player_identity_link {link_id} not found")
+
+        real_player_row = await self._session.get(RealPlayerSchema, new_real_player_id)
+        if real_player_row is None:
+            raise RealPlayerNotFoundError(f"real_player {new_real_player_id} not found")
+
+        # real_player_id is unique on player_identity_link -- validated
+        # up front (rather than letting the UPDATE hit the constraint) so
+        # the failure is a clear domain exception, not a raw IntegrityError.
+        conflict = await self._session.execute(
+            select(PlayerIdentityLinkSchema.id).where(
+                PlayerIdentityLinkSchema.real_player_id == new_real_player_id,
+                PlayerIdentityLinkSchema.id != link_id,
+            )
+        )
+        if conflict.scalar_one_or_none() is not None:
+            raise RealPlayerAlreadyLinkedError(
+                f"real_player {new_real_player_id} is already linked to a different "
+                "player_identity_link"
+            )
+
+        row.real_player_id = new_real_player_id
+        row.match_method = SchemaPlayerMatchMethod.MANUAL
+        row.match_confidence = None
+        row.status = SchemaLinkReviewStatus.APPROVED
+        row.reviewed_by_user_id = admin_user_id
+        row.reviewed_by_admin = True
         await self._session.commit()
         await self._session.refresh(row)
         return _to_domain(row)

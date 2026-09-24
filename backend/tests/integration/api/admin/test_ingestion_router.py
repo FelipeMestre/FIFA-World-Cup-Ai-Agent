@@ -130,3 +130,34 @@ async def test_trigger_sync_then_poll_status(client: AsyncClient) -> None:
     assert body["job_id"] == job_id
     assert body["job_type"] == "transfermarkt_sync"
     assert body["status"] == "queued"
+    assert body["current_stage"] is None
+    assert body["stage_checkpoints"] == []
+    assert body["all_stages"] == [
+        "national_teams",
+        "clubs",
+        "players",
+        "player_valuations",
+        "transfers",
+        "game_lineups",
+        "game_events",
+        "club_games",
+        "real_player_season_stat",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_upload_status_response_has_no_stages(client: AsyncClient) -> None:
+    # synthetic_upload jobs have no sub-stages -- all_stages must stay
+    # empty rather than reusing the Transfermarkt sync's stage list.
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    upload_response = await client.post(
+        "/api/v1/admin/ingestion/synthetic-upload",
+        data={"table_name": "team"},
+        files={"file": ("team.csv", b"a,b\n1,2\n", "text/csv")},
+    )
+    job_id = upload_response.json()["job_id"]
+    status_response = await client.get(f"/api/v1/admin/ingestion/jobs/{job_id}")
+
+    app.dependency_overrides.clear()
+    assert status_response.json()["all_stages"] == []

@@ -1,6 +1,7 @@
 "use client";
 
-import { History, Plus, User } from "lucide-react";
+import Link from "next/link";
+import { History, Plus, ShieldCheck, User } from "lucide-react";
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,13 @@ import { Button } from "@/components/ui/button";
  * reflow at 358px"). History and New chat are decorative in this build --
  * no history/threads persistence exists yet, so they're presentational only.
  */
-export function AppHeader({ threadSummary }: { threadSummary?: string }) {
+export function AppHeader({
+  threadSummary,
+  isAdmin = false,
+}: {
+  threadSummary?: string;
+  isAdmin?: boolean;
+}) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-ds-2 border-b border-border-subtle bg-surface-900 px-ds-4 md:h-16 md:gap-ds-3 md:px-ds-6">
       <AssistantMark size={28} className="md:hidden" />
@@ -28,6 +35,18 @@ export function AppHeader({ threadSummary }: { threadSummary?: string }) {
         </span>
       ) : null}
       <div className="grow" />
+      {isAdmin ? (
+        <Button
+          variant="outline"
+          aria-label="Identity link review"
+          nativeButton={false}
+          render={<Link href="/identity-links" />}
+          className="size-11 border-border-strong bg-transparent p-0 text-ink-primary hover:bg-surface-700 md:h-10 md:w-auto md:gap-ds-2 md:px-3"
+        >
+          <ShieldCheck className="size-4" aria-hidden />
+          <span className="hidden md:inline">Admin</span>
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="outline"

@@ -15,6 +15,7 @@ from src.domain.ingestion.model.ingestion_job import (
     IngestionJobStatus,
     IngestionJobType,
 )
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 from src.infra.postgres.config import SessionFactory, engine
 from src.infra.postgres.repositories.ingestion_job_repository import (
     _SqlAlchemyIngestionJobRepository,
@@ -93,3 +94,28 @@ async def test_update_persists_succeeded_row_counts(db_session: AsyncSession) ->
 
     assert updated.status == IngestionJobStatus.SUCCEEDED
     assert updated.row_counts == {"team": 48}
+
+
+async def test_update_persists_stage_checkpoints(db_session: AsyncSession) -> None:
+    repository = _SqlAlchemyIngestionJobRepository(db_session)
+    created = await repository.create(
+        IngestionJob(
+            id=None,
+            job_type=IngestionJobType.TRANSFERMARKT_SYNC,
+            status=IngestionJobStatus.QUEUED,
+            source_label="full-scoped-sync",
+            requested_by_user_id=_USER_ID,
+        )
+    )
+    running_job = await repository.update(created.mark_running())
+
+    checkpointed = await repository.update(
+        running_job.record_stage_checkpoint(TransfermarktSyncStage.NATIONAL_TEAMS)
+    )
+
+    assert checkpointed.current_stage == "national_teams"
+    assert [c["stage"] for c in checkpointed.stage_checkpoints] == ["national_teams"]
+    reloaded = await repository.get(created.id)
+    assert reloaded is not None
+    assert reloaded.current_stage == "national_teams"
+    assert [c["stage"] for c in reloaded.stage_checkpoints] == ["national_teams"]

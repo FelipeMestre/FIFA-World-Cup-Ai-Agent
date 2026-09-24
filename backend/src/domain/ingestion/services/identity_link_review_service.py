@@ -9,6 +9,7 @@ from src.domain.ingestion.exceptions.ingestion_exceptions import (
     IdentityLinkNotFoundError,
 )
 from src.domain.ingestion.model.player_identity_link import LinkReviewStatus, PlayerIdentityLink
+from src.domain.ingestion.model.player_identity_link_review import PlayerIdentityLinkReview
 from src.infra.postgres.interfaces.player_identity_link_repository_interface import (
     PlayerIdentityLinkRepositoryInterface,
 )
@@ -18,8 +19,13 @@ class PlayerIdentityLinkReviewService:
     def __init__(self, repository: PlayerIdentityLinkRepositoryInterface) -> None:
         self._repository = repository
 
-    async def list_pending(self, limit: int = 100, offset: int = 0) -> list[PlayerIdentityLink]:
-        return await self._repository.list_pending(limit=limit, offset=offset)
+    async def list_by_status(
+        self, status: LinkReviewStatus | None, limit: int = 100, offset: int = 0
+    ) -> list[PlayerIdentityLinkReview]:
+        return await self._repository.list_by_status(status, limit=limit, offset=offset)
+
+    async def count_by_status(self, status: LinkReviewStatus | None) -> int:
+        return await self._repository.count_by_status(status)
 
     async def approve(self, link_id: int, admin_user_id: int) -> PlayerIdentityLink:
         await self._require_pending(link_id)
@@ -32,6 +38,14 @@ class PlayerIdentityLinkReviewService:
         return await self._repository.update_status(
             link_id, LinkReviewStatus.REJECTED, admin_user_id
         )
+
+    async def reassign(
+        self, link_id: int, new_real_player_id: int, admin_user_id: int
+    ) -> PlayerIdentityLink:
+        # No "must be pending" precondition, unlike approve/reject: correcting
+        # a match is meant to work on any doubtful link, including one the
+        # matching pipeline auto-approved incorrectly.
+        return await self._repository.reassign(link_id, new_real_player_id, admin_user_id)
 
     async def _require_pending(self, link_id: int) -> PlayerIdentityLink:
         link = await self._repository.get(link_id)

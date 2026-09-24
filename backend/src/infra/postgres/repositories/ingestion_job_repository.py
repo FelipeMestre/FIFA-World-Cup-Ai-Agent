@@ -26,6 +26,8 @@ def _to_domain(row: IngestionJobSchema) -> IngestionJob:
         requested_by_user_id=row.requested_by_user_id,
         row_counts=row.row_counts,
         error_message=row.error_message,
+        current_stage=row.current_stage,
+        stage_checkpoints=row.stage_checkpoints,
         created_at=row.created_at,
         started_at=row.started_at,
         finished_at=row.finished_at,
@@ -63,6 +65,8 @@ class _SqlAlchemyIngestionJobRepository:
         row.status = SchemaJobStatus(job.status.value)
         row.row_counts = job.row_counts
         row.error_message = job.error_message
+        row.current_stage = job.current_stage
+        row.stage_checkpoints = job.stage_checkpoints
         row.started_at = job.started_at
         row.finished_at = job.finished_at
         await self._session.commit()

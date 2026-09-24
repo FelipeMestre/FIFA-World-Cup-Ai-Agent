@@ -7,6 +7,7 @@ from src.domain.ingestion.model.ingestion_job import (
     IngestionJobStatus,
     IngestionJobType,
 )
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
@@ -179,25 +180,36 @@ class _FakeDetailSync:
 
     async def sync_player_scoped_tables(
         self,
-        matched_real_player_ids: set[int],
+        real_player_ids: set[int],
         known_club_ids: set[str],
         skip_populated: bool = False,
+        progress=None,
     ) -> dict[str, int]:
-        self.player_scoped_calls.append(matched_real_player_ids)
+        self.player_scoped_calls.append(real_player_ids)
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.PLAYER_VALUATIONS)
+            await progress.checkpoint(TransfermarktSyncStage.TRANSFERS)
         return {"player_valuations": 0, "transfers": 0}
 
     async def sync_match_data(
         self,
-        matched_real_player_ids,
-        matched_real_club_ids,
+        real_player_ids,
+        real_club_ids,
         known_club_ids,
         skip_populated: bool = False,
+        progress=None,
     ) -> dict[str, int]:
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.GAME_LINEUPS)
+            await progress.checkpoint(TransfermarktSyncStage.GAME_EVENTS)
+            await progress.checkpoint(TransfermarktSyncStage.CLUB_GAMES)
         return {"game_lineups": 0, "game_events": 0, "club_games": 0}
 
     async def sync_season_stats(
-        self, matched_real_player_ids: set[int], skip_populated: bool = False
+        self, real_player_ids: set[int], skip_populated: bool = False, progress=None
     ) -> int:
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.SEASON_STATS)
         return 0
 
 
@@ -225,7 +237,7 @@ def _build_service(
 
 
 @pytest.mark.asyncio
-async def test_run_sync_persists_only_matched_players_and_succeeds_job():
+async def test_run_sync_persists_every_transfermarkt_player_and_succeeds_job():
     client = _FakeTransfermarktClient(
         {
             "national_teams": [_NATIONAL_TEAM_ROW],
@@ -282,16 +294,17 @@ async def test_run_sync_persists_only_matched_players_and_succeeds_job():
     assert result.status == IngestionJobStatus.SUCCEEDED
     assert len(identity_link_repository.upserted_candidates) == 1
     assert identity_link_repository.upserted_candidates[0].real_player_id == 500
-    # Only the matched player (500) is persisted, not the unrelated one (999).
-    assert detail_sync.player_scoped_calls == [{500}]
-    assert result.row_counts["players"] == 1
+    # Both players are persisted -- 999 never matched a roster player, but
+    # Transfermarkt ingestion no longer depends on identity matching.
+    assert detail_sync.player_scoped_calls == [{500, 999}]
+    assert result.row_counts["players"] == 2
 
 
 @pytest.mark.asyncio
 async def test_run_sync_persists_real_player_before_identity_link():
     # player_identity_link.real_player_id has a foreign key into real_player.
-    # Upserting identity-link candidates before the matched real_player rows
-    # exist raises ForeignKeyViolationError (found live, immediately after
+    # Upserting identity-link candidates before the real_player rows they
+    # reference exist raises ForeignKeyViolationError (found live, immediately after
     # fixing the real_player_id collision above -- both bugs were hit in the
     # same pipeline run).
     call_order: list[str] = []
@@ -344,6 +357,55 @@ async def test_run_sync_persists_real_player_before_identity_link():
 
 
 @pytest.mark.asyncio
+async def test_run_sync_records_a_stage_checkpoint_for_every_pipeline_phase_in_order():
+    client = _FakeTransfermarktClient(
+        {
+            "national_teams": [_NATIONAL_TEAM_ROW],
+            "clubs": [],
+            "players": [],
+        }
+    )
+    job_repository = _FakeJobRepository(_job())
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            )
+        ]
+    )
+    service = _build_service(
+        client,
+        job_repository,
+        national_team_repository,
+        _FakePlayerRepository([]),
+        _FakeDetailSync(),
+    )
+
+    result = await service.run_sync(_job())
+
+    assert result.status == IngestionJobStatus.SUCCEEDED
+    assert [c["stage"] for c in result.stage_checkpoints] == [
+        "national_teams",
+        "clubs",
+        "players",
+        "player_valuations",
+        "transfers",
+        "game_lineups",
+        "game_events",
+        "club_games",
+        "real_player_season_stat",
+    ]
+    assert result.current_stage == "real_player_season_stat"
+
+
+@pytest.mark.asyncio
 async def test_run_sync_reraises_original_error_leaving_job_running():
     # run_sync does NOT mark the job failed itself: a failure originating
     # from a DB statement leaves the session's transaction aborted, and this
@@ -370,7 +432,7 @@ async def test_run_sync_reraises_original_error_leaving_job_running():
 async def test_run_sync_with_skip_populated_derives_scope_from_db_without_refetching():
     # Every table this pipeline can populate already has rows: national_teams,
     # clubs, and players must all be skipped, and the scope detail_sync needs
-    # (matched_real_player_ids/known_club_ids) must come from the DB, not
+    # (all_real_player_ids/known_club_ids) must come from the DB, not
     # from re-fetching and re-matching the source CSVs.
     client = _FakeTransfermarktClient(
         {

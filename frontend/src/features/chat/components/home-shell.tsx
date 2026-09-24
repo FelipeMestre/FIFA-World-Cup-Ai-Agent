@@ -35,9 +35,11 @@ const MOBILE_BREAKPOINT = "(max-width: 767px)";
 export function HomeShell({
   children,
   userName,
+  isAdmin,
 }: {
   children?: ReactNode;
   userName: string;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const params = useParams();
@@ -157,7 +159,7 @@ export function HomeShell({
             the sidebar, and the content column owns its own header. Only the
             mobile artboards have one. */}
         <div className="shrink-0 md:hidden">
-          <AppHeader />
+          <AppHeader isAdmin={isAdmin} />
         </div>
         <div className="flex min-h-0 grow">
           <HomeSidebar
@@ -166,6 +168,7 @@ export function HomeShell({
             isLoading={conversationList.isLoading}
             loadError={conversationList.loadError}
             userName={userName}
+            isAdmin={isAdmin}
             onNewChat={startNewChat}
             onRename={setRenameTarget}
             onLogout={handleLogout}

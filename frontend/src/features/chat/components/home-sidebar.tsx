@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Loader2, LogOut, Pencil } from "lucide-react";
+import { Loader2, LogOut, Pencil, ShieldCheck } from "lucide-react";
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
 import { initialsFromName } from "@/features/auth/initials";
@@ -110,6 +110,7 @@ export function HomeSidebar({
   isLoading,
   loadError,
   userName,
+  isAdmin,
   onNewChat,
   onRename,
   onLogout,
@@ -119,6 +120,7 @@ export function HomeSidebar({
   isLoading: boolean;
   loadError: string | null;
   userName: string;
+  isAdmin: boolean;
   onNewChat?: () => void;
   onRename: (conversation: ConversationSummary) => void;
   onLogout: () => void;
@@ -205,6 +207,15 @@ export function HomeSidebar({
                   {initials}
                 </div>
                 <span className="flex-1 truncate text-body-md text-ink-secondary">{userName}</span>
+                {isAdmin ? (
+                  <Link
+                    href="/identity-links"
+                    aria-label="Identity link review"
+                    className="focus-ring flex size-10 items-center justify-center rounded-lg border border-border-strong bg-surface-800 text-ink-secondary hover:bg-surface-700"
+                  >
+                    <ShieldCheck className="size-[18px]" aria-hidden="true" />
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   aria-label="Log out"

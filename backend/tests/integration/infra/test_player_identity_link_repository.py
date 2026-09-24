@@ -130,8 +130,15 @@ async def test_upsert_candidates_queues_fuzzy_matches_as_pending(db_session: Asy
 
     await repository.upsert_candidates([candidate])
 
-    pending_links = await repository.list_pending()
-    assert any(link.player_id == _PLAYER_ID for link in pending_links)
+    pending_reviews = await repository.list_by_status(LinkReviewStatus.PENDING)
+    matching = next(review for review in pending_reviews if review.link.player_id == _PLAYER_ID)
+    assert matching.synthetic_player.name == "Test Player"
+    assert matching.synthetic_player_nationality == "Test Team"
+    assert matching.real_player.first_name == "Real"
+    assert matching.real_player.last_name == "Player"
+
+    assert await repository.count_by_status(LinkReviewStatus.PENDING) >= 1
+    assert await repository.count_by_status(None) >= 1
 
 
 async def test_update_status_approves_and_records_reviewer(db_session: AsyncSession) -> None:
