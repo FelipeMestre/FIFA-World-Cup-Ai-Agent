@@ -101,6 +101,10 @@ services:
       # The frontend's Route Handlers run server-side, inside this
       # container, so they must reach the backend by service name.
       BACKEND_API_URL: http://backend:8000/api/v1
+      # Browser-facing websocket URL. The ticket route runs in this
+      # container and returns the URL to the page; the browser then
+      # connects to the published backend port on the host.
+      CHAT_WS_PUBLIC_URL: ws://localhost:8000/api/v1
     ports:
       - "3000:3000"
     volumes:

@@ -5,9 +5,9 @@ import { cookies } from "next/headers";
 /**
  * httpOnly session cookie helpers. The JWT issued by the FastAPI backend
  * lives only in this cookie -- it is never sent to client JS, which is why
- * `app/api/auth/login/route.ts` and `app/api/chat/messages/route.ts` exist as
- * a server-side proxy in front of the backend instead of the browser calling
- * the backend directly.
+ * `app/api/auth/login/route.ts` and `app/api/conversations/**` exist as a
+ * server-side proxy in front of the
+ * backend instead of the browser calling the backend directly.
  */
 const SESSION_COOKIE_NAME = "fai_session";
 

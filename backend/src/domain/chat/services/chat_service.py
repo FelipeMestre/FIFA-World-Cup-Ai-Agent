@@ -1,8 +1,13 @@
-import uuid
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
+from src.domain.chat.model.chat_message import ChatMessage
+from src.domain.chat.model.conversation import Conversation
 from src.domain.chat.model.message import Message
 from src.domain.chat.services.tool_call_executor import (
     ContentDeltaEvent,
@@ -17,9 +22,22 @@ from src.domain.chat.tools.registry import ALL_TOOL_SCHEMAS, ToolDefinition
 from src.infra.openrouter.exceptions import OpenRouterRequestFailed
 from src.infra.openrouter.interfaces.openrouter_client_interface import OpenRouterClientInterface
 from src.infra.openrouter.schemas import ChatCompletionResult, ToolLoopCapReached
+from src.infra.postgres.config import SessionFactory
+from src.infra.postgres.interfaces.chat_message_repository_interface import (
+    ChatMessageRepositoryInterface,
+)
+from src.infra.postgres.interfaces.conversation_repository_interface import (
+    ConversationRepositoryInterface,
+)
+from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
+from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
+
+logger = logging.getLogger(__name__)
+
+_TITLE_MAX_LENGTH = 40
 
 SYSTEM_PROMPT = (
     "You are the World Cup AI Scout assistant for a FIFA World Cup 2026 analytics app. "
@@ -46,6 +64,22 @@ class CapReachedEvent:
 
     content: str
     clarification: str
+
+
+@dataclass(frozen=True)
+class PersistenceFailedEvent:
+    """Non-fatal: the Postgres durable write for this turn (or the
+    `conversation.touch()` alongside it) failed. Unlike `ChatServiceUnavailable`
+    (which aborts the stream before any content has been sent), this is
+    raised *after* the reply has already streamed to the user via
+    `content_delta`/`widget_ready` events, so the turn always still finishes
+    with a `MessageDoneEvent` -- this event only warns the frontend that the
+    just-shown message may not survive a reload. The Redis cache write is
+    handled separately and never surfaces here: it is a rebuildable
+    read-through cache and its own failure is swallowed silently.
+    """
+
+    detail: str
 
 
 @dataclass(frozen=True)
@@ -79,14 +113,105 @@ ChatTurnEvent = (
     | ToolCallRequestedEvent
     | WidgetReadyEvent
     | CapReachedEvent
+    | PersistenceFailedEvent
     | MessageDoneEvent
 )
+
+
+def _widget_result_to_dict(widget: ToolWidgetResult) -> dict:
+    return {
+        "tool_call_id": widget.tool_call_id,
+        "tool_name": widget.tool_name,
+        "widget_type": widget.widget_type,
+        "data": widget.data,
+    }
+
+
+def _widget_result_from_dict(widget: dict) -> ToolWidgetResult:
+    return ToolWidgetResult(
+        tool_call_id=widget["tool_call_id"],
+        tool_name=widget["tool_name"],
+        widget_type=widget["widget_type"],
+        data=widget["data"],
+    )
+
+
+def _segment_to_dict(segment: str | ToolWidgetResult) -> dict:
+    if isinstance(segment, str):
+        return {"kind": "text", "content": segment}
+    return {"kind": "widget", **_widget_result_to_dict(segment)}
+
+
+def _segment_from_dict(segment: dict) -> str | ToolWidgetResult:
+    if segment["kind"] == "text":
+        return segment["content"]
+    return _widget_result_from_dict(segment)
+
+
+def chat_turn_event_payload(event: ChatTurnEvent) -> tuple[str, dict]:
+    """Maps one `ChatTurnEvent` to the Redis turn-stream shape.
+
+    Returns `(event_type, payload)`. `event_type` is the dataclass name.
+    `payload` is JSON-safe but not encoded -- the caller that writes the
+    stream (`XADD` values must be strings) encodes it.
+    """
+    if isinstance(event, (ReasoningDeltaEvent, ContentDeltaEvent)):
+        payload = {"content": event.content}
+    elif isinstance(event, ToolCallRequestedEvent):
+        payload = {"name": event.name}
+    elif isinstance(event, WidgetReadyEvent):
+        payload = {"widget": _widget_result_to_dict(event.widget)}
+    elif isinstance(event, CapReachedEvent):
+        payload = {"content": event.content, "clarification": event.clarification}
+    elif isinstance(event, PersistenceFailedEvent):
+        payload = {"detail": event.detail}
+    elif isinstance(event, MessageDoneEvent):
+        payload = {
+            "conversation_id": event.conversation_id,
+            "content": event.content,
+            "model": event.model,
+            "content_segments": [_segment_to_dict(segment) for segment in event.content_segments],
+        }
+    else:
+        raise ValueError(f"Unhandled chat stream event: {event!r}")
+    return type(event).__name__, payload
+
+
+def parse_chat_turn_event(event_type: str, payload: dict) -> ChatTurnEvent | None:
+    """Inverse of `chat_turn_event_payload`.
+
+    Returns None when `event_type` is not a domain event -- the job publishes
+    its own failure tags (an exception class name) on the same stream.
+    """
+    if event_type == "ReasoningDeltaEvent":
+        return ReasoningDeltaEvent(content=payload["content"])
+    if event_type == "ContentDeltaEvent":
+        return ContentDeltaEvent(content=payload["content"])
+    if event_type == "ToolCallRequestedEvent":
+        return ToolCallRequestedEvent(name=payload["name"])
+    if event_type == "WidgetReadyEvent":
+        return WidgetReadyEvent(widget=_widget_result_from_dict(payload["widget"]))
+    if event_type == "CapReachedEvent":
+        return CapReachedEvent(content=payload["content"], clarification=payload["clarification"])
+    if event_type == "PersistenceFailedEvent":
+        return PersistenceFailedEvent(detail=payload["detail"])
+    if event_type == "MessageDoneEvent":
+        return MessageDoneEvent(
+            conversation_id=payload["conversation_id"],
+            content=payload["content"],
+            model=payload["model"],
+            content_segments=[
+                _segment_from_dict(segment) for segment in payload["content_segments"]
+            ],
+        )
+    return None
 
 
 class ChatService:
     """Orchestrates a single chat turn: load history, run the bounded
     tool-execution loop against the LLM (delegated to `ToolCallExecutor`),
-    persist the updated history.
+    persist the updated history to Postgres (source of truth) and Redis
+    (read-through cache).
     """
 
     def __init__(
@@ -94,21 +219,80 @@ class ChatService:
         conversation_cache: ConversationCacheRepositoryInterface,
         openrouter_client: OpenRouterClientInterface,
         tool_registry: dict[str, ToolDefinition],
+        conversation_repo: ConversationRepositoryInterface,
+        chat_message_repo: ChatMessageRepositoryInterface,
+        session: AsyncSession,
     ) -> None:
         self._conversation_cache = conversation_cache
         self._tool_executor = ToolCallExecutor(openrouter_client, tool_registry)
+        self._conversation_repo = conversation_repo
+        self._chat_message_repo = chat_message_repo
+        self._session = session
+
+    async def start_turn(
+        self, conversation_id: UUID, user_id: int, first_message: str
+    ) -> Conversation:
+        """Must be called -- and awaited -- before any SSE streaming starts.
+        Performs the ownership check up front so a `ConversationOwnershipError`
+        can still become a clean HTTP 403: once `StreamingResponse` begins
+        iterating `send_message`'s generator, headers are already committed
+        to 200 and an exception can no longer change the status code.
+
+        Lets `ConversationOwnershipError` propagate uncaught -- the router
+        catches it.
+        """
+        default_title = first_message[:_TITLE_MAX_LENGTH].strip()
+        if len(first_message) > _TITLE_MAX_LENGTH:
+            default_title += "…"
+        conversation = await self._conversation_repo.get_or_create(
+            conversation_id, user_id, default_title=default_title
+        )
+        # Commit *here*, before returning to the router -- not deferred to
+        # `send_message`'s eventual persistence step. FastAPI closes (and
+        # therefore rolls back) request-scoped `Depends(get_db)` sessions as
+        # soon as this endpoint function *returns*, which for a
+        # `StreamingResponse` happens well before the response's async
+        # generator actually runs. An uncommitted `get_or_create` here would
+        # silently vanish by the time `send_message` tries to insert against
+        # it (see `send_message`'s docstring for the other half of this).
+        await self._session.commit()
+        return conversation
+
+    async def persist_user_message(self, conversation_id: UUID, content: str) -> ChatMessage:
+        """Persists the user's own message synchronously, independent of
+        whether the reply is ever generated -- called by the router right
+        before enqueueing `generate_chat_reply_task`, so the user's message
+        survives even if the job never runs. Uses `self._session` (the
+        request-scoped session) and commits immediately, same pattern as
+        `start_turn` -- this runs and finishes before the endpoint returns,
+        unlike `send_message`'s own persistence step below, which must open
+        its own independent session (see that docstring).
+
+        Returns the persisted message so the router can pass its `id` on to
+        `generate_chat_reply_task` -- the only thing a `chat_turn_failure`
+        row can be recorded against on a failed turn.
+        """
+        message = await self._chat_message_repo.append_message(
+            conversation_id, role="user", content=content
+        )
+        await self._session.commit()
+        return message
 
     async def send_message(
         self,
-        conversation_id: str | None,
+        conversation_id: UUID,
+        user_id: int,
         user_message: str,
         tools: list[dict] | None = None,
     ) -> AsyncIterator[ChatTurnEvent]:
         """Streams reasoning/content deltas as they arrive from the tool
-        loop, then persists the finished conversation and yields the
-        terminal event(s).
+        loop, then persists the assistant's reply and yields the terminal
+        event(s). Assumes `start_turn` has already been awaited, and that
+        the user's own message has already been persisted via
+        `persist_user_message` -- this method only ever appends the
+        assistant's reply, never the user's turn.
         """
-        resolved_conversation_id = conversation_id or str(uuid.uuid4())
+        resolved_conversation_id = str(conversation_id)
         history = await self._conversation_cache.get_history(resolved_conversation_id)
         history.append(Message(role="user", content=user_message))
 
@@ -143,10 +327,57 @@ class ChatService:
         else:
             message_parts_segments = final_content_segments
 
+        try:
+            # Deliberately NOT using `self._chat_message_repo`/
+            # `self._conversation_repo`/`self._session` here -- those are
+            # bound to the request-scoped `Depends(get_db)` session, which
+            # FastAPI has already closed (rolled back) by the time this
+            # generator runs, for the same `StreamingResponse`-vs-`yield`-
+            # dependency-cleanup-ordering reason documented on `start_turn`.
+            # This block opens its own short-lived session so the write
+            # survives independently of the request's dependency lifecycle.
+            async with SessionFactory() as turn_session:
+                chat_message_repo = get_chat_message_repository(turn_session)
+                conversation_repo = get_conversation_repository(turn_session)
+                widgets = [
+                    (w.tool_name, w.widget_type, w.data)
+                    for w in message_parts_segments
+                    if isinstance(w, ToolWidgetResult)
+                ]
+                await chat_message_repo.append_message(
+                    conversation_id, role="assistant", content=reply_content, widgets=widgets
+                )
+                await conversation_repo.touch(conversation_id)
+                await turn_session.commit()
+        except Exception:
+            logger.exception(
+                "Failed to persist chat turn to Postgres for conversation %s", conversation_id
+            )
+            # Postgres is the source of truth -- unlike the Redis write
+            # below, this failure is NOT swallowed silently from the user's
+            # perspective: surface it as a non-fatal SSE event so the
+            # frontend can warn the user this message may not survive a
+            # reload, but still finish the turn (the text was already
+            # streamed via content_delta/widget_ready events; don't leave
+            # the client hanging on a broken/truncated stream).
+            yield PersistenceFailedEvent(
+                detail="This message could not be saved. It may not be here after a reload."
+            )
+
         history.append(Message(role="assistant", content=reply_content))
-        await self._conversation_cache.save_history(
-            resolved_conversation_id, history, ttl_seconds=CONVERSATION_HISTORY_TTL_SECONDS
-        )
+        try:
+            await self._conversation_cache.save_history(
+                resolved_conversation_id, history, ttl_seconds=CONVERSATION_HISTORY_TTL_SECONDS
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write chat history to Redis cache for conversation %s "
+                "(non-fatal, DB already has it)",
+                conversation_id,
+            )
+            # Swallow -- Redis is a rebuildable read-through cache, per this
+            # feature's already-agreed design; must never fail the request.
+
         yield MessageDoneEvent(
             conversation_id=resolved_conversation_id,
             content=reply_content,

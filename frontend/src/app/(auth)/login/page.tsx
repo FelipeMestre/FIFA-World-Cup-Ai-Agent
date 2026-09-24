@@ -1,6 +1,11 @@
 import { AssistantMark } from "@/components/shared/assistant-mark";
 import { LoginForm } from "@/features/auth";
 
+// @next-codemod-ignore Cache Components adoption: this segment temporarily allows blocking.
+// Remove this opt-out after verifying the segment passes validation without it.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false;
+
 /**
  * Thin routing shell -- composes the auth feature's login form (Login.dc.html).
  * The greeting and the data footnote sit outside the card in the design, and

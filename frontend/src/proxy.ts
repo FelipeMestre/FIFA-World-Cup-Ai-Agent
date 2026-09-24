@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server";
  *
  * This only checks for the *presence* of the session cookie for a fast
  * redirect; the cookie's JWT is still verified by the FastAPI backend on
- * every request made through app/api/chat/messages/route.ts. Presence-only
+ * every request made through the conversation Route Handlers. Presence-only
  * checks here are a UX shortcut, not the authorization boundary.
  */
 const SESSION_COOKIE_NAME = "fai_session";
@@ -33,5 +33,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/home", "/login"],
+  matcher: ["/", "/home", "/home/:path*", "/login"],
 };

@@ -12,8 +12,8 @@ takes the repository and returns a handler matching the
 
 It's registered per request instead: `domain.chat.tools.registry.build_tool_registry`
 binds this handler to the request's `TeamAnalyticsRepositoryInterface`, and
-`chat_router.get_tool_registry` calls it from a `Depends(get_team_analytics_repository)`
-chain -- the same per-request-assembly shape as any other repository-backed
+the conversation live socket calls `build_tool_registry` while assembling
+`ChatService` for one send -- the same per-request-assembly shape as any other repository-backed
 dependency in this codebase, just applied to a tool handler instead of a
 router.
 """

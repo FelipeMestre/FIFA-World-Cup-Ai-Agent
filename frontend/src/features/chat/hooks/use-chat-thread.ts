@@ -1,11 +1,24 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiError } from "@/lib/api/client";
-import { sendMessage } from "@/features/chat/api/send-message";
-import { messagePartSchema } from "@/features/chat/schemas/message-part.schema";
-import type { RawMessagePart } from "@/features/chat/schemas/message-part.schema";
+import {
+  connectConversationLive,
+  isCursorAtOrBefore,
+  type LiveConnection,
+  type LiveServerEvent,
+} from "@/features/chat/api/conversation-live";
+import {
+  getConversationMessages,
+  type ConversationReplay,
+} from "@/features/chat/api/get-conversation-messages";
+import { applyLiveEvent, isTerminalLiveEvent } from "@/features/chat/apply-live-event";
+import { newConversationId } from "@/features/chat/conversation-id";
+import {
+  forgetInFlightTurn,
+  readInFlightTurn,
+  rememberInFlightTurn,
+} from "@/features/chat/in-flight-turn";
 import type { ChatMessage, EntityRef, MessagePart } from "@/features/chat/types";
 
 function makeId(): string {
@@ -29,53 +42,165 @@ function widgetPartRefAndData(part: MessagePart): [EntityRef, unknown] | null {
   }
 }
 
-/** Appends a content delta onto the last text part, or starts a new one. */
-function appendTextDelta(parts: MessagePart[], delta: string): MessagePart[] {
-  const last = parts[parts.length - 1];
-  if (last?.type === "text") {
-    return [...parts.slice(0, -1), { type: "text", content: last.content + delta }];
+function mergeHistory(previous: ChatMessage[], replay: ChatMessage[]): ChatMessage[] {
+  if (previous.length === 0) return replay;
+  // Deltas can land before the history response. They only append assistant
+  // messages, so the saved user text still has to be placed in front.
+  if (previous.every((message) => message.role === "assistant")) {
+    return [...replay, ...previous];
   }
-  return [...parts, { type: "text", content: delta }];
+  return previous;
 }
 
-/**
- * Validates each raw part from a `message_done` event against the widget
- * contract schema. A part that fails validation (e.g. a future
- * `team_widget` whose `data` shape doesn't match yet) is dropped rather than
- * crashing the thread -- see message-part-renderer.tsx for the visible
- * fallback shown to the user in that case.
- */
-function parseMessageParts(rawParts: RawMessagePart[]): MessagePart[] {
-  const parts: MessagePart[] = [];
-  for (const rawPart of rawParts) {
-    const result = messagePartSchema.safeParse(rawPart);
-    if (result.success) {
-      parts.push(result.data);
-    }
-  }
-  return parts;
-}
+export type UseChatThreadArgs = {
+  urlConversationId?: string | null;
+  onConversationCreated?: (id: string) => void;
+};
 
 /**
- * Owns the message thread and the conversation id, and calls the chat API.
- * Also derives an entity registry (id -> widget data) from every widget
- * part seen so far, so the side panel can resolve an `EntityRef` without a
- * separate fetch -- the data already arrived inline with the message.
+ * Owns the message thread and the conversation id. One websocket stays open
+ * for the conversation on screen; every client attached to it applies the
+ * same `user_message` and reply events.
+ *
+ * The conversation UUID is minted on the client before the first send and
+ * pushed into the URL by the caller (`onConversationCreated`).
  */
-export function useChatThread() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+export function useChatThread({
+  urlConversationId = null,
+  onConversationCreated,
+}: UseChatThreadArgs = {}) {
+  const restored = urlConversationId ? readInFlightTurn(urlConversationId) : undefined;
+  const [messages, setMessagesState] = useState<ChatMessage[]>(() => restored ?? []);
+  const [conversationId, setConversationId] = useState<string | null>(urlConversationId);
   const [isSending, setIsSending] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(
+    Boolean(urlConversationId) && !restored?.length,
+  );
+  const conversationIdRef = useRef<string | null>(urlConversationId);
+  conversationIdRef.current = conversationId;
+  const onConversationCreatedRef = useRef(onConversationCreated);
+  onConversationCreatedRef.current = onConversationCreated;
+  const previousUrlIdRef = useRef(urlConversationId);
+  const skipHistoryLoadRef = useRef(Boolean(restored?.length));
+  const historyRequestIdRef = useRef(0);
+  const hydratedConversationIdRef = useRef<string | null>(null);
+  const liveRef = useRef<LiveConnection | null>(null);
+  const cursorsRef = useRef(new Map<string, string>());
+  const onLiveEventRef = useRef<(event: LiveServerEvent) => void>(() => {});
+
+  const setMessages = useCallback(
+    (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+      setMessagesState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        const id = conversationIdRef.current;
+        if (id && next.length > 0) rememberInFlightTurn(id, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  onLiveEventRef.current = (event) => {
+    setMessages((prev) => applyLiveEvent(prev, event));
+    if (isTerminalLiveEvent(event)) setIsSending(false);
+    else if (event.type === "user_message") setIsSending(true);
+  };
+
+  const ensureLive = useCallback((id: string) => {
+    const current = liveRef.current;
+    if (current && current.conversationId === id && !current.isClosed()) return current;
+    current?.close();
+    const connection = connectConversationLive(id, (event) => {
+      if (conversationIdRef.current !== id) return;
+      const seen = cursorsRef.current.get(id);
+      if (event.cursor && seen && isCursorAtOrBefore(event.cursor, seen)) return;
+      if (event.cursor) cursorsRef.current.set(id, event.cursor);
+      onLiveEventRef.current(event);
+    });
+    liveRef.current = connection;
+    return connection;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      liveRef.current?.close();
+      liveRef.current = null;
+    };
+  }, [urlConversationId]);
+
+  useEffect(() => {
+    const previousUrlId = previousUrlIdRef.current;
+    if (urlConversationId === previousUrlId) return;
+    previousUrlIdRef.current = urlConversationId;
+    conversationIdRef.current = urlConversationId;
+    setIsSending(false);
+
+    if (urlConversationId === null) {
+      if (previousUrlId) forgetInFlightTurn(previousUrlId);
+      setConversationId(null);
+      setMessages([]);
+      return;
+    }
+
+    setConversationId(urlConversationId);
+    if (previousUrlId !== urlConversationId) {
+      setMessages(readInFlightTurn(urlConversationId) ?? []);
+    }
+  }, [setMessages, urlConversationId]);
+
+  useEffect(() => {
+    if (!urlConversationId) {
+      setIsLoadingHistory(false);
+      return;
+    }
+    if (hydratedConversationIdRef.current === urlConversationId) {
+      setIsLoadingHistory(false);
+      ensureLive(urlConversationId);
+      return;
+    }
+    if (skipHistoryLoadRef.current) {
+      const skipForMintedTurn = conversationIdRef.current === urlConversationId;
+      skipHistoryLoadRef.current = false;
+      if (skipForMintedTurn) {
+        setIsLoadingHistory(false);
+        ensureLive(urlConversationId);
+        return;
+      }
+    }
+    if ((readInFlightTurn(urlConversationId)?.length ?? 0) > 0) {
+      setIsLoadingHistory(false);
+      ensureLive(urlConversationId);
+      return;
+    }
+
+    const requestId = ++historyRequestIdRef.current;
+    setIsLoadingHistory(true);
+    const controller = new AbortController();
+
+    void (async () => {
+      let replay: ConversationReplay;
+      try {
+        replay = await getConversationMessages(urlConversationId, controller.signal);
+      } catch {
+        if (requestId === historyRequestIdRef.current) setIsLoadingHistory(false);
+        return;
+      }
+      if (requestId !== historyRequestIdRef.current || controller.signal.aborted) return;
+      setMessages((prev) => mergeHistory(prev, replay.messages));
+      setConversationId(urlConversationId);
+      setIsLoadingHistory(false);
+      ensureLive(urlConversationId);
+    })();
+
+    return () => controller.abort();
+  }, [ensureLive, setMessages, urlConversationId]);
 
   const entityRegistry = useMemo(() => {
     const registry = new Map<string, unknown>();
     for (const message of messages) {
       for (const part of message.parts) {
         const entry = widgetPartRefAndData(part);
-        if (entry) {
-          const [ref, data] = entry;
-          registry.set(`${ref.type}:${ref.id}`, data);
-        }
+        if (entry) registry.set(`${entry[0].type}:${entry[0].id}`, entry[1]);
       }
     }
     return registry;
@@ -93,103 +218,61 @@ export function useChatThread() {
         role: "user",
         parts: [{ type: "text", content: text }],
       };
-      const assistantId = makeId();
-      const draftAssistantMessage: ChatMessage = {
-        id: assistantId,
+      const draftAssistant: ChatMessage = {
+        id: makeId(),
         role: "assistant",
         parts: [],
         reasoning: "",
         isStreaming: true,
       };
 
-      setMessages((prev) => [...prev, userMessage, draftAssistantMessage]);
-      setIsSending(true);
-
-      const updateAssistant = (updater: (message: ChatMessage) => ChatMessage) => {
-        setMessages((prev) =>
-          prev.map((message) => (message.id === assistantId ? updater(message) : message)),
-        );
-      };
-
-      try {
-        for await (const event of sendMessage(conversationId, text)) {
-          switch (event.type) {
-            case "reasoning_delta":
-              updateAssistant((message) => ({
-                ...message,
-                reasoning: (message.reasoning ?? "") + event.content,
-              }));
-              break;
-            case "content_delta":
-              updateAssistant((message) => ({
-                ...message,
-                parts: appendTextDelta(message.parts, event.content),
-              }));
-              break;
-            case "tool_call":
-              updateAssistant((message) => ({ ...message, activeToolName: event.name }));
-              break;
-            case "widget_ready": {
-              const result = messagePartSchema.safeParse(event.part);
-              if (result.success) {
-                updateAssistant((message) => ({
-                  ...message,
-                  parts: [...message.parts, result.data],
-                }));
-              }
-              break;
-            }
-            case "cap_reached":
-              // `content` is the full best-effort partial text (not a delta);
-              // the clarification is rendered as a distinct note, not folded
-              // into the same text.
-              updateAssistant((message) => ({
-                ...message,
-                parts: [{ type: "text", content: event.content }],
-                clarification: event.clarification,
-                activeToolName: undefined,
-              }));
-              break;
-            case "message_done":
-              setConversationId(event.conversation_id);
-              updateAssistant((message) => ({
-                ...message,
-                // On a cap-trip, message_done's text is the same partial
-                // content with the clarification appended -- keep the
-                // already-rendered cap_reached text instead of duplicating
-                // the clarification into the visible content.
-                parts: message.clarification ? message.parts : parseMessageParts(event.parts),
-                isStreaming: false,
-                activeToolName: undefined,
-              }));
-              break;
-            case "error":
-              updateAssistant((message) => ({
-                ...message,
-                error: event.detail,
-                isStreaming: false,
-                activeToolName: undefined,
-              }));
-              break;
-          }
-        }
-      } catch (error) {
-        const detail =
-          error instanceof ApiError
-            ? error.message
-            : "The chat assistant is temporarily unavailable";
-        updateAssistant((message) => ({
-          ...message,
-          error: detail,
-          isStreaming: false,
-          activeToolName: undefined,
-        }));
-      } finally {
-        setIsSending(false);
+      let activeConversationId = conversationIdRef.current;
+      const didMintConversation = activeConversationId === null;
+      if (activeConversationId === null) {
+        activeConversationId = newConversationId();
+        conversationIdRef.current = activeConversationId;
+        setConversationId(activeConversationId);
+        skipHistoryLoadRef.current = true;
       }
+
+      setMessages((prev) => [...prev, userMessage, draftAssistant]);
+      if (didMintConversation) onConversationCreatedRef.current?.(activeConversationId);
+      setIsSending(true);
+      historyRequestIdRef.current += 1;
+      ensureLive(activeConversationId).send(text);
     },
-    [conversationId],
+    [ensureLive, setMessages],
   );
 
-  return { messages, isSending, submit, resolveEntity };
+  const hydrate = useCallback(
+    (id: string, replay: ConversationReplay) => {
+      if (id !== urlConversationId) return;
+      hydratedConversationIdRef.current = id;
+      setConversationId(id);
+      setMessages((prev) => (prev.length > 0 ? prev : replay.messages));
+      setIsLoadingHistory(false);
+    },
+    [urlConversationId, setMessages],
+  );
+
+  const reset = useCallback(() => {
+    if (conversationIdRef.current) forgetInFlightTurn(conversationIdRef.current);
+    liveRef.current?.close();
+    liveRef.current = null;
+    setMessagesState([]);
+    setConversationId(null);
+    conversationIdRef.current = null;
+    setIsSending(false);
+  }, []);
+
+  return {
+    messages,
+    conversationId,
+    isSending,
+    isLoadingHistory,
+    submit,
+    reset,
+    resolveEntity,
+    hydrate,
+  };
 }

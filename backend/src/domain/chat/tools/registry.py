@@ -8,10 +8,10 @@ Two tiers:
 - `build_tool_registry(...)` -- assembles the full per-request registry,
   adding any tool whose handler is bound to a request-scoped dependency
   (currently `get_team_analysis`, bound to an `AsyncSession`-backed
-  repository). Called from `get_chat_service` (src/api/v1/chat/routers/
-  chat_router.py), once per request, the same way `get_national_team_repository`
-  et al. are -- never at import time, since the session it closes over
-  doesn't exist yet then.
+  repository). Called from the conversation live socket
+  (`src/api/v1/chat/routers/live_router.py`), once per send, the same way
+  `get_national_team_repository` et al. are -- never at import time, since
+  the session it closes over doesn't exist yet then.
 
 `ALL_TOOL_SCHEMAS` covers every tool regardless of tier: a JSON schema
 carries no dependency, so it's fine to list statically and send to every

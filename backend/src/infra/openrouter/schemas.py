@@ -19,7 +19,7 @@ FinishReason = Literal["stop", "tool_calls", "length", "content_filter"]
 
 
 class ChatStreamEventType(StrEnum):
-    """SSE event vocabulary emitted by our own `/chat/messages` endpoint."""
+    """Event vocabulary the conversation live socket sends to clients."""
 
     REASONING_DELTA = "reasoning_delta"
     CONTENT_DELTA = "content_delta"

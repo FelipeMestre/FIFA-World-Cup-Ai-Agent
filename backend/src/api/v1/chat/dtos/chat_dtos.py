@@ -57,19 +57,21 @@ MessagePart = Annotated[
     Field(discriminator="type"),
 ]
 
-
-class ChatReply(BaseModel):
-    parts: list[MessagePart]
-
-
-class SendMessageRequest(BaseModel):
-    conversation_id: str | None = None
-    message: str = Field(min_length=1)
-
-
-class SendMessageResponse(BaseModel):
-    conversation_id: str
-    reply: ChatReply
+# `ToolDefinition.widget_type` -> the `MessagePart` subtype that carries it.
+# Presentation concern, so it lives at the API boundary, not in the domain
+# (the tool/registry layer only knows the string tag, never this DTO).
+# Shared by the live socket (`widget_ready`/`message_done` events) and
+# `conversation_router.py` (`GET /conversations/{id}/messages` replay) so
+# the mapping has exactly one place to drift from.
+WIDGET_TYPE_TO_PART_CLASS: dict[
+    str,
+    type[TeamWidgetPart] | type[MatchWidgetPart] | type[PlayerWidgetPart] | type[CompareWidgetPart],
+] = {
+    "team_widget": TeamWidgetPart,
+    "match_widget": MatchWidgetPart,
+    "player_widget": PlayerWidgetPart,
+    "compare_widget": CompareWidgetPart,
+}
 
 
 class ReasoningDeltaEventDto(BaseModel):

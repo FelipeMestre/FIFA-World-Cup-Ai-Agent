@@ -18,3 +18,15 @@ class SamePlayerComparisonError(ChatError):
     the same player -- comparing a player against themselves is not a
     meaningful comparison.
     """
+
+
+class ConversationOwnershipError(ChatError):
+    """Raised when a `conversation` row exists for the given id but belongs
+    to a different `user_id`. UUID unguessability is never treated as
+    authorization -- every read/write on a conversation must check
+    ownership server-side (see `odd/tasks/chat-memory.md`). Only raised by
+    write paths (e.g. `get_or_create`) that must distinguish "id collision
+    owned by someone else" from "id free to claim"; read paths (`get_owned`)
+    return `None` instead, so existence of another user's conversation is
+    never leaked via an exception vs. `None` distinction.
+    """
