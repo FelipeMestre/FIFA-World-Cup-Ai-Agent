@@ -10,6 +10,7 @@
  */
 import { useState } from "react";
 
+import { AssistantText } from "@/features/chat/components/chat-bubble";
 import { PanelCompare } from "@/features/chat/components/panel-compare";
 import { PanelMatch } from "@/features/chat/components/panel-match";
 import { PanelPlayer } from "@/features/chat/components/panel-player";
@@ -64,6 +65,17 @@ export default function DesignPreviewPage() {
             widget&apos;s active/&quot;Showing in panel&quot; state.
           </p>
         </div>
+
+        <Section title="Assistant markdown">
+          <AssistantText>{`## Spain vs Germany
+
+They won **2-1**. Key notes:
+
+- Pedri controlled midfield
+- Olmo finished the winner
+
+See [FIFA](https://www.fifa.com).`}</AssistantText>
+        </Section>
 
         <Section title="Widgets — 640px desktop / full width mobile">
           <WidgetTeam

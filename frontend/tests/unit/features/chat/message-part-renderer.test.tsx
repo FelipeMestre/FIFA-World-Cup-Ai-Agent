@@ -14,6 +14,19 @@ describe("MessagePartView", () => {
     expect(screen.getByText("Spain won 2-1.")).toBeInTheDocument();
   });
 
+  it("renders markdown in text parts (headings, emphasis, lists)", () => {
+    const part: MessagePart = {
+      type: "text",
+      content: "## Spain\n\nThey won **2-1**.\n\n- Pedri\n- Olmo",
+    };
+    render(<MessagePartView part={part} openEntity={null} onOpenEntity={() => {}} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Spain" })).toBeInTheDocument();
+    expect(screen.getByText("2-1").tagName).toBe("STRONG");
+    expect(screen.getByText("Pedri").tagName).toBe("LI");
+    expect(screen.getByText("Olmo").tagName).toBe("LI");
+  });
+
   it("renders a team_widget part as the team widget, showing 'View full details' when inactive", () => {
     const part: MessagePart = { type: "team_widget", data: sampleTeam };
     render(<MessagePartView part={part} openEntity={null} onOpenEntity={() => {}} />);
