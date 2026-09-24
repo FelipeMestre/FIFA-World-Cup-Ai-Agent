@@ -84,19 +84,104 @@ async def test_list_pending_includes_seeded_link_with_comparison_data(
 ) -> None:
     app.dependency_overrides[parse_jwt_data] = _admin_token_data
 
-    response = await client.get("/api/v1/admin/identity-links/pending")
+    response = await client.get("/api/v1/admin/identity-links")
 
     app.dependency_overrides.clear()
     assert response.status_code == 200
     body = response.json()
-    ids = [item["id"] for item in body]
+    assert body["limit"] == 50
+    assert body["offset"] == 0
+    assert body["total"] >= 1
+    items = body["items"]
+    ids = [item["id"] for item in items]
     assert pending_link["link_id"] in ids
-    seeded = next(item for item in body if item["id"] == pending_link["link_id"])
+    seeded = next(item for item in items if item["id"] == pending_link["link_id"])
     assert seeded["synthetic_player"]["id"] == pending_link["player_id"]
     assert isinstance(seeded["synthetic_player"]["nationality"], str)
     assert seeded["synthetic_player"]["nationality"] != ""
     assert seeded["real_player"]["player_id"] == _REAL_PLAYER_ID
     assert seeded["real_player"]["first_name"] == "Test"
+
+
+@pytest.mark.asyncio
+async def test_list_pending_respects_limit_and_offset(
+    client: AsyncClient, pending_link: dict
+) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.get("/api/v1/admin/identity-links", params={"limit": 1, "offset": 0})
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 1
+    assert body["offset"] == 0
+    assert len(body["items"]) <= 1
+    assert body["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_list_pending_rejects_limit_above_server_cap(client: AsyncClient) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.get("/api/v1/admin/identity-links", params={"limit": 1000})
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_list_defaults_to_pending_only(client: AsyncClient, pending_link: dict) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    approve_response = await client.post(
+        f"/api/v1/admin/identity-links/{pending_link['link_id']}/approve"
+    )
+    assert approve_response.status_code == 200
+
+    response = await client.get("/api/v1/admin/identity-links")
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    ids = [item["id"] for item in response.json()["items"]]
+    assert pending_link["link_id"] not in ids
+
+
+@pytest.mark.asyncio
+async def test_list_filters_by_status_query_param(client: AsyncClient, pending_link: dict) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    approve_response = await client.post(
+        f"/api/v1/admin/identity-links/{pending_link['link_id']}/approve"
+    )
+    assert approve_response.status_code == 200
+
+    approved_response = await client.get(
+        "/api/v1/admin/identity-links", params={"status": "approved"}
+    )
+    pending_response = await client.get(
+        "/api/v1/admin/identity-links", params={"status": "pending"}
+    )
+
+    app.dependency_overrides.clear()
+    assert approved_response.status_code == 200
+    assert pending_response.status_code == 200
+    approved_ids = [item["id"] for item in approved_response.json()["items"]]
+    pending_ids = [item["id"] for item in pending_response.json()["items"]]
+    assert pending_link["link_id"] in approved_ids
+    assert pending_link["link_id"] not in pending_ids
+
+
+@pytest.mark.asyncio
+async def test_list_rejects_invalid_status_value(client: AsyncClient) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.get(
+        "/api/v1/admin/identity-links", params={"status": "not-a-real-status"}
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

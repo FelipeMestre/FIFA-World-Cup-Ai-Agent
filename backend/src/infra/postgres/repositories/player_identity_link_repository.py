@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import (
@@ -131,16 +131,17 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
         self._session = session
         self._ingestion_repository = _SqlAlchemyIngestionRepository(session)
 
-    async def list_pending(
-        self, limit: int = 100, offset: int = 0
+    async def list_by_status(
+        self, status: LinkReviewStatus | None, limit: int = 100, offset: int = 0
     ) -> list[PlayerIdentityLinkReview]:
         # Joins in both sides of the proposed match (the synthetic roster
         # player and the Transfermarkt real_player), plus the roster
         # player's national_team for its country name (Player.team_id
         # alone isn't a nationality an admin can read), so the admin review
         # list carries every comparison field in one call -- no per-row
-        # follow-up lookup for any side.
-        result = await self._session.execute(
+        # follow-up lookup for any side. `status=None` is the admin's "all
+        # statuses" filter option, not just the default "pending" view.
+        query = (
             select(
                 PlayerIdentityLinkSchema,
                 PlayerSchema,
@@ -153,10 +154,13 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
                 RealPlayerSchema.player_id == PlayerIdentityLinkSchema.real_player_id,
             )
             .join(NationalTeamSchema, NationalTeamSchema.team_id == PlayerSchema.team_id)
-            .where(PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus.PENDING)
-            .order_by(PlayerIdentityLinkSchema.id)
-            .limit(limit)
-            .offset(offset)
+        )
+        if status is not None:
+            query = query.where(
+                PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus(status.value)
+            )
+        result = await self._session.execute(
+            query.order_by(PlayerIdentityLinkSchema.id).limit(limit).offset(offset)
         )
         return [
             PlayerIdentityLinkReview(
@@ -167,6 +171,15 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
             )
             for link_row, player_row, real_player_row, team_name in result.all()
         ]
+
+    async def count_by_status(self, status: LinkReviewStatus | None) -> int:
+        query = select(func.count(PlayerIdentityLinkSchema.id))
+        if status is not None:
+            query = query.where(
+                PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus(status.value)
+            )
+        result = await self._session.execute(query)
+        return result.scalar_one()
 
     async def get(self, link_id: int) -> PlayerIdentityLink | None:
         row = await self._session.get(PlayerIdentityLinkSchema, link_id)

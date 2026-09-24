@@ -7,9 +7,10 @@ from src.infra.postgres.interfaces.ingestion_repository_interface import UpsertR
 
 
 class PlayerIdentityLinkRepositoryInterface(Protocol):
-    async def list_pending(
-        self, limit: int = 100, offset: int = 0
+    async def list_by_status(
+        self, status: LinkReviewStatus | None, limit: int = 100, offset: int = 0
     ) -> list[PlayerIdentityLinkReview]: ...
+    async def count_by_status(self, status: LinkReviewStatus | None) -> int: ...
     async def get(self, link_id: int) -> PlayerIdentityLink | None: ...
     async def update_status(
         self, link_id: int, status: LinkReviewStatus, reviewed_by_user_id: int | None

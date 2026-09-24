@@ -39,13 +39,26 @@ export interface RealPlayerSummary {
 
 export type MatchMethod = "exact_name_dob" | "exact_name_team" | "fuzzy_name" | "manual";
 
+export type IdentityLinkReviewStatus = "pending" | "approved" | "rejected";
+
 export interface IdentityLinkReview {
   id: number;
   matchMethod: MatchMethod;
   /** 0-1, `null` for a manual (admin-corrected) match. */
   matchConfidence: number | null;
-  status: "pending" | "approved" | "rejected";
+  status: IdentityLinkReviewStatus;
   createdAt: string | null;
   syntheticPlayer: SyntheticPlayerSummary;
   realPlayer: RealPlayerSummary;
+}
+
+/** One page of the pending-review queue, plus the total count needed to
+ * render a paginator (the page's own item count alone can't say how many
+ * pages exist).
+ */
+export interface PendingIdentityLinksPage {
+  items: IdentityLinkReview[];
+  total: number;
+  limit: number;
+  offset: number;
 }

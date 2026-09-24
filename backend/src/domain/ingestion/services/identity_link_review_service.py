@@ -19,10 +19,13 @@ class PlayerIdentityLinkReviewService:
     def __init__(self, repository: PlayerIdentityLinkRepositoryInterface) -> None:
         self._repository = repository
 
-    async def list_pending(
-        self, limit: int = 100, offset: int = 0
+    async def list_by_status(
+        self, status: LinkReviewStatus | None, limit: int = 100, offset: int = 0
     ) -> list[PlayerIdentityLinkReview]:
-        return await self._repository.list_pending(limit=limit, offset=offset)
+        return await self._repository.list_by_status(status, limit=limit, offset=offset)
+
+    async def count_by_status(self, status: LinkReviewStatus | None) -> int:
+        return await self._repository.count_by_status(status)
 
     async def approve(self, link_id: int, admin_user_id: int) -> PlayerIdentityLink:
         await self._require_pending(link_id)

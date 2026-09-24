@@ -17,6 +17,15 @@ const MATCH_METHOD_LABEL: Record<MatchMethod, string> = {
   manual: "Manually corrected",
 };
 
+const STATUS_BADGE_VARIANT: Record<
+  IdentityLinkReview["status"],
+  "outline" | "default" | "destructive"
+> = {
+  pending: "outline",
+  approved: "default",
+  rejected: "destructive",
+};
+
 function formatConfidence(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
@@ -69,6 +78,7 @@ export function IdentityLinkReviewCard({
           <span className="text-label-sm text-ink-muted">
             Confidence {formatConfidence(review.matchConfidence)}
           </span>
+          <Badge variant={STATUS_BADGE_VARIANT[review.status]}>{review.status}</Badge>
         </div>
         <span className="text-label-sm text-ink-muted">Link #{review.id}</span>
       </CardHeader>
@@ -146,22 +156,26 @@ export function IdentityLinkReviewCard({
         >
           Correct match
         </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={isBusy}
-          onClick={() => runAction("reject", () => onReject(review.id))}
-        >
-          {pendingAction === "reject" ? "Rejecting…" : "Reject"}
-        </Button>
-        <Button
-          type="button"
-          disabled={isBusy}
-          onClick={() => runAction("approve", () => onApprove(review.id))}
-          className="bg-brand text-on-brand hover:bg-brand-strong"
-        >
-          {pendingAction === "approve" ? "Approving…" : "Approve"}
-        </Button>
+        {review.status === "pending" ? (
+          <>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isBusy}
+              onClick={() => runAction("reject", () => onReject(review.id))}
+            >
+              {pendingAction === "reject" ? "Rejecting…" : "Reject"}
+            </Button>
+            <Button
+              type="button"
+              disabled={isBusy}
+              onClick={() => runAction("approve", () => onApprove(review.id))}
+              className="bg-brand text-on-brand hover:bg-brand-strong"
+            >
+              {pendingAction === "approve" ? "Approving…" : "Approve"}
+            </Button>
+          </>
+        ) : null}
       </CardFooter>
 
       <CorrectMatchDialog

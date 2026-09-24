@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   identityLinkReviewSchema,
+  pendingIdentityLinksPageSchema,
   toIdentityLinkReview,
+  toPendingIdentityLinksPage,
 } from "@/features/identity-links/schemas/identity-link-review.schema";
 
 function baseWireRow() {
@@ -84,5 +86,24 @@ describe("identityLinkReviewSchema / toIdentityLinkReview", () => {
       lastName: "Player",
       profileUrl: "https://example.test/player",
     });
+  });
+});
+
+describe("pendingIdentityLinksPageSchema / toPendingIdentityLinksPage", () => {
+  it("maps a page of items plus pagination metadata", () => {
+    const row = pendingIdentityLinksPageSchema.parse({
+      items: [baseWireRow()],
+      total: 62,
+      limit: 50,
+      offset: 0,
+    });
+
+    const result = toPendingIdentityLinksPage(row);
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.id).toBe(1);
+    expect(result.total).toBe(62);
+    expect(result.limit).toBe(50);
+    expect(result.offset).toBe(0);
   });
 });
