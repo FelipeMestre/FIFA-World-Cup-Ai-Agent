@@ -256,6 +256,7 @@ async def _seed_admin_user(email: str, password: str) -> None:
     async with engine.begin() as conn:
         row = {
             "email": email,
+            "name": os.environ.get("SEED_ADMIN_NAME") or "Felipe Mestre",
             "password_hash": password_service.hash_password(password),
             "is_admin": True,
             "created_at": datetime.now(UTC),

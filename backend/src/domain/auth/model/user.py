@@ -6,6 +6,7 @@ from datetime import datetime
 class User:
     id: int
     email: str
+    name: str
     password_hash: str
     is_admin: bool
     created_at: datetime

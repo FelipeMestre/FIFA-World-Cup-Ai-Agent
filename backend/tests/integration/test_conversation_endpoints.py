@@ -39,8 +39,8 @@ async def _seed_users() -> AsyncGenerator[None]:
         for user_id in (_USER_ID, _OTHER_USER_ID):
             await session.execute(
                 text(
-                    'INSERT INTO "user" (id, email, password_hash, is_admin, created_at) '
-                    "VALUES (:id, :email, 'hash', false, now())"
+                    'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
+                    "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', false, now())"
                 ),
                 {"id": user_id, "email": f"conversation-endpoints-test-{user_id}@example.test"},
             )

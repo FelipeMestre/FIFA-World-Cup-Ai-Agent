@@ -41,7 +41,7 @@ export function AppHeader({ threadSummary }: { threadSummary?: string }) {
         type="button"
         variant="outline"
         aria-label="New chat"
-        className="size-11 border-border-strong bg-transparent p-0 text-ink-primary hover:bg-surface-700 md:h-10 md:w-auto md:gap-ds-2 md:px-3"
+        className="size-11 border-border-strong bg-transparent p-0 text-ink-primary hover:bg-surface-700 md:h-10 md:w-auto md:gap-ds-2 md:px-3 hover:cursor-pointer"
       >
         <Plus className="size-4" aria-hidden />
         <span className="hidden md:inline">New chat</span>

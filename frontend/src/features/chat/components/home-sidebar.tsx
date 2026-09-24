@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Loader2, Pencil } from "lucide-react";
+import { Loader2, LogOut, Pencil } from "lucide-react";
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
+import { initialsFromName } from "@/features/auth/initials";
 import { groupConversations } from "@/features/chat/group-conversations";
 import type { ConversationSummary } from "@/features/chat/types";
 
@@ -59,7 +60,7 @@ function ConversationRow({
         type="button"
         aria-label={`Rename ${conversation.title || "chat"}`}
         onClick={() => onRename(conversation)}
-        className="focus-ring flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted opacity-0 hover:bg-surface-700 hover:text-ink-primary group-hover:opacity-100 group-focus-within:opacity-100"
+        className="hover:cursor-pointer focus-ring flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted opacity-0 hover:bg-surface-700 hover:text-ink-primary group-hover:opacity-100 group-focus-within:opacity-100"
       >
         <Pencil className="size-3.5" aria-hidden />
       </button>
@@ -91,6 +92,7 @@ function ConversationGroup({
           conversation={conversation}
           isActive={conversation.id === activeId}
           onRename={onRename}
+          className="hover:cursor-pointer"
         />
       ))}
     </div>
@@ -107,18 +109,23 @@ export function HomeSidebar({
   activeId,
   isLoading,
   loadError,
+  userName,
   onNewChat,
   onRename,
+  onLogout,
 }: {
   conversations: ConversationSummary[];
   activeId: string | null;
   isLoading: boolean;
   loadError: string | null;
+  userName: string;
   onNewChat?: () => void;
   onRename: (conversation: ConversationSummary) => void;
+  onLogout: () => void;
 }) {
   const grouped = groupConversations(conversations);
   const isEmpty = !isLoading && conversations.length === 0 && loadError === null;
+  const initials = initialsFromName(userName);
 
   return (
         <aside
@@ -136,7 +143,7 @@ export function HomeSidebar({
               <button
                 type="button"
                 onClick={onNewChat}
-                className="focus-ring flex h-11 items-center gap-2.5 rounded-lg border border-border-strong bg-surface-800 px-3 text-body-md font-semibold text-ink-primary hover:bg-surface-700"
+                className="focus-ring flex h-11 items-center gap-2.5 rounded-lg border border-border-strong bg-surface-800 px-3 text-body-md font-semibold text-ink-primary hover:bg-surface-700 hover:cursor-pointer"
               >
                 <svg
                   width="18"
@@ -195,28 +202,16 @@ export function HomeSidebar({
               </div>
               <div className="flex items-center gap-2.5 px-1.5">
                 <div className="flex size-8 items-center justify-center rounded-full border border-border-strong bg-surface-700 text-heading-sm">
-                  AB
+                  {initials}
                 </div>
-                <span className="flex-1 truncate text-body-md text-ink-secondary">Your name</span>
+                <span className="flex-1 truncate text-body-md text-ink-secondary">{userName}</span>
                 <button
                   type="button"
-                  aria-label="Settings"
-                  className="focus-ring size-10 rounded-lg border border-border-strong bg-surface-800 text-ink-secondary hover:bg-surface-700"
+                  aria-label="Log out"
+                  onClick={onLogout}
+                  className="focus-ring size-10 rounded-lg border border-border-strong bg-surface-800 text-ink-secondary hover:bg-surface-700 hover:cursor-pointer"
                 >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.75"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
+                  <LogOut className="mx-auto size-[18px]" aria-hidden="true" />
                 </button>
               </div>
           </div>

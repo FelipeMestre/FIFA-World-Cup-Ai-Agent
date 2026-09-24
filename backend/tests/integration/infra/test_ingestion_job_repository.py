@@ -28,8 +28,8 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
     async with SessionFactory() as session:
         await session.execute(
             text(
-                'INSERT INTO "user" (id, email, password_hash, is_admin, created_at) '
-                "VALUES (:id, :email, 'hash', false, now())"
+                'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
+                "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', false, now())"
             ),
             {"id": _USER_ID, "email": f"ingestion-job-test-{_USER_ID}@example.test"},
         )
