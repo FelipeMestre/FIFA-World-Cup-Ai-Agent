@@ -1,4 +1,4 @@
-"""Integration tests for `get_player_ranking` against real Postgres."""
+"""Integration tests for `query_player_stats` against real Postgres."""
 
 from collections.abc import AsyncGenerator
 
@@ -7,10 +7,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.player_analytics.model.player_ranking import (
-    PlayerRankingRequest,
-    RankBy,
-    RankingScope,
+    FilterOp,
+    PlayerStatField,
+    QueryDataset,
+    QueryPlayerStatsRequest,
     SeasonWindow,
+    SortDir,
+    StatFilter,
 )
 from src.infra.postgres.config import SessionFactory
 from src.infra.postgres.repositories.player_analytics_repository import (
@@ -79,32 +82,32 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
         await cleanup_session.commit()
 
 
-def _wc_request(**overrides) -> PlayerRankingRequest:
+def _filter(field: PlayerStatField, op: FilterOp, value: str | int) -> StatFilter:
+    return StatFilter(field=field, op=op, value=value)
+
+
+def _rtl(*extra: StatFilter) -> tuple[StatFilter, ...]:
+    return (_filter(PlayerStatField.NATIONALITY, FilterOp.EQ, "RTL"), *extra)
+
+
+def _wc_request(**overrides) -> QueryPlayerStatsRequest:
     base = {
-        "scope": RankingScope.WORLD_CUP,
-        "rank_by": RankBy.GOALS,
-        "position": None,
-        "age_min": None,
-        "age_max": None,
-        "height_min_cm": None,
-        "height_max_cm": None,
-        "nationality": "RTL",
+        "dataset": QueryDataset.WORLD_CUP,
+        "sort_by": PlayerStatField.GOALS,
+        "sort_dir": SortDir.DESC,
+        "filters": _rtl(),
         "season_window": None,
         "competition_id": None,
         "competition_label": "all competitions",
         "limit": 10,
-        "min_appearances": None,
-        "min_minutes": None,
-        "min_goals": None,
-        "min_assists": None,
     }
     base.update(overrides)
-    return PlayerRankingRequest(**base)
+    return QueryPlayerStatsRequest(**base)
 
 
 async def test_world_cup_ranks_goals_on_filtered_nationality(db_session: AsyncSession) -> None:
     repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-    ranking = await repository.get_player_ranking(_wc_request())
+    ranking = await repository.query_player_stats(_wc_request())
 
     assert [row.player_id for row in ranking.rows] == [str(_FWD_A), str(_FWD_B), str(_GK)]
     assert ranking.rows[0].value == "9"
@@ -119,14 +122,16 @@ async def test_world_cup_ranks_goals_on_filtered_nationality(db_session: AsyncSe
 
 async def test_world_cup_position_filter_drops_goalkeeper(db_session: AsyncSession) -> None:
     repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-    ranking = await repository.get_player_ranking(_wc_request(position="FWD"))
+    ranking = await repository.query_player_stats(
+        _wc_request(filters=_rtl(_filter(PlayerStatField.POSITION, FilterOp.EQ, "FWD")))
+    )
 
     assert [row.player_id for row in ranking.rows] == [str(_FWD_A), str(_FWD_B)]
 
 
 async def test_world_cup_saves_ranks_only_the_keeper(db_session: AsyncSession) -> None:
     repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-    ranking = await repository.get_player_ranking(_wc_request(rank_by=RankBy.SAVES))
+    ranking = await repository.query_player_stats(_wc_request(sort_by=PlayerStatField.SAVES))
 
     assert [row.player_id for row in ranking.rows] == [str(_GK)]
     assert ranking.rows[0].value == "20"
@@ -198,27 +203,19 @@ async def _delete_club_stats(session: AsyncSession) -> None:
     await session.commit()
 
 
-def _tm_request(**overrides) -> PlayerRankingRequest:
+def _tm_request(**overrides) -> QueryPlayerStatsRequest:
     base = {
-        "scope": RankingScope.TRANSFERMARKT,
-        "rank_by": RankBy.GOALS,
-        "position": None,
-        "age_min": None,
-        "age_max": None,
-        "height_min_cm": None,
-        "height_max_cm": None,
-        "nationality": "RTL",
+        "dataset": QueryDataset.CLUB_SEASONS,
+        "sort_by": PlayerStatField.GOALS,
+        "sort_dir": SortDir.DESC,
+        "filters": _rtl(),
         "season_window": SeasonWindow.LATEST,
         "competition_id": None,
         "competition_label": "all competitions",
         "limit": 10,
-        "min_appearances": None,
-        "min_minutes": None,
-        "min_goals": None,
-        "min_assists": None,
     }
     base.update(overrides)
-    return PlayerRankingRequest(**base)
+    return QueryPlayerStatsRequest(**base)
 
 
 async def test_transfermarkt_latest_all_sums_competitions_and_drops_pending(
@@ -227,7 +224,7 @@ async def test_transfermarkt_latest_all_sums_competitions_and_drops_pending(
     await _insert_club_stats(db_session)
     try:
         repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-        ranking = await repository.get_player_ranking(_tm_request())
+        ranking = await repository.query_player_stats(_tm_request())
     finally:
         await _delete_club_stats(db_session)
 
@@ -246,7 +243,7 @@ async def test_transfermarkt_named_competition_and_last_three(
     await _insert_club_stats(db_session)
     try:
         repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-        ranking = await repository.get_player_ranking(
+        ranking = await repository.query_player_stats(
             _tm_request(
                 season_window=SeasonWindow.LAST_THREE,
                 competition_id="GB1",
@@ -266,7 +263,9 @@ async def test_world_cup_min_goals_drops_players_below_floor(
     db_session: AsyncSession,
 ) -> None:
     repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-    ranking = await repository.get_player_ranking(_wc_request(min_goals=5))
+    ranking = await repository.query_player_stats(
+        _wc_request(filters=_rtl(_filter(PlayerStatField.GOALS, FilterOp.GTE, 5)))
+    )
 
     assert [row.player_id for row in ranking.rows] == [str(_FWD_A)]
 
@@ -277,9 +276,20 @@ async def test_transfermarkt_min_appearances_and_goals_use_window_totals(
     await _insert_club_stats(db_session)
     try:
         repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
-        by_apps = await repository.get_player_ranking(_tm_request(min_appearances=20))
-        by_goals = await repository.get_player_ranking(_tm_request(min_goals=10))
-        empty = await repository.get_player_ranking(_tm_request(min_goals=10, min_assists=10))
+        by_apps = await repository.query_player_stats(
+            _tm_request(filters=_rtl(_filter(PlayerStatField.APPEARANCES, FilterOp.GTE, 20)))
+        )
+        by_goals = await repository.query_player_stats(
+            _tm_request(filters=_rtl(_filter(PlayerStatField.GOALS, FilterOp.GTE, 10)))
+        )
+        empty = await repository.query_player_stats(
+            _tm_request(
+                filters=_rtl(
+                    _filter(PlayerStatField.GOALS, FilterOp.GTE, 10),
+                    _filter(PlayerStatField.ASSISTS, FilterOp.GTE, 10),
+                )
+            )
+        )
     finally:
         await _delete_club_stats(db_session)
 

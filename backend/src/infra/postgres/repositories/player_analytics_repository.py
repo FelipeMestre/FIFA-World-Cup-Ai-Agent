@@ -1,14 +1,13 @@
-"""SQL-first aggregation for the `get_player_analysis` and
-`get_player_comparison` chat tools.
+"""SQL-first aggregation for the `get_player_analysis`,
+`get_player_comparison`, and `query_player_stats` chat tools.
 
 Pure position/per-90/percentile math lives in `_player_stat_helpers.py`;
 single-player breakdown building lives in `_player_analysis_view.py`;
 two-player comparison row/insight building lives in
-`_player_comparison_view.py`. All three were split out of this file once
-adding `get_player_comparison` pushed it past the project's 400-line cap
-(see AGENTS.md's file-size rule) -- this file keeps just the two public
-methods and the DB-touching helpers (`_resolve_player`, `_get_player_stat`,
-`_get_team_code`, `_get_position_peers`) both methods share.
+`_player_comparison_view.py`; list/filter/sort SQL lives in
+`_player_ranking_query.py`. This file keeps the public repository methods
+and the DB-touching helpers (`_resolve_player`, `_get_player_stat`,
+`_get_team_code`, `_get_position_peers`) analysis and comparison share.
 
 Known data-quality gaps in the source dataset (see `PlayerStatSchema`'s own
 docstring): `shots`/`shots_on_target`/`average_rating` are always null
@@ -25,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.chat.exceptions import chat_exceptions
 from src.domain.player_analytics.model.player_analysis import PlayerAnalysis
 from src.domain.player_analytics.model.player_comparison import PlayerComparison
-from src.domain.player_analytics.model.player_ranking import PlayerRanking, PlayerRankingRequest
+from src.domain.player_analytics.model.player_ranking import PlayerRanking, QueryPlayerStatsRequest
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.player_analytics_repository_interface import (
     PlayerAnalyticsRepositoryInterface,
@@ -148,8 +147,8 @@ class _SqlAlchemyPlayerAnalyticsRepository:
             ),
         )
 
-    async def get_player_ranking(self, request: PlayerRankingRequest) -> PlayerRanking:
-        return await ranking_query.get_player_ranking(self._session, request)
+    async def query_player_stats(self, request: QueryPlayerStatsRequest) -> PlayerRanking:
+        return await ranking_query.query_player_stats(self._session, request)
 
     async def _require_player(self, player_query: str) -> PlayerSchema:
         player_row = await self._resolve_player(player_query)

@@ -1,30 +1,43 @@
-"""SQL ranking for `get_player_ranking`.
+"""SQL for `query_player_stats`.
 
-World Cup ranks `player_stat`. Transfermarkt ranks summed
-`real_player_season_stat` rows for approved identity links. Season window
-`latest` / `last_three` is the max start year among rows that already pass
-roster and competition filters, so a filtered leaderboard is not emptied by
-unrelated later seasons in the table.
+World Cup reads `player_stat`. Club seasons sum approved-link
+`real_player_season_stat` rows inside the season window and competition
+filter. Filters and sort use the allowlisted field catalog. The two
+datasets are never mixed.
 """
 
 from typing import Any
 
-from sqlalchemy import Integer, Select, and_, case, cast, desc, func, literal, or_, select
+from sqlalchemy import Select, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.chat.exceptions.chat_exceptions import RankingQueryError
 from src.domain.player_analytics.model.player_ranking import (
-    ASCENDING_RANK_BY,
-    GK_ONLY_RANK_BY,
-    PER90_RANK_BY,
-    WORLD_CUP_AGE_AS_OF,
+    GK_ONLY_FIELDS,
+    NULLABLE_STAT_FIELDS,
+    PER90_FIELDS,
+    ROSTER_FIELDS,
+    FilterOp,
     PlayerRanking,
-    PlayerRankingRequest,
-    RankBy,
-    RankingScope,
+    PlayerStatField,
+    QueryDataset,
+    QueryPlayerStatsRequest,
     SeasonWindow,
+    SortDir,
+    StatFilter,
+    used_fields,
 )
 from src.infra.postgres.repositories._player_ranking_rows import _build_ranking
-from src.infra.postgres.repositories._player_stat_helpers import first_letter_for_position
+from src.infra.postgres.repositories._player_stat_field_expr import (
+    age_years_expr,
+    club_stat_aggregates,
+    compare,
+    nationality_match,
+    position_match,
+    season_start_year_expr,
+    team_code_expr,
+    world_cup_stat_expr,
+)
 from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 from src.infra.postgres.schemas.player_identity_link_schema import (
     LinkReviewStatus,
@@ -34,126 +47,80 @@ from src.infra.postgres.schemas.player_schema import PlayerSchema, PlayerStatSch
 from src.infra.postgres.schemas.real_player_schema import RealPlayerSeasonStatSchema
 
 
-def _season_start_year_expr(season_col):
-    head = func.split_part(season_col, "/", 1)
-    return case(
-        (head.op("~")(r"^\d{2}$"), 2000 + cast(head, Integer)),
-        (head.op("~")(r"^\d{4}$"), cast(head, Integer)),
-        else_=None,
-    )
+def _numeric(value: str | int | float) -> float:
+    if isinstance(value, bool):
+        raise RankingQueryError("Filter value must be a number.")
+    if isinstance(value, int | float):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except ValueError as exc:
+        raise RankingQueryError(f"Expected a number, got '{value}'.") from exc
 
 
-def _age_years_expr():
-    return func.date_part(
-        "year",
-        func.age(literal(WORLD_CUP_AGE_AS_OF), PlayerSchema.date_of_birth),
-    )
+def _roster_clause(item: StatFilter):
+    if item.field == PlayerStatField.POSITION:
+        if item.op != FilterOp.EQ:
+            raise RankingQueryError("position only supports op=eq.")
+        try:
+            return position_match(str(item.value))
+        except ValueError as exc:
+            raise RankingQueryError(str(exc)) from exc
+    if item.field == PlayerStatField.NATIONALITY:
+        if item.op != FilterOp.EQ:
+            raise RankingQueryError("nationality only supports op=eq.")
+        return nationality_match(str(item.value))
+    if item.field == PlayerStatField.AGE:
+        return compare(age_years_expr(), item.op, _numeric(item.value))
+    return compare(PlayerSchema.height_cm, item.op, _numeric(item.value))
 
 
-def _team_code_expr():
-    return func.coalesce(
-        NationalTeamSchema.fifa_code,
-        func.upper(func.substr(NationalTeamSchema.team_name, 1, 3)),
-    )
+def _stat_clause(expr, item: StatFilter):
+    return compare(expr, item.op, _numeric(item.value))
 
 
-def _roster_filters(request: PlayerRankingRequest) -> list:
+def _nullable_base(field: PlayerStatField):
+    stat = PlayerStatSchema
+    if field in {PlayerStatField.SAVES, PlayerStatField.SAVES_PER90}:
+        return stat.saves.is_not(None)
+    if field == PlayerStatField.CLEAN_SHEETS:
+        return stat.clean_sheets.is_not(None)
+    if field in {PlayerStatField.GOALS_CONCEDED, PlayerStatField.GOALS_CONCEDED_PER90}:
+        return stat.goals_conceded.is_not(None)
+    return None
+
+
+def _world_cup_base_filters(request: QueryPlayerStatsRequest) -> list:
+    fields = used_fields(request.sort_by, request.filters)
     filters: list = []
-    if request.position is not None:
-        letter = first_letter_for_position(request.position)
-        filters.append(PlayerSchema.position.ilike(f"{letter}%"))
-    if request.age_min is not None:
-        filters.append(_age_years_expr() >= request.age_min)
-    if request.age_max is not None:
-        filters.append(_age_years_expr() <= request.age_max)
-    if request.height_min_cm is not None:
-        filters.append(PlayerSchema.height_cm >= request.height_min_cm)
-    if request.height_max_cm is not None:
-        filters.append(PlayerSchema.height_cm <= request.height_max_cm)
-    if request.nationality:
-        nationality = request.nationality.strip()
-        filters.append(
-            or_(
-                func.unaccent(NationalTeamSchema.team_name).ilike(func.unaccent(nationality)),
-                func.unaccent(NationalTeamSchema.fifa_code).ilike(func.unaccent(nationality)),
-            )
-        )
-    if request.rank_by in GK_ONLY_RANK_BY:
+    if fields & PER90_FIELDS:
+        filters.append(PlayerStatSchema.minutes_played > 0)
+    if fields & GK_ONLY_FIELDS:
         filters.append(PlayerSchema.position.ilike("G%"))
+    for field in fields & NULLABLE_STAT_FIELDS:
+        clause = _nullable_base(field)
+        if clause is not None:
+            filters.append(clause)
+    for item in request.filters:
+        if item.field in ROSTER_FIELDS:
+            filters.append(_roster_clause(item))
+        else:
+            expr = world_cup_stat_expr(item.field)
+            filters.append(_stat_clause(expr, item))
     return filters
 
 
-def _per90(total, minutes):
-    return case((minutes > 0, total * 90.0 / minutes), else_=None)
+def _sort_order(sort_expr, request: QueryPlayerStatsRequest, minutes_expr):
+    primary = sort_expr.asc() if request.sort_dir == SortDir.ASC else desc(sort_expr)
+    return primary.nulls_last(), desc(minutes_expr), PlayerSchema.player_id
 
 
-def _world_cup_metric(rank_by: RankBy):
-    stat = PlayerStatSchema
-    minutes = stat.minutes_played
-    metrics = {
-        RankBy.GOALS: stat.goals,
-        RankBy.ASSISTS: stat.assists,
-        RankBy.GOAL_CONTRIBUTIONS: stat.goals + stat.assists,
-        RankBy.GOALS_PER90: _per90(stat.goals, minutes),
-        RankBy.ASSISTS_PER90: _per90(stat.assists, minutes),
-        RankBy.GOAL_CONTRIBUTIONS_PER90: _per90(stat.goals + stat.assists, minutes),
-        RankBy.PENALTY_GOALS: stat.penalty_goals,
-        RankBy.MINUTES: minutes,
-        RankBy.APPEARANCES: stat.matches_played,
-        RankBy.STARTS: stat.matches_started,
-        RankBy.YELLOW_CARDS: stat.yellow_cards,
-        RankBy.RED_CARDS: stat.red_cards,
-        RankBy.FEWEST_YELLOW_CARDS: stat.yellow_cards,
-        RankBy.FEWEST_RED_CARDS: stat.red_cards,
-        RankBy.SAVES: stat.saves,
-        RankBy.SAVES_PER90: _per90(func.coalesce(stat.saves, 0), minutes),
-        RankBy.CLEAN_SHEETS: stat.clean_sheets,
-        RankBy.GOALS_CONCEDED: stat.goals_conceded,
-        RankBy.GOALS_CONCEDED_PER90: _per90(func.coalesce(stat.goals_conceded, 0), minutes),
-    }
-    return metrics[rank_by]
-
-
-def _world_cup_metric_filters(rank_by: RankBy) -> list:
-    stat = PlayerStatSchema
-    filters: list = []
-    if rank_by in PER90_RANK_BY:
-        filters.append(stat.minutes_played > 0)
-    if rank_by in {RankBy.SAVES, RankBy.SAVES_PER90}:
-        filters.append(stat.saves.is_not(None))
-    if rank_by == RankBy.CLEAN_SHEETS:
-        filters.append(stat.clean_sheets.is_not(None))
-    if rank_by in {RankBy.GOALS_CONCEDED, RankBy.GOALS_CONCEDED_PER90}:
-        filters.append(stat.goals_conceded.is_not(None))
-    return filters
-
-
-def _world_cup_stat_floors(request: PlayerRankingRequest) -> list:
-    stat = PlayerStatSchema
-    filters: list = []
-    if request.min_appearances is not None:
-        filters.append(stat.matches_played >= request.min_appearances)
-    if request.min_minutes is not None:
-        filters.append(stat.minutes_played >= request.min_minutes)
-    if request.min_goals is not None:
-        filters.append(stat.goals >= request.min_goals)
-    if request.min_assists is not None:
-        filters.append(stat.assists >= request.min_assists)
-    return filters
-
-
-def _order(sort_expr, request: PlayerRankingRequest):
-    primary = sort_expr.asc() if request.rank_by in ASCENDING_RANK_BY else desc(sort_expr)
-    return primary.nulls_last(), desc(PlayerStatSchema.minutes_played), PlayerSchema.player_id
-
-
-async def rank_world_cup(session: AsyncSession, request: PlayerRankingRequest) -> PlayerRanking:
-    sort_expr = _world_cup_metric(request.rank_by).label("sort_value")
-    filters = [
-        *_roster_filters(request),
-        *_world_cup_metric_filters(request.rank_by),
-        *_world_cup_stat_floors(request),
-    ]
+async def query_world_cup(session: AsyncSession, request: QueryPlayerStatsRequest) -> PlayerRanking:
+    sort_expr = world_cup_stat_expr(request.sort_by)
+    if sort_expr is None:
+        raise RankingQueryError(f"Cannot sort World Cup stats by '{request.sort_by}'.")
+    labeled = sort_expr.label("sort_value")
+    filters = _world_cup_base_filters(request)
     stmt = (
         select(
             PlayerSchema.player_id,
@@ -161,8 +128,8 @@ async def rank_world_cup(session: AsyncSession, request: PlayerRankingRequest) -
             PlayerSchema.position,
             PlayerSchema.club_team,
             PlayerSchema.height_cm,
-            _age_years_expr().label("age"),
-            _team_code_expr().label("team_code"),
+            age_years_expr().label("age"),
+            team_code_expr().label("team_code"),
             PlayerStatSchema.matches_played.label("appearances"),
             PlayerStatSchema.minutes_played.label("minutes"),
             PlayerStatSchema.goals,
@@ -174,58 +141,51 @@ async def rank_world_cup(session: AsyncSession, request: PlayerRankingRequest) -
             PlayerStatSchema.saves,
             PlayerStatSchema.clean_sheets,
             PlayerStatSchema.goals_conceded,
-            sort_expr,
+            labeled,
         )
         .join(PlayerStatSchema, PlayerStatSchema.player_id == PlayerSchema.player_id)
         .join(NationalTeamSchema, NationalTeamSchema.team_id == PlayerSchema.team_id)
     )
     if filters:
         stmt = stmt.where(*filters)
-    stmt = stmt.order_by(*_order(sort_expr, request)).limit(request.limit)
+    stmt = stmt.order_by(*_sort_order(labeled, request, PlayerStatSchema.minutes_played)).limit(
+        request.limit
+    )
     raw_rows = (await session.execute(stmt)).all()
     return _build_ranking(request, raw_rows)
 
 
-def _club_totals(rank_by: RankBy):
-    stat = RealPlayerSeasonStatSchema
-    goals = func.sum(stat.goals)
-    assists = func.sum(stat.assists)
-    minutes = func.sum(stat.minutes_played)
-    appearances = func.sum(stat.appearances)
-    yellows = func.sum(stat.yellow_cards)
-    reds = func.sum(stat.red_cards)
-    metrics = {
-        RankBy.GOALS: goals,
-        RankBy.ASSISTS: assists,
-        RankBy.GOAL_CONTRIBUTIONS: goals + assists,
-        RankBy.GOALS_PER90: _per90(goals, minutes),
-        RankBy.ASSISTS_PER90: _per90(assists, minutes),
-        RankBy.GOAL_CONTRIBUTIONS_PER90: _per90(goals + assists, minutes),
-        RankBy.MINUTES: minutes,
-        RankBy.APPEARANCES: appearances,
-        RankBy.YELLOW_CARDS: yellows,
-        RankBy.RED_CARDS: reds,
-        RankBy.FEWEST_YELLOW_CARDS: yellows,
-        RankBy.FEWEST_RED_CARDS: reds,
-    }
-    return metrics[rank_by], minutes, appearances
-
-
-def _club_base_filters(request: PlayerRankingRequest) -> list:
-    stat = RealPlayerSeasonStatSchema
-    filters = [
-        PlayerIdentityLinkSchema.status == LinkReviewStatus.APPROVED,
-        *_roster_filters(request),
-    ]
+def _club_where(request: QueryPlayerStatsRequest) -> list:
+    filters = [PlayerIdentityLinkSchema.status == LinkReviewStatus.APPROVED]
     if request.competition_id is not None:
-        filters.append(stat.competition_id == request.competition_id)
+        filters.append(RealPlayerSeasonStatSchema.competition_id == request.competition_id)
+    if used_fields(request.sort_by, request.filters) & GK_ONLY_FIELDS:
+        filters.append(PlayerSchema.position.ilike("G%"))
+    for item in request.filters:
+        if item.field in ROSTER_FIELDS:
+            filters.append(_roster_clause(item))
     return filters
 
 
-async def rank_transfermarkt(session: AsyncSession, request: PlayerRankingRequest) -> PlayerRanking:
+def _club_having(request: QueryPlayerStatsRequest, aggregates: dict) -> list:
+    clauses: list = []
+    fields = used_fields(request.sort_by, request.filters)
+    minutes = aggregates[PlayerStatField.MINUTES]
+    if fields & PER90_FIELDS:
+        clauses.append(minutes > 0)
+    for item in request.filters:
+        if item.field in ROSTER_FIELDS:
+            continue
+        clauses.append(_stat_clause(aggregates[item.field], item))
+    return clauses
+
+
+async def query_club_seasons(
+    session: AsyncSession, request: QueryPlayerStatsRequest
+) -> PlayerRanking:
     stat = RealPlayerSeasonStatSchema
-    year_expr = _season_start_year_expr(stat.season)
-    base_filters = _club_base_filters(request)
+    year_expr = season_start_year_expr(stat.season)
+    base_filters = _club_where(request)
     max_year_stmt = (
         select(func.max(year_expr))
         .select_from(PlayerSchema)
@@ -246,23 +206,14 @@ async def rank_transfermarkt(session: AsyncSession, request: PlayerRankingReques
     else:
         year_filter = year_expr >= (max_year - 2)
 
-    sort_expr, minutes_sum, appearances_sum = _club_totals(request.rank_by)
-    goals_sum = func.sum(stat.goals)
-    assists_sum = func.sum(stat.assists)
-    yellows_sum = func.sum(stat.yellow_cards)
-    reds_sum = func.sum(stat.red_cards)
-    sort_labeled = sort_expr.label("sort_value")
-    having_clauses = []
-    if request.rank_by in PER90_RANK_BY:
-        having_clauses.append(minutes_sum > 0)
-    if request.min_appearances is not None:
-        having_clauses.append(appearances_sum >= request.min_appearances)
-    if request.min_minutes is not None:
-        having_clauses.append(minutes_sum >= request.min_minutes)
-    if request.min_goals is not None:
-        having_clauses.append(goals_sum >= request.min_goals)
-    if request.min_assists is not None:
-        having_clauses.append(assists_sum >= request.min_assists)
+    aggregates = club_stat_aggregates()
+    sort_expr = aggregates.get(request.sort_by)
+    if sort_expr is None:
+        raise RankingQueryError(f"Cannot sort club stats by '{request.sort_by}'.")
+    minutes_sum = aggregates[PlayerStatField.MINUTES]
+    appearances_sum = aggregates[PlayerStatField.APPEARANCES]
+    labeled = sort_expr.label("sort_value")
+    having_clauses = _club_having(request, aggregates)
 
     stmt: Select[Any] = (
         select(
@@ -271,15 +222,15 @@ async def rank_transfermarkt(session: AsyncSession, request: PlayerRankingReques
             PlayerSchema.position,
             PlayerSchema.club_team,
             PlayerSchema.height_cm,
-            _age_years_expr().label("age"),
-            _team_code_expr().label("team_code"),
+            age_years_expr().label("age"),
+            team_code_expr().label("team_code"),
             appearances_sum.label("appearances"),
             minutes_sum.label("minutes"),
-            goals_sum.label("goals"),
-            assists_sum.label("assists"),
-            yellows_sum.label("yellow_cards"),
-            reds_sum.label("red_cards"),
-            sort_labeled,
+            aggregates[PlayerStatField.GOALS].label("goals"),
+            aggregates[PlayerStatField.ASSISTS].label("assists"),
+            aggregates[PlayerStatField.YELLOW_CARDS].label("yellow_cards"),
+            aggregates[PlayerStatField.RED_CARDS].label("red_cards"),
+            labeled,
         )
         .join(
             PlayerIdentityLinkSchema,
@@ -298,13 +249,7 @@ async def rank_transfermarkt(session: AsyncSession, request: PlayerRankingReques
             NationalTeamSchema.fifa_code,
             NationalTeamSchema.team_name,
         )
-        .order_by(
-            (
-                sort_labeled.asc() if request.rank_by in ASCENDING_RANK_BY else desc(sort_labeled)
-            ).nulls_last(),
-            desc(minutes_sum),
-            PlayerSchema.player_id,
-        )
+        .order_by(*_sort_order(labeled, request, minutes_sum))
         .limit(request.limit)
     )
     if having_clauses:
@@ -313,7 +258,9 @@ async def rank_transfermarkt(session: AsyncSession, request: PlayerRankingReques
     return _build_ranking(request, raw_rows)
 
 
-async def get_player_ranking(session: AsyncSession, request: PlayerRankingRequest) -> PlayerRanking:
-    if request.scope == RankingScope.WORLD_CUP:
-        return await rank_world_cup(session, request)
-    return await rank_transfermarkt(session, request)
+async def query_player_stats(
+    session: AsyncSession, request: QueryPlayerStatsRequest
+) -> PlayerRanking:
+    if request.dataset == QueryDataset.WORLD_CUP:
+        return await query_world_cup(session, request)
+    return await query_club_seasons(session, request)

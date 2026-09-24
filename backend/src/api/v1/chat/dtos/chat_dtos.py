@@ -55,7 +55,7 @@ class CompareWidgetPart(BaseModel):
 class RankingWidgetPart(BaseModel):
     """`data` is `PlayerRanking.model_dump(mode="json", by_alias=True)` --
     already camelCased for the frontend's `PlayerRanking` contract.
-    Produced by the `get_player_ranking` chat tool.
+    Produced by the `query_player_stats` chat tool.
     """
 
     type: Literal["ranking_widget"] = "ranking_widget"
