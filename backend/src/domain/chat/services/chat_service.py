@@ -34,6 +34,7 @@ from src.infra.postgres.repositories.conversation_repository import get_conversa
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
 )
+from src.infra.task_queue.pool import enqueue_categorize_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -244,9 +245,10 @@ class ChatService:
         default_title = first_message[:_TITLE_MAX_LENGTH].strip()
         if len(first_message) > _TITLE_MAX_LENGTH:
             default_title += "…"
-        # `created` (True only for a brand-new conversation row) is unused
-        # here -- a later task uses it to enqueue the categorization job.
-        conversation, _created = await self._conversation_repo.get_or_create(
+        # `created` is True only for a brand-new conversation row -- used
+        # below to enqueue the categorization job exactly once per
+        # conversation, on its first message.
+        conversation, created = await self._conversation_repo.get_or_create(
             conversation_id, user_id, default_title=default_title
         )
         # Commit *here*, before returning to the router -- not deferred to
@@ -258,6 +260,11 @@ class ChatService:
         # silently vanish by the time `send_message` tries to insert against
         # it (see `send_message`'s docstring for the other half of this).
         await self._session.commit()
+        if created:
+            # After the commit, deliberately -- enqueueing against a row
+            # that might still roll back would let the job run (or race)
+            # against a conversation that was never actually persisted.
+            await enqueue_categorize_conversation(str(conversation_id), user_id, first_message)
         return conversation
 
     async def persist_user_message(self, conversation_id: UUID, content: str) -> ChatMessage:

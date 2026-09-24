@@ -3,7 +3,7 @@
 from arq.connections import RedisSettings
 from arq.worker import func
 
-from src.infra.task_queue.chat_tasks import generate_chat_reply_task
+from src.infra.task_queue.chat_tasks import categorize_conversation_task, generate_chat_reply_task
 from src.infra.task_queue.config import task_queue_settings
 from src.infra.task_queue.tasks import synthetic_upload_task, transfermarkt_sync_task
 
@@ -13,12 +13,17 @@ from src.infra.task_queue.tasks import synthetic_upload_task, transfermarkt_sync
 # via `func(..., timeout=...)`, which is what this does.
 CHAT_REPLY_JOB_TIMEOUT_SECONDS = 300
 
+# A single, non-streamed-to-the-user classification call needs far less
+# headroom than a full chat reply's 300s above.
+CATEGORIZE_JOB_TIMEOUT_SECONDS = 60
+
 
 class WorkerSettings:
     functions = (
         synthetic_upload_task,
         transfermarkt_sync_task,
         func(generate_chat_reply_task, timeout=CHAT_REPLY_JOB_TIMEOUT_SECONDS),
+        func(categorize_conversation_task, timeout=CATEGORIZE_JOB_TIMEOUT_SECONDS),
     )
     redis_settings = RedisSettings.from_dsn(task_queue_settings.REDIS_URL)
     job_timeout = task_queue_settings.JOB_TIMEOUT_SECONDS

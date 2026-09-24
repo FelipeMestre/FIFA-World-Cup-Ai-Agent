@@ -55,3 +55,10 @@ async def enqueue_chat_reply(
     await pool.enqueue_job(
         "generate_chat_reply_task", conversation_id, user_id, user_message, user_message_id
     )
+
+
+async def enqueue_categorize_conversation(
+    conversation_id: str, user_id: int, first_message: str
+) -> None:
+    pool = await get_arq_pool()
+    await pool.enqueue_job("categorize_conversation_task", conversation_id, user_id, first_message)

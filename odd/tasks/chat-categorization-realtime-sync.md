@@ -52,7 +52,7 @@ that conversation.
 
 ## Tasks
 
-- [ ] **T1 — DB + model + repository foundation** (route: delegated writer —
+- [x] **T1 — DB + model + repository foundation** (route: delegated writer —
   touches migration, domain model, schema, repository, interface: 5 files)
   - Alembic migration: add `icon: str` (nullable, enum-constrained at app
     level) and `title_is_generated: bool default true` to `conversation`.
@@ -125,3 +125,19 @@ that conversation.
 
 ## Progress
 - 2026-09-24: Task file created. Starting T1.
+- 2026-09-24: T1 done, commit 357dffa. RED→GREEN verified (14 passed in
+  `test_conversation_repository.py`), migration applied + reversed + reapplied
+  cleanly against real Postgres. Spot-checked the `update_category` guard and
+  `update_title` diff directly — correct. `ruff` clean. A pre-existing,
+  unrelated systemic bug was found (9 other test files' seed-user fixtures hit
+  an `asyncpg` `AmbiguousParameterError` on a reused `:email` param in
+  different type contexts) — flagged as a separate background task, not fixed
+  here (out of T1's scope). Docker `postgres`/`redis` compose services were
+  started locally by the writer agent for the integration tests and are still
+  running.
+- 2026-09-24: T2 (categorization Arq job) delegated. Enqueue call site
+  confirmed as `ChatService.start_turn` (T1's writer already left a pointer
+  comment there). Icon enum fixed to: general, player, team, match, tactics,
+  transfer, injury, stats, history. Per-user stream (`user:events:{user_id}`)
+  uses `XADD ... MAXLEN ~ 1000` instead of the turn stream's TTL, since it's
+  long-lived across the whole session rather than scoped to one turn.

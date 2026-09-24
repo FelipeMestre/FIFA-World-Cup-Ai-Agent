@@ -43,6 +43,8 @@ already ends in a normal `MessageDoneEvent` and never touches this table.
 import json
 import logging
 import re
+from dataclasses import dataclass
+from typing import Literal, get_args
 from uuid import UUID
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
@@ -84,6 +86,30 @@ TURN_IN_PROGRESS_TTL_SECONDS = 300
 # reload past this window just reads the persisted `chat_message` instead.
 TURN_STREAM_TTL_SECONDS = 900
 
+# Approximate cap on a per-user event stream's length (`XADD ... MAXLEN ~`).
+# Unlike the per-conversation turn stream above, this stream is long-lived
+# across a user's whole session rather than scoped to one finished turn, so
+# a TTL doesn't fit -- it is trimmed by length instead, to bound Redis
+# memory without needing an expiry concept for an ever-growing log.
+USER_EVENTS_STREAM_MAXLEN = 1000
+
+# The fixed set of icons `categorize_conversation_task` is allowed to assign
+# -- a `Literal` (for typing) with a `frozenset` view derived from it (for
+# membership checks), so the prompt and the response validation both read
+# from this one source of truth instead of duplicating the list.
+CategoryIcon = Literal[
+    "general",
+    "player",
+    "team",
+    "match",
+    "tactics",
+    "transfer",
+    "injury",
+    "stats",
+    "history",
+]
+CATEGORY_ICONS: frozenset[str] = frozenset(get_args(CategoryIcon))
+
 
 def turn_stream_key(conversation_id: str) -> str:
     return f"chat:turn-stream:{conversation_id}"
@@ -91,6 +117,15 @@ def turn_stream_key(conversation_id: str) -> str:
 
 def turn_in_progress_key(conversation_id: str) -> str:
     return f"chat:turn-in-progress:{conversation_id}"
+
+
+def user_events_key(user_id: int) -> str:
+    """A long-lived, per-user Redis stream (unlike `turn_stream_key`, which
+    is per-conversation and TTL'd to one turn) that every device signed in
+    as this user can attach to for account-wide events -- currently just
+    `ConversationCategorizedEvent`, published by `categorize_conversation_task`.
+    """
+    return f"user:events:{user_id}"
 
 
 # Exclusive start of an empty stream. `XREAD` after this id returns every
@@ -165,6 +200,41 @@ def serialize_chat_turn_event(event: ChatTurnEvent) -> dict[str, str]:
     """
     event_type, payload = chat_turn_event_payload(event)
     return {"event_type": event_type, "payload": json.dumps(payload)}
+
+
+@dataclass(frozen=True)
+class ConversationCategorizedEvent:
+    """Published to `user_events_key(user_id)` once `categorize_conversation_task`
+    resolves a title + icon for a newly created conversation. Deliberately
+    NOT part of the `ChatTurnEvent` union in `chat_service.py`: that union is
+    the per-conversation turn state machine's own events, published to a
+    different (per-conversation) stream, while this event is produced by
+    this job for the per-user stream instead -- it just happens to live in
+    this module because that is what produces it.
+    """
+
+    conversation_id: str
+    title: str
+    icon: str
+
+
+def serialize_conversation_categorized_event(
+    event: ConversationCategorizedEvent,
+) -> dict[str, str]:
+    """Redis stream fields for one `ConversationCategorizedEvent`. Carries
+    its own `event_type` (rather than reusing `chat_turn_event_payload`'s
+    dataclass-name convention) so a future consumer reading the merged
+    per-conversation + per-user streams can discriminate between the two
+    kinds of entries.
+    """
+    payload = json.dumps(
+        {
+            "conversation_id": event.conversation_id,
+            "title": event.title,
+            "icon": event.icon,
+        }
+    )
+    return {"event_type": "ConversationCategorizedEvent", "payload": payload}
 
 
 async def _publish_error(stream_key: str, event_type: str, detail: str) -> None:
@@ -253,3 +323,92 @@ async def generate_chat_reply_task(
         # session entirely -- this is a Redis op, nothing to roll back.
         await redis_client.delete(progress_key)
         await redis_client.expire(stream_key, TURN_STREAM_TTL_SECONDS)
+
+
+_CATEGORIZATION_SYSTEM_PROMPT = (
+    "You classify the first message of a brand-new conversation in a "
+    "football (soccer) World Cup scouting AI app. Reply with STRICT JSON "
+    "only -- no markdown, no code fences, no commentary before or after -- "
+    'in exactly this shape: {"title": "<short descriptive title, max 50 '
+    'characters>", "icon": "<one of: ' + ", ".join(sorted(CATEGORY_ICONS)) + '>"}'
+)
+
+
+def _categorization_messages(first_message: str) -> list[dict]:
+    return [
+        {"role": "system", "content": _CATEGORIZATION_SYSTEM_PROMPT},
+        {"role": "user", "content": first_message},
+    ]
+
+
+async def categorize_conversation_task(
+    ctx: dict, conversation_id: str, user_id: int, first_message: str
+) -> None:
+    """Runs once, right after a conversation's first message is accepted
+    (see `ChatService.start_turn`'s `created`-only enqueue), to generate a
+    short title + a fixed-enum icon from one cheap, non-streamed-to-the-user
+    LLM call, persist the result, and publish it to the user's own long-lived
+    event stream (`user_events_key`) so every connected device picks it up.
+    A later task adds the SSE endpoint that reads that stream.
+
+    Calls `get_openrouter_client().create_chat_completion` directly (no
+    `ToolCallExecutor` -- this is a single-shot classification, not a
+    conversation with tools) and aggregates the streamed `delta_content`
+    into one string itself, since the client has no non-streaming mode.
+
+    Fire-and-forget and best-effort. Enqueued at most once per conversation
+    (on creation), so there is no double-start race to guard against the
+    way `generate_chat_reply_task` guards concurrent turns, and no
+    `chat_turn_failure`-style row to record on failure: an LLM formatting
+    miss, or any other error, just leaves the conversation with its default
+    title and no icon, which is an acceptable non-fatal outcome for a
+    cosmetic feature. Never retried.
+    """
+    try:
+        content_parts: list[str] = []
+        async for chunk in get_openrouter_client().create_chat_completion(
+            _categorization_messages(first_message)
+        ):
+            if chunk.delta_content:
+                content_parts.append(chunk.delta_content)
+
+        try:
+            parsed = json.loads("".join(content_parts))
+        except json.JSONDecodeError:
+            parsed = None
+
+        title = parsed.get("title") if isinstance(parsed, dict) else None
+        icon = parsed.get("icon") if isinstance(parsed, dict) else None
+        if (
+            not isinstance(title, str)
+            or not title.strip()
+            or not isinstance(icon, str)
+            or icon not in CATEGORY_ICONS
+        ):
+            # Expected-possible LLM-formatting miss, not a bug -- log and
+            # walk away. The conversation keeps its default title/no icon.
+            logger.warning(
+                "categorize_conversation_task got an unusable response for conversation %s: %r",
+                conversation_id,
+                parsed,
+            )
+            return
+        title = title.strip()
+
+        async with session_scope() as session:
+            await get_conversation_repository(session).update_category(
+                UUID(conversation_id), title, icon
+            )
+            await session.commit()
+
+        await redis_client.xadd(
+            user_events_key(user_id),
+            serialize_conversation_categorized_event(
+                ConversationCategorizedEvent(
+                    conversation_id=conversation_id, title=title, icon=icon
+                )
+            ),
+            maxlen=USER_EVENTS_STREAM_MAXLEN,
+        )
+    except Exception:
+        logger.exception("categorize_conversation_task failed for conversation %s", conversation_id)
