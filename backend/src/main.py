@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.v1.admin.routers.identity_link_router import router as identity_link_router
 from src.api.v1.admin.routers.ingestion_router import router as ingestion_router
+from src.api.v1.admin.routers.real_player_router import router as real_player_router
 from src.api.v1.auth.routers.auth_router import router as auth_router
 from src.api.v1.chat.routers.conversation_router import router as conversation_router
 from src.api.v1.chat.routers.user_events_router import router as user_events_router
@@ -24,6 +25,7 @@ API_V1_ROUTERS = (
     player_router,
     ingestion_router,
     identity_link_router,
+    real_player_router,
 )
 
 

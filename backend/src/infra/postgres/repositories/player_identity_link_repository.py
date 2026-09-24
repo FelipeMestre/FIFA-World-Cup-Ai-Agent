@@ -10,7 +10,11 @@ from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.ingestion.exceptions.ingestion_exceptions import IdentityLinkNotFoundError
+from src.domain.ingestion.exceptions.ingestion_exceptions import (
+    IdentityLinkNotFoundError,
+    RealPlayerAlreadyLinkedError,
+    RealPlayerNotFoundError,
+)
 from src.domain.ingestion.model.player_identity_candidate import PlayerIdentityCandidate
 from src.domain.ingestion.model.player_identity_link import (
     LinkReviewStatus,
@@ -167,6 +171,42 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
         row.status = SchemaLinkReviewStatus(status.value)
         row.reviewed_by_user_id = reviewed_by_user_id
         row.reviewed_by_admin = reviewed_by_user_id is not None
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _to_domain(row)
+
+    async def reassign(
+        self, link_id: int, new_real_player_id: int, admin_user_id: int
+    ) -> PlayerIdentityLink:
+        row = await self._session.get(PlayerIdentityLinkSchema, link_id)
+        if row is None:
+            raise IdentityLinkNotFoundError(f"player_identity_link {link_id} not found")
+
+        real_player_row = await self._session.get(RealPlayerSchema, new_real_player_id)
+        if real_player_row is None:
+            raise RealPlayerNotFoundError(f"real_player {new_real_player_id} not found")
+
+        # real_player_id is unique on player_identity_link -- validated
+        # up front (rather than letting the UPDATE hit the constraint) so
+        # the failure is a clear domain exception, not a raw IntegrityError.
+        conflict = await self._session.execute(
+            select(PlayerIdentityLinkSchema.id).where(
+                PlayerIdentityLinkSchema.real_player_id == new_real_player_id,
+                PlayerIdentityLinkSchema.id != link_id,
+            )
+        )
+        if conflict.scalar_one_or_none() is not None:
+            raise RealPlayerAlreadyLinkedError(
+                f"real_player {new_real_player_id} is already linked to a different "
+                "player_identity_link"
+            )
+
+        row.real_player_id = new_real_player_id
+        row.match_method = SchemaPlayerMatchMethod.MANUAL
+        row.match_confidence = None
+        row.status = SchemaLinkReviewStatus.APPROVED
+        row.reviewed_by_user_id = admin_user_id
+        row.reviewed_by_admin = True
         await self._session.commit()
         await self._session.refresh(row)
         return _to_domain(row)

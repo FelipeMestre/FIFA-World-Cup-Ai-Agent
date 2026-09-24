@@ -9,6 +9,14 @@ from src.domain.ingestion.model.real_player import RealPlayer
 from src.domain.players.model.player import Player
 
 
+class ReassignLinkRequest(BaseModel):
+    """Body for the "correct match" endpoint: the admin-picked real_player
+    to link this doubtful match to instead.
+    """
+
+    real_player_id: int
+
+
 class IdentityLinkResponse(BaseModel):
     id: int
     player_id: int
