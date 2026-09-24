@@ -1,5 +1,4 @@
 from typing import Annotated, Literal
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -61,7 +60,7 @@ MessagePart = Annotated[
 # `ToolDefinition.widget_type` -> the `MessagePart` subtype that carries it.
 # Presentation concern, so it lives at the API boundary, not in the domain
 # (the tool/registry layer only knows the string tag, never this DTO).
-# Shared by `chat_router.py` (SSE `widget_ready`/`message_done` events) and
+# Shared by the live socket (`widget_ready`/`message_done` events) and
 # `conversation_router.py` (`GET /conversations/{id}/messages` replay) so
 # the mapping has exactly one place to drift from.
 WIDGET_TYPE_TO_PART_CLASS: dict[
@@ -73,32 +72,6 @@ WIDGET_TYPE_TO_PART_CLASS: dict[
     "player_widget": PlayerWidgetPart,
     "compare_widget": CompareWidgetPart,
 }
-
-
-class SendMessageRequest(BaseModel):
-    """`conversation_id` is always client-generated (`crypto.randomUUID()`),
-    even for a brand-new conversation -- the server no longer generates one.
-    """
-
-    conversation_id: UUID
-    message: str = Field(min_length=1)
-
-
-class SendMessageAckResponse(BaseModel):
-    """`POST /chat/messages`'s response: the user's message has been
-    persisted and a reply generation job has been enqueued, but the reply
-    itself has not been generated yet. Callers should connect to
-    `GET /conversations/{id}/watch` to observe it. `title` is included so
-    the frontend can update the sidebar/header immediately for a brand-new
-    conversation, without waiting on anything else. `stream_cursor` is the
-    exclusive Redis stream id captured when this turn was reserved -- pass
-    it as `after` on the first watch so entries from the previous turn are
-    skipped.
-    """
-
-    conversation_id: str
-    title: str
-    stream_cursor: str
 
 
 class ReasoningDeltaEventDto(BaseModel):

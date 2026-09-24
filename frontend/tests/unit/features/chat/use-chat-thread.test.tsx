@@ -2,62 +2,72 @@ import { useEffect } from "react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatStreamEvent } from "@/features/chat/api/stream-chat-events";
+import type { ChatStreamEvent, LiveServerEvent } from "@/features/chat/api/conversation-live";
 import type { ConversationReplay } from "@/features/chat/api/get-conversation-messages";
 import { sampleTeam } from "@/features/chat/sample-data/team";
 import type { ChatMessage } from "@/features/chat/types";
 import { clearInFlightTurns } from "@/features/chat/in-flight-turn";
 
-const sendMessageMock = vi.fn();
-vi.mock("@/features/chat/api/send-message", () => ({
-  sendMessage: (...args: unknown[]) => sendMessageMock(...args),
+type Deliver = (event: LiveServerEvent) => void;
+
+const harness = vi.hoisted(() => ({
+  sendScripts: [] as Array<(deliver: (event: LiveServerEvent) => void) => void | Promise<void>>,
+  connectScripts: [] as Array<(deliver: (event: LiveServerEvent) => void) => void>,
+  sentMessages: [] as { conversationId: string; message: string }[],
+  openedHandlers: [] as Array<(event: LiveServerEvent) => void>,
 }));
+
+vi.mock("@/features/chat/api/conversation-live", async () => {
+  const actual = await vi.importActual<typeof import("@/features/chat/api/conversation-live")>(
+    "@/features/chat/api/conversation-live",
+  );
+  return {
+    ...actual,
+    connectConversationLive: (conversationId: string, onEvent: Deliver) => {
+      let closed = false;
+      const deliver: Deliver = (event) => {
+        if (!closed) onEvent(event);
+      };
+      harness.openedHandlers.push(deliver);
+      const onConnect = harness.connectScripts.shift();
+      queueMicrotask(() => onConnect?.(deliver));
+      return {
+        conversationId,
+        isClosed: () => closed,
+        close() {
+          closed = true;
+        },
+        send(message: string) {
+          harness.sentMessages.push({ conversationId, message });
+          deliver({
+            type: "user_message",
+            content: message,
+            message_id: 1,
+            conversation_id: conversationId,
+            title: "",
+            cursor: `${harness.sentMessages.length}-0`,
+          });
+          const script = harness.sendScripts.shift();
+          void script?.(deliver);
+        },
+      };
+    },
+  };
+});
 
 const getConversationMessagesMock = vi.fn();
 vi.mock("@/features/chat/api/get-conversation-messages", () => ({
   getConversationMessages: (...args: unknown[]) => getConversationMessagesMock(...args),
 }));
 
-const watchConversationMock = vi.fn();
-vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
-  return {
-    ...actual,
-    watchConversation: (...args: unknown[]) => watchConversationMock(...args),
-  };
-});
-
 // Import after the mocks above so the hook picks them up.
 const { useChatThread } = await import("@/features/chat/hooks/use-chat-thread");
 
-/** Turns a list of events into the async generator `sendMessage` normally returns. */
-function eventStream(events: ChatStreamEvent[]) {
-  return (async function* () {
-    for (const event of events) {
-      yield event;
-    }
-  })();
-}
-
-/** A no-turn-in-progress watch response -- the default so existing tests,
- * none of which exercise reattachment, see the same "nothing to reattach
- * to" behavior as before `watchConversation` existed. */
-function noTurnInProgress(): Response {
-  return new Response(null, { status: 204 });
-}
-
-/** A live watch response streaming the given SSE frames. */
-function watchStreamResponse(frames: string[]): Response {
-  const encoder = new TextEncoder();
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const frame of frames) {
-        controller.enqueue(encoder.encode(frame));
-      }
-      controller.close();
-    },
+/** Events the next `send()` delivers after its `user_message`. */
+function queueSend(events: ChatStreamEvent[]) {
+  harness.sendScripts.push((deliver) => {
+    for (const event of events) deliver(event);
   });
-  return new Response(body, { status: 200 });
 }
 
 function lastMessage(messages: ChatMessage[]): ChatMessage {
@@ -108,21 +118,21 @@ function HookProbe({
 
 describe("useChatThread", () => {
   beforeEach(() => {
-    sendMessageMock.mockReset();
+    harness.sendScripts.length = 0;
+    harness.connectScripts.length = 0;
+    harness.sentMessages.length = 0;
+    harness.openedHandlers.length = 0;
     getConversationMessagesMock.mockReset();
     getConversationMessagesMock.mockResolvedValue({
       conversationId: "550e8400-e29b-41d4-a716-446655440000",
       title: "New chat",
       messages: [],
     });
-    watchConversationMock.mockReset();
-    watchConversationMock.mockResolvedValue(noTurnInProgress());
     clearInFlightTurns();
   });
 
   it("incrementally builds the assistant message's content as content_delta events arrive", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "reasoning_delta", content: "Thinking about it" },
         { type: "content_delta", content: "Hello" },
         { type: "content_delta", content: " world" },
@@ -132,8 +142,7 @@ describe("useChatThread", () => {
           parts: [{ type: "text", content: "Hello world" }],
           model: "anthropic/claude-sonnet-4.5",
         },
-      ]),
-    );
+      ]);
 
     const { result } = renderHook(() => useChatThread());
 
@@ -154,8 +163,7 @@ describe("useChatThread", () => {
   });
 
   it("shows an active tool-call indicator while the loop dispatches a tool, then clears it", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "tool_call", name: "get_current_utc_time" },
         { type: "content_delta", content: "It is currently 10am UTC." },
         {
@@ -164,8 +172,7 @@ describe("useChatThread", () => {
           parts: [{ type: "text", content: "It is currently 10am UTC." }],
           model: null,
         },
-      ]),
-    );
+      ]);
 
     const { result } = renderHook(() => useChatThread());
 
@@ -178,8 +185,7 @@ describe("useChatThread", () => {
   });
 
   it("renders the cap_reached clarification distinctly from the partial content, without duplicating it", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "content_delta", content: "Based on what I found so far..." },
         {
           type: "cap_reached",
@@ -198,8 +204,7 @@ describe("useChatThread", () => {
           ],
           model: null,
         },
-      ]),
-    );
+      ]);
 
     const { result } = renderHook(() => useChatThread());
 
@@ -219,8 +224,7 @@ describe("useChatThread", () => {
   });
 
   it("renders a widget live, before message_done arrives, without duplicating it", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "tool_call", name: "get_team_analysis" },
         { type: "widget_ready", part: { type: "team_widget", data: sampleTeam } },
         { type: "content_delta", content: "Here's how they did." },
@@ -233,8 +237,7 @@ describe("useChatThread", () => {
           ],
           model: "anthropic/claude-sonnet-4.5",
         },
-      ]),
-    );
+      ]);
 
     const { result } = renderHook(() => useChatThread());
 
@@ -250,8 +253,7 @@ describe("useChatThread", () => {
   });
 
   it("drops a widget_ready part that fails the widget contract's schema, instead of crashing", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "widget_ready", part: { type: "team_widget", data: { incomplete: true } } },
         { type: "content_delta", content: "Text still renders." },
         {
@@ -260,8 +262,7 @@ describe("useChatThread", () => {
           parts: [{ type: "text", content: "Text still renders." }],
           model: null,
         },
-      ]),
-    );
+      ]);
 
     const { result } = renderHook(() => useChatThread());
 
@@ -274,9 +275,7 @@ describe("useChatThread", () => {
   });
 
   it("surfaces an error event as the assistant message's error state", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]),
-    );
+    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const { result } = renderHook(() => useChatThread());
 
@@ -291,9 +290,7 @@ describe("useChatThread", () => {
 
   it("mints a conversation UUID and reports it before the first send", async () => {
     const onConversationCreated = vi.fn();
-    sendMessageMock.mockReturnValue(
-      eventStream([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]),
-    );
+    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const { result } = renderHook(() =>
       useChatThread({ urlConversationId: null, onConversationCreated }),
@@ -308,15 +305,13 @@ describe("useChatThread", () => {
     expect(mintedId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
-    expect(sendMessageMock).toHaveBeenCalledWith(mintedId, "Hi there");
+    expect(harness.sentMessages).toContainEqual({ conversationId: mintedId, message: "Hi there" });
   });
 
   it("reuses the URL conversation id and does not mint another", async () => {
     const urlId = "550e8400-e29b-41d4-a716-446655440000";
     const onConversationCreated = vi.fn();
-    sendMessageMock.mockReturnValue(
-      eventStream([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]),
-    );
+    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const { result } = renderHook(() =>
       useChatThread({ urlConversationId: urlId, onConversationCreated }),
@@ -327,7 +322,7 @@ describe("useChatThread", () => {
     });
 
     expect(onConversationCreated).not.toHaveBeenCalled();
-    expect(sendMessageMock).toHaveBeenCalledWith(urlId, "Follow up");
+    expect(harness.sentMessages).toContainEqual({ conversationId: urlId, message: "Follow up" });
   });
 
   it("does not let an abandoned turn's finally clear isSending for the conversation switched to", async () => {
@@ -338,19 +333,18 @@ describe("useChatThread", () => {
     const gateA = new Promise<void>((resolve) => {
       releaseA = resolve;
     });
-    sendMessageMock.mockImplementationOnce(async function* (
-      _id: string,
-      _text: string,
-      signal: AbortSignal,
-    ) {
+    harness.sendScripts.push(async (deliver) => {
       await gateA;
-      if (signal.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      yield { type: "content_delta", content: "late, abandoned reply" } as ChatStreamEvent;
+      deliver({ type: "content_delta", content: "late, abandoned reply" });
     });
-    sendMessageMock.mockImplementationOnce(async function* () {
-      yield { type: "content_delta", content: "B's own reply" } as ChatStreamEvent;
+    harness.sendScripts.push(async (deliver) => {
+      deliver({ type: "content_delta", content: "B's own reply" });
+      deliver({
+        type: "message_done",
+        conversation_id: conversationB,
+        parts: [{ type: "text", content: "B's own reply" }],
+        model: null,
+      });
     });
 
     const { result, rerender } = renderHook(
@@ -380,9 +374,15 @@ describe("useChatThread", () => {
     const gateB = new Promise<void>((resolve) => {
       releaseB = resolve;
     });
-    sendMessageMock.mockImplementationOnce(async function* () {
+    harness.sendScripts.push(async (deliver) => {
       await gateB;
-      yield { type: "content_delta", content: "B's second reply" } as ChatStreamEvent;
+      deliver({ type: "content_delta", content: "B's second reply" });
+      deliver({
+        type: "message_done",
+        conversation_id: conversationB,
+        parts: [{ type: "text", content: "B's second reply" }],
+        model: null,
+      });
     });
     act(() => {
       void result.current.submit("Hello again B");
@@ -406,16 +406,14 @@ describe("useChatThread", () => {
   });
 
   it("clears the thread when the URL conversation id is removed", async () => {
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         {
           type: "message_done",
           conversation_id: "550e8400-e29b-41d4-a716-446655440000",
           parts: [{ type: "text", content: "Hello world" }],
           model: null,
         },
-      ]),
-    );
+      ]);
 
     const { result, rerender } = renderHook(
       ({ urlConversationId }: { urlConversationId: string | null }) =>
@@ -464,8 +462,7 @@ describe("useChatThread", () => {
 
   it("keeps the in-flight user message when the URL has not yet caught up", async () => {
     const onConversationCreated = vi.fn();
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "content_delta", content: "Hello" },
         {
           type: "message_done",
@@ -473,8 +470,7 @@ describe("useChatThread", () => {
           parts: [{ type: "text", content: "Hello" }],
           model: null,
         },
-      ]),
-    );
+      ]);
 
     const { result } = renderHook(() =>
       useChatThread({ urlConversationId: null, onConversationCreated }),
@@ -493,8 +489,7 @@ describe("useChatThread", () => {
 
   it("keeps the in-flight user message when the URL updates to the minted id", async () => {
     const onConversationCreated = vi.fn();
-    sendMessageMock.mockReturnValue(
-      eventStream([
+    queueSend([
         { type: "content_delta", content: "Hello" },
         {
           type: "message_done",
@@ -502,8 +497,7 @@ describe("useChatThread", () => {
           parts: [{ type: "text", content: "Hello" }],
           model: null,
         },
-      ]),
-    );
+      ]);
 
     const { result, rerender } = renderHook(
       ({ urlConversationId }: { urlConversationId: string | null }) =>
@@ -535,9 +529,7 @@ describe("useChatThread", () => {
 
   it("restores the in-flight turn after the hook remounts on the minted URL", async () => {
     const onConversationCreated = vi.fn();
-    sendMessageMock.mockReturnValue(
-      eventStream([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]),
-    );
+    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const first = renderHook(() =>
       useChatThread({ urlConversationId: null, onConversationCreated }),
@@ -633,14 +625,15 @@ describe("useChatThread", () => {
         },
       ],
     });
-    watchConversationMock.mockResolvedValue(
-      watchStreamResponse([
-        'event: content_delta\ndata: {"content": "They kept a clean sheet."}\n\n',
-        'event: message_done\ndata: {"conversation_id": "' +
-          urlId +
-          '", "parts": [{"type": "text", "content": "They kept a clean sheet."}], "model": null}\n\n',
-      ]),
-    );
+    harness.connectScripts.push((deliver) => {
+      deliver({ type: "content_delta", content: "They kept a clean sheet." });
+      deliver({
+        type: "message_done",
+        conversation_id: urlId,
+        parts: [{ type: "text", content: "They kept a clean sheet." }],
+        model: null,
+      });
+    });
 
     const { result } = renderHook(() => useChatThread({ urlConversationId: urlId }));
 
@@ -676,14 +669,15 @@ describe("useChatThread", () => {
         },
       ],
     });
-    watchConversationMock.mockResolvedValue(
-      watchStreamResponse([
-        'event: content_delta\ndata: {"content": "They kept a clean sheet."}\n\n',
-        'event: message_done\ndata: {"conversation_id": "' +
-          urlId +
-          '", "parts": [{"type": "text", "content": "They kept a clean sheet."}], "model": null}\n\n',
-      ]),
-    );
+    harness.connectScripts.push((deliver) => {
+      deliver({ type: "content_delta", content: "They kept a clean sheet." });
+      deliver({
+        type: "message_done",
+        conversation_id: urlId,
+        parts: [{ type: "text", content: "They kept a clean sheet." }],
+        model: null,
+      });
+    });
 
     const { result } = renderHook(() => useChatThread({ urlConversationId: urlId }));
 
@@ -714,7 +708,35 @@ describe("useChatThread", () => {
     ]);
   });
 
-  it("does not reattach when watch reports nothing in progress (the default, no-turn case)", async () => {
+  it("applies a user message pushed to this client from another window", async () => {
+    const urlId = "550e8400-e29b-41d4-a716-446655440000";
+    const first = renderHook(() => useChatThread({ urlConversationId: urlId }));
+    const second = renderHook(() => useChatThread({ urlConversationId: urlId }));
+
+    await waitFor(() => {
+      expect(harness.openedHandlers).toHaveLength(2);
+    });
+
+    act(() => {
+      harness.openedHandlers[1]?.({
+        type: "user_message",
+        content: "From the other window",
+        message_id: 4,
+        conversation_id: urlId,
+        title: "From the other window",
+        cursor: "9-0",
+      });
+    });
+
+    expect(second.result.current.messages[0]?.parts).toEqual([
+      { type: "text", content: "From the other window" },
+    ]);
+    expect(second.result.current.messages[1]?.isStreaming).toBe(true);
+    expect(second.result.current.isSending).toBe(true);
+    expect(first.result.current.messages).toHaveLength(0);
+  });
+
+  it("keeps stored history when the live socket has nothing new to replay", async () => {
     const urlId = "550e8400-e29b-41d4-a716-446655440000";
     getConversationMessagesMock.mockResolvedValue({
       conversationId: urlId,

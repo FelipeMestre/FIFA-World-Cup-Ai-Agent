@@ -1,8 +1,7 @@
-"""Redis-stream-entry -> SSE wire DTO serialization for the watch/reattach
-endpoint (`conversation_router.py`). Stream entries are parsed back into a
-`ChatTurnEvent` by `parse_chat_turn_event` (the same mapping
-`chat_turn_event_payload` writes); this module only converts that domain
-event into the SSE DTO.
+"""Redis-stream-entry -> live-socket message. Stream entries are parsed back
+into a `ChatTurnEvent` by `parse_chat_turn_event` (the same mapping
+`chat_turn_event_payload` writes); this module converts that domain event
+into the JSON object the conversation websocket sends to every client.
 """
 
 from src.api.v1.chat.dtos.chat_dtos import (
@@ -32,25 +31,6 @@ from src.domain.chat.services.tool_call_executor import (
     ToolWidgetResult,
     WidgetReadyEvent,
 )
-
-# Event types `generate_chat_reply_task` can still publish *after* this one
-# -- everything else (MessageDoneEvent, or one of the job's own ad hoc
-# exception-class-name error tags) is terminal: no further entry is ever
-# written for that turn once one of those lands.
-_NON_TERMINAL_EVENT_TYPES = frozenset(
-    {
-        "ReasoningDeltaEvent",
-        "ContentDeltaEvent",
-        "ToolCallRequestedEvent",
-        "WidgetReadyEvent",
-        "CapReachedEvent",
-        "PersistenceFailedEvent",
-    }
-)
-
-
-def is_terminal_event_type(event_type: str) -> bool:
-    return event_type not in _NON_TERMINAL_EVENT_TYPES
 
 
 def _widget_part(widget: ToolWidgetResult) -> MessagePart:
@@ -98,9 +78,11 @@ def redis_entry_to_dto(event_type: str, payload: dict) -> ChatStreamEvent:
     return to_dto(event)
 
 
-def format_sse(dto: ChatStreamEvent, event_id: str) -> bytes:
-    """One SSE frame. `event_id` is the Redis stream id, so a client can
-    resume with `after` / `Last-Event-ID` and receive only later entries.
-    """
-    payload = dto.model_dump_json(exclude={"type"})
-    return f"id: {event_id}\nevent: {dto.type.value}\ndata: {payload}\n\n".encode()
+def client_message(entry_id: str, event_type: str, payload: dict) -> dict:
+    """One live-socket message. `cursor` is the Redis stream id."""
+    if event_type == "UserMessageEvent":
+        return {"type": "user_message", "cursor": entry_id, **payload}
+    dto = redis_entry_to_dto(event_type, payload)
+    body = dto.model_dump()
+    body["cursor"] = entry_id
+    return body

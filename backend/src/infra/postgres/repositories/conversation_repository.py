@@ -52,6 +52,15 @@ class _SqlAlchemyConversationRepository:
         await self._session.refresh(row)
         return _to_domain(row)
 
+    async def is_available_to(self, conversation_id: UUID, user_id: int) -> bool:
+        """True when the conversation does not exist yet or belongs to `user_id`.
+
+        A client-minted id is connected before the first message creates the
+        row. An existing row owned by someone else is not available.
+        """
+        row = await self._session.get(ConversationSchema, conversation_id)
+        return row is None or row.user_id == user_id
+
     async def get_owned(self, conversation_id: UUID, user_id: int) -> Conversation | None:
         row = await self._session.get(ConversationSchema, conversation_id)
         if row is None or row.user_id != user_id:

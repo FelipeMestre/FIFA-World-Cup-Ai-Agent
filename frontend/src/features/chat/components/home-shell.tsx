@@ -62,7 +62,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
   const [renameTarget, setRenameTarget] = useState<ConversationSummary | null>(null);
 
   useEffect(() => {
-    if (wasSending.current && !isSending) {
+    if (wasSending.current !== isSending) {
       void refreshConversations();
     }
     wasSending.current = isSending;

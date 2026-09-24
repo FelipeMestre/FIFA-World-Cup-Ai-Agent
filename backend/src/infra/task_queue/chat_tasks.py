@@ -16,11 +16,11 @@ state -- clearing a Redis key has no dependency on whether the session
 needs rolling back first (that rule only applies to a *second* write on the
 *same* aborted session).
 
-This task assumes its caller (`POST /chat/messages`, see `chat_router.py`)
+This task assumes its caller (the conversation live socket, see `live_router.py`)
 has already, synchronously and in this order: run `ChatService.start_turn`
 (ownership check + get-or-create), reserved the turn by setting
 `turn_in_progress_key` with `SET NX` (the actual one-turn-per-conversation
-guard -- a duplicate enqueue is rejected there with a 409, before it ever
+guard -- a duplicate send is rejected on that socket, before it ever
 reaches this task), and persisted the user's own message via
 `ChatService.persist_user_message`. The flag's value is the stream cursor
 captured at reservation: the last id already in `chat:turn-stream:{id}`,
@@ -137,6 +137,25 @@ async def stream_cursor_has_gap(conversation_id: str, cursor: str) -> bool:
     if not entries:
         return False
     return stream_cursor_precedes(cursor, entries[0][0])
+
+
+def serialize_user_message_event(
+    conversation_id: str, message_id: int, content: str, title: str
+) -> dict[str, str]:
+    """Stream entry every connected client reads when a turn is accepted.
+
+    Written by the live socket before the reply job starts, so a second
+    device blocked on `XREAD` sees the user message without refreshing.
+    """
+    payload = json.dumps(
+        {
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+            "content": content,
+            "title": title,
+        }
+    )
+    return {"event_type": "UserMessageEvent", "payload": payload}
 
 
 def serialize_chat_turn_event(event: ChatTurnEvent) -> dict[str, str]:

@@ -1,8 +1,9 @@
 /**
  * Small typed fetch wrapper for client components. Calls our own Next.js
- * Route Handlers (`/api/auth/login`, `/api/chat/messages`,
- * `/api/conversations`) -- never the FastAPI backend directly, and never
- * sees the bearer token.
+ * Route Handlers (`/api/auth/login`, `/api/conversations`) -- never the
+ * FastAPI backend directly, and never sees the bearer token. The live
+ * conversation socket is opened by `connectConversationLive`, which asks
+ * a Route Handler for a one-time ticket rather than putting the JWT in JS.
  */
 
 export class ApiError extends Error {
@@ -42,18 +43,6 @@ export async function login(payload: LoginPayload): Promise<void> {
   }
 }
 
-export interface SendChatMessagePayload {
-  conversationId: string;
-  message: string;
-}
-
-export interface SendChatMessageAck {
-  conversationId: string;
-  title: string;
-  /** Exclusive Redis stream id to pass as `after` on the first watch. */
-  streamCursor: string;
-}
-
 /**
  * JSON fetch against our own Route Handlers. Throws `ApiError` on a
  * non-2xx so feature clients don't each reimplement status parsing.
@@ -64,62 +53,4 @@ export async function fetchJson<T>(input: string, init?: RequestInit): Promise<T
     throw new ApiError(await parseErrorDetail(response), response.status);
   }
   return (await response.json()) as T;
-}
-
-/**
- * Sends a chat message. The backend persists it and enqueues a background
- * reply-generation job, returning an ack -- not the reply itself. Callers
- * connect to `watchConversation` right after to observe the reply (see
- * `features/chat/api/send-message.ts`).
- */
-export async function sendChatMessage(
-  payload: SendChatMessagePayload,
-  signal?: AbortSignal,
-): Promise<SendChatMessageAck> {
-  const response = await fetch("/api/chat/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      conversation_id: payload.conversationId,
-      message: payload.message,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new ApiError(await parseErrorDetail(response), response.status);
-  }
-
-  const body = (await response.json()) as {
-    conversation_id: string;
-    title: string;
-    stream_cursor: string;
-  };
-  return {
-    conversationId: body.conversation_id,
-    title: body.title,
-    streamCursor: body.stream_cursor,
-  };
-}
-
-/**
- * Attaches to a conversation's in-progress reply generation and returns the
- * raw streaming `Response` -- the backend replies over Server-Sent Events
- * (`text/event-stream`). A 204 means no turn is currently in progress;
- * callers must check for it before reading `.body` (see
- * `features/chat/api/stream-chat-events.ts` for the frame parser).
- */
-export async function watchConversation(
-  conversationId: string,
-  signal?: AbortSignal,
-  after?: string,
-): Promise<Response> {
-  const params = after ? `?after=${encodeURIComponent(after)}` : "";
-  const response = await fetch(`/api/conversations/${conversationId}/watch${params}`, { signal });
-
-  if (response.status !== 204 && !response.ok) {
-    throw new ApiError(await parseErrorDetail(response), response.status);
-  }
-
-  return response;
 }
