@@ -1,14 +1,14 @@
 """SQL for `query_player_stats`.
 
 World Cup reads `player_stat`. Club seasons sum approved-link
-`real_player_season_stat` rows inside the season window and competition
-filter. Filters and sort use the allowlisted field catalog. The two
+`real_player_season_stat` rows for the requested season years and
+competition. Filters and sort use the allowlisted field catalog. The two
 datasets are never mixed.
 """
 
 from typing import Any
 
-from sqlalchemy import Select, and_, desc, func, select
+from sqlalchemy import Select, and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.chat.exceptions.chat_exceptions import RankingQueryError
@@ -22,7 +22,6 @@ from src.domain.player_analytics.model.player_ranking import (
     PlayerStatField,
     QueryDataset,
     QueryPlayerStatsRequest,
-    SeasonWindow,
     SortDir,
     StatFilter,
     used_fields,
@@ -183,28 +182,13 @@ def _club_having(request: QueryPlayerStatsRequest, aggregates: dict) -> list:
 async def query_club_seasons(
     session: AsyncSession, request: QueryPlayerStatsRequest
 ) -> PlayerRanking:
+    if not request.season_years:
+        return _build_ranking(request, [])
+
     stat = RealPlayerSeasonStatSchema
     year_expr = season_start_year_expr(stat.season)
     base_filters = _club_where(request)
-    max_year_stmt = (
-        select(func.max(year_expr))
-        .select_from(PlayerSchema)
-        .join(
-            PlayerIdentityLinkSchema,
-            PlayerIdentityLinkSchema.player_id == PlayerSchema.player_id,
-        )
-        .join(stat, stat.real_player_id == PlayerIdentityLinkSchema.real_player_id)
-        .join(NationalTeamSchema, NationalTeamSchema.team_id == PlayerSchema.team_id)
-        .where(*base_filters)
-    )
-    max_year = (await session.execute(max_year_stmt)).scalar_one_or_none()
-    if max_year is None:
-        return _build_ranking(request, [])
-
-    if request.season_window == SeasonWindow.LATEST:
-        year_filter = year_expr == max_year
-    else:
-        year_filter = year_expr >= (max_year - 2)
+    year_filter = year_expr.in_(request.season_years)
 
     aggregates = club_stat_aggregates()
     sort_expr = aggregates.get(request.sort_by)

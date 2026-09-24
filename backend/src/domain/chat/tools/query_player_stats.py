@@ -1,9 +1,10 @@
 """`query_player_stats` -- allowlisted filter/sort over player stats.
 
 The model must not call this tool until the user has picked a dataset and a
-sort field. For club_seasons it must also have season window and competition.
-Missing choices are asked in assistant text. World Cup numbers and club
-season numbers are never mixed into one score.
+sort field. For club_seasons it must also have competition. Seasons are a
+tool argument the model fills in from the request (one label or several to
+sum). Missing dataset, sort_by, or competition are asked in assistant text.
+World Cup numbers and club season numbers are never mixed into one score.
 """
 
 import json
@@ -24,10 +25,11 @@ from src.domain.player_analytics.model.player_ranking import (
     PlayerStatField,
     QueryDataset,
     QueryPlayerStatsRequest,
-    SeasonWindow,
     SortDir,
     StatFilter,
     field_allowed_on_dataset,
+    format_season_label,
+    normalize_season_years,
     used_fields,
 )
 from src.infra.postgres.interfaces.player_analytics_repository_interface import (
@@ -68,10 +70,13 @@ QUERY_PLAYER_STATS_SCHEMA: dict = {
             "player_stat only; club_seasons sums club season stats for players with "
             "an approved identity link (unlinked players are omitted). "
             "Do not call until the user has chosen dataset and sort_by. For "
-            "club_seasons also wait for season_window (latest or last_three) and "
-            "competition (all, or a named competition). If those are missing, reply "
-            "in chat text listing: (1) datasets; (2) sort fields; (3) optional "
-            "filters as field+op+value; (4) club season window and competition. "
+            "club_seasons also wait for competition (all, or a named competition). "
+            "Pass seasons yourself — do not ask the user to pick from a menu. "
+            "Map their wording to labels (current season, last two seasons, "
+            "or an explicit 24/25). If they did not name a season, pass the "
+            "current club season. If dataset, sort_by, or competition is missing, "
+            "reply in chat text listing: (1) datasets; (2) sort fields; "
+            "(3) optional filters as field+op+value; (4) club competition. "
             "Shared fields: position, age, height_cm, nationality, appearances, "
             "minutes, goals, assists, goal_contributions, goals_per90, assists_per90, "
             "goal_contributions_per90, yellow_cards, red_cards. "
@@ -108,10 +113,18 @@ QUERY_PLAYER_STATS_SCHEMA: dict = {
                     "items": _FILTER_ITEM_SCHEMA,
                     "description": "Optional allowlisted predicates applied in SQL.",
                 },
-                "season_window": {
-                    "type": "string",
-                    "enum": ["latest", "last_three"],
-                    "description": "Required for club_seasons. Forbidden for world_cup.",
+                "seasons": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Required for club_seasons. Forbidden for world_cup. "
+                        "You set this from the user's request: one or more labels "
+                        "to include and sum, e.g. ['24/25'] or ['23/24', '24/25']. "
+                        "Accepts 24/25, 2024/25, or 2024. Translate phrases like "
+                        "'this season' or 'last two seasons' into those labels. "
+                        "If they did not name a season, pass the current club season. "
+                        "Do not pass latest/last_three and do not ask them to choose."
+                    ),
                 },
                 "competition": {
                     "type": "string",
@@ -147,7 +160,7 @@ class QueryPlayerStatsArgs(BaseModel):
     sort_by: PlayerStatField
     sort_dir: SortDir = SortDir.DESC
     filters: list[QueryFilterArg] = Field(default_factory=list, max_length=12)
-    season_window: SeasonWindow | None = None
+    seasons: list[str] = Field(default_factory=list, max_length=8)
     competition: str | None = Field(default=None, min_length=1, max_length=128)
     limit: int = Field(default=10, ge=1, le=25)
 
@@ -175,11 +188,16 @@ class QueryPlayerStatsArgs(BaseModel):
                 "set position to GK or omit it."
             )
         if self.dataset == QueryDataset.CLUB_SEASONS:
-            if self.season_window is None or self.competition is None:
-                raise ValueError("season_window and competition are required for club_seasons.")
+            if not self.seasons or self.competition is None:
+                raise ValueError("seasons and competition are required for club_seasons.")
+            if normalize_season_years(self.seasons) is None:
+                raise ValueError(
+                    "Each season must look like 24/25, 2024/25, or 2024. "
+                    "Do not pass latest or last_three."
+                )
             return self
-        if self.season_window is not None or self.competition is not None:
-            raise ValueError("season_window and competition apply only to club_seasons.")
+        if self.seasons or self.competition is not None:
+            raise ValueError("seasons and competition apply only to club_seasons.")
         return self
 
 
@@ -193,8 +211,15 @@ def _position_eq(filters: tuple[StatFilter, ...]) -> str | None:
 def _to_request(args: QueryPlayerStatsArgs) -> QueryPlayerStatsRequest:
     competition_id: str | None = None
     competition_label = "all competitions"
+    season_years: tuple[int, ...] = ()
+    season_label = ""
     if args.dataset == QueryDataset.CLUB_SEASONS:
         assert args.competition is not None
+        parsed = normalize_season_years(args.seasons)
+        if parsed is None or not parsed:
+            raise RankingQueryError("Each season must look like 24/25, 2024/25, or 2024.")
+        season_years = parsed
+        season_label = format_season_label(parsed)
         if args.competition.strip().casefold() != "all":
             competition_id = resolve_competition_id(args.competition)
             if competition_id is None:
@@ -210,7 +235,8 @@ def _to_request(args: QueryPlayerStatsArgs) -> QueryPlayerStatsRequest:
         filters=tuple(
             StatFilter(field=item.field, op=item.op, value=item.value) for item in args.filters
         ),
-        season_window=args.season_window,
+        season_years=season_years,
+        season_label=season_label,
         competition_id=competition_id,
         competition_label=competition_label,
         limit=args.limit,

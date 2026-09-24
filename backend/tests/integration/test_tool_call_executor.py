@@ -263,9 +263,7 @@ async def test_widget_producing_tool_call_yields_live_event_and_terminal_result(
     # The live event is yielded before the final content delta -- the
     # frontend gets the widget without waiting for the rest of the turn.
     tool_call_index = events.index(widget_events[0])
-    final_content_index = next(
-        i for i, e in enumerate(events) if isinstance(e, ContentDeltaEvent)
-    )
+    final_content_index = next(i for i, e in enumerate(events) if isinstance(e, ContentDeltaEvent))
     assert tool_call_index < final_content_index
 
     terminal = events[-1]

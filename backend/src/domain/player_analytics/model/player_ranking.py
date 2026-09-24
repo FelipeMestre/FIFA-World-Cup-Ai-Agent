@@ -3,6 +3,7 @@
 CamelCase aliases match the frontend `PlayerRanking` widget contract.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
@@ -18,11 +19,6 @@ Position = Literal["GK", "DEF", "MID", "FWD"]
 class QueryDataset(StrEnum):
     WORLD_CUP = "world_cup"
     CLUB_SEASONS = "club_seasons"
-
-
-class SeasonWindow(StrEnum):
-    LATEST = "latest"
-    LAST_THREE = "last_three"
 
 
 class FilterOp(StrEnum):
@@ -136,6 +132,43 @@ WORLD_CUP_FIELDS = frozenset(PlayerStatField)
 FIELD_VALUES = [item.value for item in PlayerStatField]
 
 
+def parse_season_start_year(label: str) -> int | None:
+    """Map a Transfermarkt season label to its start year.
+
+    Accepts `24/25`, `24-25`, `2024/25`, `2024-2025`, or `2024`.
+    """
+    text = label.strip()
+    if not text:
+        return None
+    two_digit = re.fullmatch(r"(\d{2})[/\-](\d{2})", text)
+    if two_digit:
+        return 2000 + int(two_digit.group(1))
+    four_digit_span = re.fullmatch(r"(\d{4})[/\-](\d{2,4})", text)
+    if four_digit_span:
+        return int(four_digit_span.group(1))
+    year_only = re.fullmatch(r"(\d{4})", text)
+    if year_only:
+        return int(year_only.group(1))
+    return None
+
+
+def normalize_season_years(labels: list[str]) -> tuple[int, ...] | None:
+    years: list[int] = []
+    seen: set[int] = set()
+    for label in labels:
+        year = parse_season_start_year(label)
+        if year is None:
+            return None
+        if year not in seen:
+            seen.add(year)
+            years.append(year)
+    return tuple(sorted(years))
+
+
+def format_season_label(years: tuple[int, ...]) -> str:
+    return " + ".join(f"{year % 100:02d}/{(year + 1) % 100:02d}" for year in years)
+
+
 def used_fields(
     sort_by: PlayerStatField, filters: tuple["StatFilter", ...]
 ) -> frozenset[PlayerStatField]:
@@ -167,7 +200,8 @@ class QueryPlayerStatsRequest:
     sort_by: PlayerStatField
     sort_dir: SortDir
     filters: tuple[StatFilter, ...]
-    season_window: SeasonWindow | None
+    season_years: tuple[int, ...]
+    season_label: str
     competition_id: str | None
     competition_label: str
     limit: int
