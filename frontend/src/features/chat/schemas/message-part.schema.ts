@@ -171,6 +171,22 @@ const playerSummarySchema = z.object({
       }),
     )
     .optional(),
+  careerSeasons: z
+    .array(
+      z.object({
+        season: z.string(),
+        team: z.string().nullable(),
+        competitionId: z.string(),
+        competition: z.string(),
+        appearances: z.number(),
+        minutes: z.number(),
+        goals: z.number(),
+        assists: z.number(),
+        yellowCards: z.number(),
+        redCards: z.number(),
+      }),
+    )
+    .optional(),
 });
 
 const comparisonPlayerRefSchema = z.object({

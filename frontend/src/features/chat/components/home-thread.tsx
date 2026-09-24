@@ -34,7 +34,7 @@ export function HomeThread({
   children?: ReactNode;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-[760px] grow flex-col px-4 py-10 md:px-0">
+    <div className="mx-auto flex w-full min-w-0 max-w-[760px] grow flex-col self-center px-4 py-10 md:px-6">
       {children}
       <MessageList
         messages={messages}

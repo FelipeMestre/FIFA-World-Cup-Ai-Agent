@@ -3,6 +3,7 @@
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { BenchmarkBarRow } from "@/features/chat/components/comparison-row";
 import { PanelHeader } from "@/features/chat/components/panel-header";
+import { PlayerSeasonTable } from "@/features/chat/components/player-season-table";
 import { PlayerClubProfileFacts } from "@/features/chat/components/player-club-profile";
 import { PlayerTransferPath } from "@/features/chat/components/player-transfer-path";
 import {
@@ -177,6 +178,7 @@ export function PanelPlayer({
         </p>
       </section>
       <PlayerTransferPath transfers={player.transfers ?? []} />
+      <PlayerSeasonTable seasons={player.careerSeasons ?? []} />
     </aside>
   );
 }

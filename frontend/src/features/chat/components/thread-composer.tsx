@@ -37,7 +37,7 @@ export function ThreadComposer({
   }
 
   return (
-    <div className="z-20 flex shrink-0 flex-col items-center gap-2.5 bg-surface-950 px-4 pt-5 pb-7 md:px-0">
+    <div className="z-20 flex w-full min-w-0 shrink-0 flex-col items-center gap-2.5 bg-surface-950 px-4 pt-5 pb-7 md:px-6">
       <div className="flex w-full max-w-[760px] items-center gap-2.5 rounded-[20px] border border-border-strong bg-surface-800 py-2 pr-2 pl-5 shadow-[0_24px_60px_rgba(2,3,5,0.6),inset_0_1px_0_rgba(244,246,249,0.06)]">
         <label htmlFor="thread-composer" className="sr-only">
           Ask a follow-up

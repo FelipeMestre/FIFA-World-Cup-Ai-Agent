@@ -184,6 +184,20 @@ export interface PlayerTransfer {
   marketValueEur: number | null;
 }
 
+/** One competition inside a club season. */
+export interface PlayerSeasonStat {
+  season: string;
+  team: string | null;
+  competitionId: string;
+  competition: string;
+  appearances: number;
+  minutes: number;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+}
+
 export interface PlayerSummary {
   id: string;
   name: string;
@@ -204,6 +218,8 @@ export interface PlayerSummary {
   /** Omitted on widgets stored before club profile was added. */
   clubProfile?: PlayerClubProfile | null;
   transfers?: PlayerTransfer[];
+  /** Omitted on widgets stored before the season table was added. */
+  careerSeasons?: PlayerSeasonStat[];
 }
 
 // ---------------------------------------------------------------------------

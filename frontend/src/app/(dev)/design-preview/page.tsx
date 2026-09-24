@@ -88,8 +88,8 @@ export default function DesignPreviewPage() {
           />
         </Section>
 
-        <Section title="Panels — 480px desktop">
-          <div className="h-[1360px] w-[480px] overflow-y-auto rounded-lg border border-border-strong">
+        <Section title="Panels — 560px desktop">
+          <div className="h-[1360px] w-[560px] overflow-y-auto rounded-lg border border-border-strong">
             <PanelTeam
               team={sampleTeam}
               fromMessage="How did Argentina perform defensively?"
@@ -97,7 +97,7 @@ export default function DesignPreviewPage() {
               onJumpToMessage={() => {}}
             />
           </div>
-          <div className="h-[1360px] w-[480px] overflow-y-auto rounded-lg border border-border-strong">
+          <div className="h-[1360px] w-[560px] overflow-y-auto rounded-lg border border-border-strong">
             <PanelMatch
               match={sampleMatch}
               fromMessage="Show me the France vs Spain semifinal breakdown"
@@ -105,7 +105,7 @@ export default function DesignPreviewPage() {
               onJumpToMessage={() => {}}
             />
           </div>
-          <div className="h-[1360px] w-[480px] overflow-y-auto rounded-lg border border-border-strong">
+          <div className="h-[1360px] w-[560px] overflow-y-auto rounded-lg border border-border-strong">
             <PanelPlayer
               player={samplePlayerForward}
               fromMessage="What about Mbappé's tournament?"
@@ -113,7 +113,7 @@ export default function DesignPreviewPage() {
               onJumpToMessage={() => {}}
             />
           </div>
-          <div className="h-[1360px] w-[480px] overflow-y-auto rounded-lg border border-border-strong">
+          <div className="h-[1360px] w-[560px] overflow-y-auto rounded-lg border border-border-strong">
             <PanelCompare
               comparison={sampleComparison}
               fromMessage="Compare Messi vs Mbappé"
@@ -140,7 +140,8 @@ export default function DesignPreviewPage() {
             Live SidePanel — desktop drawer / mobile sheet switch
           </h2>
           <p className="max-w-[640px] text-body-md text-ink-secondary">
-            The actual SidePanel component (not a static copy): a 480px drawer
+            The actual SidePanel component (not a static copy): a 64px toggle
+            rail plus 560px of content
             at desktop widths, a full-height sheet over a scrim with a grab
             handle at mobile widths, switching via the same media query the real
             chat page uses. Resize the viewport to see it switch.

@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   clubProfileFacts,
   formatTransferFee,
-  transferPathLabel,
+  formatTransferMonth,
+  formatTransferValue,
 } from "@/features/chat/components/player-club-format";
-import type { PlayerClubProfile, PlayerTransfer } from "@/features/chat/types";
+import type { PlayerClubProfile } from "@/features/chat/types";
 
 const profile: PlayerClubProfile = {
   preferredFoot: "right",
@@ -54,21 +55,14 @@ describe("clubProfileFacts", () => {
   });
 });
 
-describe("transfer path labels", () => {
-  it("shows a free move and a fee in career order text", () => {
-    const free: PlayerTransfer = {
-      transferDate: "2024-07-01",
-      season: "24/25",
-      fromClub: "Paris Saint-Germain",
-      toClub: "Real Madrid",
-      feeEur: 0,
-      marketValueEur: 180_000_000,
-    };
-
-    expect(formatTransferFee(null)).toBe("Fee —");
+describe("transfer table cells", () => {
+  it("shows month and year, a free move, and the value", () => {
+    expect(formatTransferMonth("2024-07-01")).toBe("Jul 2024");
+    expect(formatTransferMonth("2017-08-31")).toBe("Aug 2017");
+    expect(formatTransferFee(null)).toBe("—");
     expect(formatTransferFee(0)).toBe("Free");
-    expect(transferPathLabel(free)).toBe(
-      "24/25 · 1 Jul 2024 · Paris Saint-Germain → Real Madrid · Free · value €180M",
-    );
+    expect(formatTransferFee(180_000_000)).toBe("€180M");
+    expect(formatTransferValue(180_000_000)).toBe("€180M");
+    expect(formatTransferValue(null)).toBe("—");
   });
 });

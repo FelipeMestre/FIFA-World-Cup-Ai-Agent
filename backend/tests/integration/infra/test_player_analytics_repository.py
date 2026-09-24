@@ -152,6 +152,7 @@ async def test_get_player_analysis_resolves_by_exact_name(db_session: AsyncSessi
     assert analysis.initials == "TS"
     assert analysis.club_profile is None
     assert analysis.transfers == []
+    assert analysis.career_seasons == []
 
 
 async def test_get_player_analysis_resolves_by_fuzzy_substring(db_session: AsyncSession) -> None:
@@ -382,9 +383,21 @@ async def test_get_player_analysis_attaches_approved_club_career_only(
         text(
             "INSERT INTO real_transfer (real_player_id, transfer_date, transfer_season, "
             "from_club_name, to_club_name, transfer_fee_eur, market_value_at_transfer_eur) "
-            "VALUES (:id, '2019-07-01', '19/20', 'Monaco', 'Paris Saint-Germain', "
+            "VALUES (:id, '2024-07-01', '24/25', 'Paris Saint-Germain', 'Real Madrid', "
+            "NULL, 180000000), "
+            "(:id, '2019-07-01', '19/20', 'Monaco', 'Paris Saint-Germain', "
             "45000000, 60000000), "
             "(:id, '2017-07-01', '17/18', 'Youth Academy', 'Monaco', 0, 5000000)"
+        ),
+        {"id": _REAL_PLAYER_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player_season_stat (real_player_id, season, competition_id, "
+            "appearances, goals, assists, yellow_cards, red_cards, minutes_played) "
+            "VALUES (:id, '23/24', 'GB1', 30, 20, 8, 3, 0, 2500), "
+            "(:id, '23/24', 'CL', 5, 1, 1, 0, 0, 400), "
+            "(:id, '24/25', 'ES1', 10, 4, 2, 1, 1, 800)"
         ),
         {"id": _REAL_PLAYER_ID},
     )
@@ -395,6 +408,10 @@ async def test_get_player_analysis_attaches_approved_club_career_only(
         analysis = await repository.get_player_analysis("Test Striker")
         pending = await repository.get_player_analysis("Test Peer Forward")
     finally:
+        await db_session.execute(
+            text("DELETE FROM real_player_season_stat WHERE real_player_id = :id"),
+            {"id": _REAL_PLAYER_ID},
+        )
         await db_session.execute(
             text("DELETE FROM real_transfer WHERE real_player_id = :id"),
             {"id": _REAL_PLAYER_ID},
@@ -428,14 +445,39 @@ async def test_get_player_analysis_attaches_approved_club_career_only(
     assert [move.transfer_date.isoformat() for move in analysis.transfers] == [
         "2017-07-01",
         "2019-07-01",
+        "2024-07-01",
     ]
     assert analysis.transfers[0].fee_eur == 0
     assert analysis.transfers[0].from_club == "Youth Academy"
     assert analysis.transfers[1].to_club == "Paris Saint-Germain"
     assert analysis.transfers[1].fee_eur == 45_000_000
+    assert [
+        (row.season, row.team, row.competition, row.appearances, row.goals)
+        for row in analysis.career_seasons
+    ] == [
+        ("24/25", "Real Madrid", "LaLiga", 10, 4),
+        ("23/24", "Paris Saint-Germain", "Premier League", 30, 20),
+        ("23/24", "Paris Saint-Germain", "Champions League", 5, 1),
+    ]
+    league = analysis.career_seasons[1]
+    assert league.minutes == 2500
+    assert league.assists == 8
+    assert league.yellow_cards == 3
+    assert league.red_cards == 0
+    cup = analysis.career_seasons[2]
+    assert cup.minutes == 400
+    assert cup.assists == 1
+    assert cup.yellow_cards == 0
+    assert cup.red_cards == 0
+    latest = analysis.career_seasons[0]
+    assert latest.minutes == 800
+    assert latest.assists == 2
+    assert latest.yellow_cards == 1
+    assert latest.red_cards == 1
     assert pending is not None
     assert pending.club_profile is None
     assert pending.transfers == []
+    assert pending.career_seasons == []
 
 
 async def test_get_player_comparison_builds_insights(db_session: AsyncSession) -> None:

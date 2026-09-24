@@ -159,7 +159,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
           {/* ThreadHeader spans this column (main + side panel) so the panel
               starts right where it ends, with no gap and no header of its own
               duplicating it -- see ThreadHeader's docstring. */}
-          <div className="flex min-h-0 grow flex-col">
+          <div className="flex min-h-0 min-w-0 grow flex-col">
             {hasThread && (
               <ThreadHeader
                 title={threadTitle}
@@ -230,7 +230,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
                 {/* Hero + Prompts + Composer. Scrolls inside the shell rather than
                     scrolling the page, so the header and sidebar stay put on short
                     viewports. */}
-                <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto">
                   {hasThread && (
                     <HomeThread
                       messages={messages}
@@ -244,7 +244,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
 
                   {/* Desktop: centered hero + composer + 2x2 grid */}
                   {!hasThread && !isMobile && (
-                    <div className="flex-1 flex flex-col items-center justify-center-safe gap-8 px-12 pb-14">
+                    <div className="flex w-full flex-1 flex-col items-center justify-center-safe gap-8 px-12 pb-14">
                       {/* Hero section */}
                       <div className="flex flex-col items-center gap-4 text-center w-full max-w-[760px]">
                         <span className="focus-ring flex h-8 items-center gap-2 rounded-full border border-brand/35 bg-brand/12 px-3.5 pl-1.5 text-label-md font-medium">
@@ -324,7 +324,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
 
                   {/* Mobile: stacked layout matching MobileEmpty.dc.html */}
                   {!hasThread && isMobile && (
-                    <div className="flex-1 flex flex-col justify-end gap-6 px-4 pb-6">
+                    <div className="flex w-full flex-1 flex-col justify-end gap-6 px-4 pb-6">
                       {/* Mobile Hero */}
                       <div className="flex flex-col items-center gap-2 text-center">
                         <span className="text-label-sm text-ink-muted">World Cup 2026 · 104 matches</span>

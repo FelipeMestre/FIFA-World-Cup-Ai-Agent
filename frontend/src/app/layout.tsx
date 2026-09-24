@@ -26,7 +26,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Owl Analytics",
+  title: "Football Ai Scout",
   description: "FIFA World Cup 2026 stats assistant",
 };
 

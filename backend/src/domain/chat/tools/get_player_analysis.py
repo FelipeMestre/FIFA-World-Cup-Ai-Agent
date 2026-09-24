@@ -33,11 +33,14 @@ GET_PLAYER_ANALYSIS_SCHEMA: dict = {
             "tier and discipline read. When an approved Transfermarkt identity link "
             "exists, the same result includes a separate club profile (preferred foot, "
             "sub-position, height, date of birth, citizenship, current club, market "
-            "value, career-high value, international caps and goals) and that player's "
-            "transfer path. Those fields are absent when the player is not linked, and "
-            "club numbers are not part of the World Cup percentiles. Use this whenever "
-            "the user asks about a specific player's performance, form, role, or stats "
-            "in the tournament, or about their club profile and transfer history."
+            "value, career-high value, international caps and goals), a table of "
+            "club statistics with one row per competition inside each season and "
+            "the team he played for that year, and "
+            "that player's transfer path. Those fields "
+            "are absent when the player is not linked, and club numbers are not part "
+            "of the World Cup percentiles. Use this whenever the user asks about a "
+            "specific player's performance, form, role, or stats in the tournament, "
+            "or about their club career and transfer history."
         ),
         "parameters": {
             "type": "object",

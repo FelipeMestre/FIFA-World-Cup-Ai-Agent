@@ -67,10 +67,29 @@ class PlayerTransfer(_CamelModel):
     market_value_eur: int | None
 
 
+class PlayerSeasonStat(_CamelModel):
+    """One competition inside a club season, with the club he was at that year.
+
+    These figures are not mixed into the World Cup percentile block.
+    """
+
+    season: str
+    team: str | None
+    competition_id: str
+    competition: str
+    appearances: int
+    minutes: int
+    goals: int
+    assists: int
+    yellow_cards: int
+    red_cards: int
+
+
 @dataclass(frozen=True, slots=True)
 class ApprovedClubCareer:
     profile: PlayerClubProfile
     transfers: tuple[PlayerTransfer, ...]
+    career_seasons: tuple[PlayerSeasonStat, ...]
 
 
 class PlayerAnalysis(_CamelModel):
@@ -97,3 +116,4 @@ class PlayerAnalysis(_CamelModel):
     # empty in that case; an approved link with no moves is a profile and [].
     club_profile: PlayerClubProfile | None = None
     transfers: list[PlayerTransfer] = Field(default_factory=list)
+    career_seasons: list[PlayerSeasonStat] = Field(default_factory=list)

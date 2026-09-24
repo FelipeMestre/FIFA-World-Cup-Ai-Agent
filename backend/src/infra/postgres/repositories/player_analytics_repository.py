@@ -99,6 +99,7 @@ class _SqlAlchemyPlayerAnalyticsRepository:
             ),
             club_profile=None if club_career is None else club_career.profile,
             transfers=[] if club_career is None else list(club_career.transfers),
+            career_seasons=[] if club_career is None else list(club_career.career_seasons),
         )
 
     async def get_player_comparison(

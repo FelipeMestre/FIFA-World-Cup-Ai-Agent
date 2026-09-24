@@ -1,4 +1,4 @@
-import type { PlayerClubProfile, PlayerTransfer } from "@/features/chat/types";
+import type { PlayerClubProfile } from "@/features/chat/types";
 
 export function formatEur(amount: number): string {
   const sign = amount < 0 ? "-" : "";
@@ -64,9 +64,21 @@ export function clubProfileFacts(profile: PlayerClubProfile): { label: string; v
   return facts.flatMap((fact) => (fact.value == null ? [] : [{ label: fact.label, value: fact.value }]));
 }
 
+export function formatTransferMonth(isoDate: string): string {
+  const [year, month] = isoDate.split("-").map(Number);
+  if (!year || !month) {
+    return isoDate;
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
 export function formatTransferFee(feeEur: number | null): string {
   if (feeEur == null) {
-    return "Fee —";
+    return "—";
   }
   if (feeEur === 0) {
     return "Free";
@@ -74,9 +86,9 @@ export function formatTransferFee(feeEur: number | null): string {
   return formatEur(feeEur);
 }
 
-export function transferPathLabel(transfer: PlayerTransfer): string {
-  const season = transfer.season ? `${transfer.season} · ` : "";
-  const value =
-    transfer.marketValueEur == null ? "" : ` · value ${formatEur(transfer.marketValueEur)}`;
-  return `${season}${formatClubDate(transfer.transferDate)} · ${transfer.fromClub} → ${transfer.toClub} · ${formatTransferFee(transfer.feeEur)}${value}`;
+export function formatTransferValue(valueEur: number | null): string {
+  if (valueEur == null) {
+    return "—";
+  }
+  return formatEur(valueEur);
 }
