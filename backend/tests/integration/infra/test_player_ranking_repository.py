@@ -11,7 +11,6 @@ from src.domain.player_analytics.model.player_ranking import (
     PlayerStatField,
     QueryDataset,
     QueryPlayerStatsRequest,
-    SeasonWindow,
     SortDir,
     StatFilter,
 )
@@ -96,7 +95,8 @@ def _wc_request(**overrides) -> QueryPlayerStatsRequest:
         "sort_by": PlayerStatField.GOALS,
         "sort_dir": SortDir.DESC,
         "filters": _rtl(),
-        "season_window": None,
+        "season_years": (),
+        "season_label": "",
         "competition_id": None,
         "competition_label": "all competitions",
         "limit": 10,
@@ -209,7 +209,8 @@ def _tm_request(**overrides) -> QueryPlayerStatsRequest:
         "sort_by": PlayerStatField.GOALS,
         "sort_dir": SortDir.DESC,
         "filters": _rtl(),
-        "season_window": SeasonWindow.LATEST,
+        "season_years": (2024,),
+        "season_label": "24/25",
         "competition_id": None,
         "competition_label": "all competitions",
         "limit": 10,
@@ -218,7 +219,7 @@ def _tm_request(**overrides) -> QueryPlayerStatsRequest:
     return QueryPlayerStatsRequest(**base)
 
 
-async def test_transfermarkt_latest_all_sums_competitions_and_drops_pending(
+async def test_transfermarkt_one_season_all_sums_competitions_and_drops_pending(
     db_session: AsyncSession,
 ) -> None:
     await _insert_club_stats(db_session)
@@ -234,10 +235,10 @@ async def test_transfermarkt_latest_all_sums_competitions_and_drops_pending(
     assert ranking.rows[0].goals == 14
     assert ranking.rows[0].club_team
     assert ranking.rows[1].value == "4"
-    assert ranking.scope_label == "Club · latest season · all competitions"
+    assert ranking.scope_label == "Club · 24/25 · all competitions"
 
 
-async def test_transfermarkt_named_competition_and_last_three(
+async def test_transfermarkt_named_competition_and_combined_seasons(
     db_session: AsyncSession,
 ) -> None:
     await _insert_club_stats(db_session)
@@ -245,7 +246,8 @@ async def test_transfermarkt_named_competition_and_last_three(
         repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
         ranking = await repository.query_player_stats(
             _tm_request(
-                season_window=SeasonWindow.LAST_THREE,
+                season_years=(2023, 2024),
+                season_label="23/24 + 24/25",
                 competition_id="GB1",
                 competition_label="Premier League",
             )
@@ -256,7 +258,20 @@ async def test_transfermarkt_named_competition_and_last_three(
     assert ranking.rows[0].player_id == str(_FWD_A)
     # 12 (24/25 GB1) + 8 (23/24 GB1)
     assert ranking.rows[0].value == "20"
-    assert ranking.scope_label == "Club · last 3 seasons · Premier League"
+    assert ranking.scope_label == "Club · 23/24 + 24/25 · Premier League"
+
+
+async def test_transfermarkt_unknown_season_returns_empty(db_session: AsyncSession) -> None:
+    await _insert_club_stats(db_session)
+    try:
+        repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+        ranking = await repository.query_player_stats(
+            _tm_request(season_years=(2019,), season_label="19/20")
+        )
+    finally:
+        await _delete_club_stats(db_session)
+
+    assert ranking.rows == []
 
 
 async def test_world_cup_min_goals_drops_players_below_floor(
@@ -293,7 +308,7 @@ async def test_transfermarkt_min_appearances_and_goals_use_window_totals(
     finally:
         await _delete_club_stats(db_session)
 
-    # A: 26 apps / 14 goals / 4 assists in latest; B: 18 / 4 / 7.
+    # A: 26 apps / 14 goals / 4 assists in 24/25; B: 18 / 4 / 7.
     assert [row.player_id for row in by_apps.rows] == [str(_FWD_A)]
     assert [row.player_id for row in by_goals.rows] == [str(_FWD_A)]
     assert empty.rows == []

@@ -222,9 +222,7 @@ async def test_get_team_analysis_compares_stats_against_the_field(db_session: As
     analysis = await repository.get_team_analysis("Test Team A")
 
     assert analysis is not None
-    possession_row = next(
-        row for row in analysis.tournament_averages if row.label == "Possession"
-    )
+    possession_row = next(row for row in analysis.tournament_averages if row.label == "Possession")
     assert possession_row.value == "60.0%"
 
     field_avg_result = await db_session.execute(

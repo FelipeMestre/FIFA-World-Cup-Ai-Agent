@@ -12,7 +12,6 @@ from src.domain.player_analytics.model.player_ranking import (
     PlayerStatField,
     QueryDataset,
     QueryPlayerStatsRequest,
-    SeasonWindow,
     widget_scope,
 )
 from src.infra.postgres.repositories._player_stat_helpers import (
@@ -37,7 +36,7 @@ def _ranking_id(request: QueryPlayerStatsRequest) -> str:
         "filters": [
             {"field": item.field, "op": item.op, "value": item.value} for item in request.filters
         ],
-        "season_window": request.season_window,
+        "season_years": request.season_years,
         "competition_id": request.competition_id,
         "limit": request.limit,
     }
@@ -49,8 +48,7 @@ def _scope_label(request: QueryPlayerStatsRequest) -> str:
     criterion = FIELD_LABELS[request.sort_by]
     if request.dataset == QueryDataset.WORLD_CUP:
         return f"WC 2026 · {criterion}"
-    window = "latest season" if request.season_window == SeasonWindow.LATEST else "last 3 seasons"
-    return f"Club · {window} · {request.competition_label}"
+    return f"Club · {request.season_label} · {request.competition_label}"
 
 
 def _display_value(request: QueryPlayerStatsRequest, raw: Any, sort_value: float) -> str:
