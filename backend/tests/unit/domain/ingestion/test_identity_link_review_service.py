@@ -72,6 +72,7 @@ class _FakeRepository:
     def __init__(self, links: dict[int, PlayerIdentityLink]) -> None:
         self._links = links
         self.update_calls: list[tuple[int, LinkReviewStatus, int | None]] = []
+        self.reassign_calls: list[tuple[int, int, int]] = []
 
     async def list_pending(
         self, limit: int = 100, offset: int = 0
@@ -91,6 +92,23 @@ class _FakeRepository:
     ) -> PlayerIdentityLink:
         self.update_calls.append((link_id, status, reviewed_by_user_id))
         updated = _link(link_id, status)
+        self._links[link_id] = updated
+        return updated
+
+    async def reassign(
+        self, link_id: int, new_real_player_id: int, admin_user_id: int
+    ) -> PlayerIdentityLink:
+        self.reassign_calls.append((link_id, new_real_player_id, admin_user_id))
+        updated = PlayerIdentityLink(
+            id=link_id,
+            player_id=self._links[link_id].player_id,
+            real_player_id=new_real_player_id,
+            match_method=PlayerMatchMethod.MANUAL,
+            match_confidence=None,
+            status=LinkReviewStatus.APPROVED,
+            reviewed_by_user_id=admin_user_id,
+            created_at=self._links[link_id].created_at,
+        )
         self._links[link_id] = updated
         return updated
 
@@ -148,3 +166,18 @@ async def test_approve_already_reviewed_link_raises():
 
     with pytest.raises(IdentityLinkAlreadyReviewedError):
         await service.approve(link_id=1, admin_user_id=42)
+
+
+@pytest.mark.asyncio
+async def test_reassign_delegates_to_repository_without_requiring_pending():
+    # Unlike approve/reject, reassign works on an already-reviewed link too --
+    # it's how the admin corrects a match the pipeline auto-approved wrong.
+    repository = _FakeRepository({1: _link(1, LinkReviewStatus.APPROVED)})
+    service = PlayerIdentityLinkReviewService(repository)
+
+    result = await service.reassign(link_id=1, new_real_player_id=200, admin_user_id=42)
+
+    assert result.real_player_id == 200
+    assert result.match_method == PlayerMatchMethod.MANUAL
+    assert result.status == LinkReviewStatus.APPROVED
+    assert repository.reassign_calls == [(1, 200, 42)]

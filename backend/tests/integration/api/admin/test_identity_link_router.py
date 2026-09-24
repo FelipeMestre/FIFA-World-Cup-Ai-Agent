@@ -14,6 +14,7 @@ from src.main import app
 
 _ADMIN_USER_ID = 990301
 _REAL_PLAYER_ID = 990301
+_OTHER_REAL_PLAYER_ID = 990302
 
 
 async def _admin_token_data() -> dict:
@@ -41,6 +42,15 @@ async def pending_link() -> AsyncGenerator[dict]:
             ),
             {"id": _REAL_PLAYER_ID},
         )
+        await session.execute(
+            text(
+                "INSERT INTO real_player "
+                "(player_id, first_name, last_name, position, profile_url, last_synced_at) "
+                "VALUES (:id, 'Other', 'Candidate', 'Midfield', "
+                "'https://example.test/other', now())"
+            ),
+            {"id": _OTHER_REAL_PLAYER_ID},
+        )
         link_id = (
             await session.execute(
                 text(
@@ -61,7 +71,8 @@ async def pending_link() -> AsyncGenerator[dict]:
             text("DELETE FROM player_identity_link WHERE id = :id"), {"id": link_id}
         )
         await session.execute(
-            text("DELETE FROM real_player WHERE player_id = :id"), {"id": _REAL_PLAYER_ID}
+            text("DELETE FROM real_player WHERE player_id IN (:id, :other_id)"),
+            {"id": _REAL_PLAYER_ID, "other_id": _OTHER_REAL_PLAYER_ID},
         )
         await session.execute(text('DELETE FROM "user" WHERE id = :id'), {"id": _ADMIN_USER_ID})
         await session.commit()
@@ -122,3 +133,109 @@ async def test_approve_unknown_link_returns_404(client: AsyncClient) -> None:
 
     app.dependency_overrides.clear()
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reassign_corrects_match_to_different_real_player(
+    client: AsyncClient, pending_link: dict
+) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.post(
+        f"/api/v1/admin/identity-links/{pending_link['link_id']}/reassign",
+        json={"real_player_id": _OTHER_REAL_PLAYER_ID},
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    body = response.json()
+    assert body["real_player_id"] == _OTHER_REAL_PLAYER_ID
+    assert body["match_method"] == "manual"
+    assert body["status"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_reassign_to_unknown_real_player_returns_404(
+    client: AsyncClient, pending_link: dict
+) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.post(
+        f"/api/v1/admin/identity-links/{pending_link['link_id']}/reassign",
+        json={"real_player_id": 999999999},
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reassign_unknown_link_returns_404(client: AsyncClient) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.post(
+        "/api/v1/admin/identity-links/999999999/reassign",
+        json={"real_player_id": _REAL_PLAYER_ID},
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_reassign_to_already_linked_real_player_returns_409(
+    client: AsyncClient, pending_link: dict
+) -> None:
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+    # A second synthetic player already linked to _OTHER_REAL_PLAYER_ID, so
+    # reassigning the seeded link onto it should conflict.
+    other_team_id = 990303
+    other_player_id = 990303
+    async with SessionFactory() as session:
+        await session.execute(
+            text(
+                "INSERT INTO national_team (team_id, team_name, fifa_code, group_letter, "
+                "confederation, fifa_ranking_pre_tournament, elo_rating, manager_name) "
+                "VALUES (:id, 'Other Test Team', 'OTT', 'B', 'UEFA', 2, 1000, 'Other Manager')"
+            ),
+            {"id": other_team_id},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO player (player_id, team_id, player_name, position, club_team, "
+                "market_value_eur, caps, date_of_birth, height_cm, goals) "
+                "VALUES (:id, :team_id, 'Other Synthetic Player', 'MF', 'Other Club', "
+                "500000, 3, '1999-01-01', 175, 1)"
+            ),
+            {"id": other_player_id, "team_id": other_team_id},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO player_identity_link "
+                "(player_id, real_player_id, match_method, match_confidence, "
+                "reviewed_by_admin, status) "
+                "VALUES (:player_id, :real_player_id, 'FUZZY_NAME', 0.900, false, 'PENDING')"
+            ),
+            {"player_id": other_player_id, "real_player_id": _OTHER_REAL_PLAYER_ID},
+        )
+        await session.commit()
+
+    response = await client.post(
+        f"/api/v1/admin/identity-links/{pending_link['link_id']}/reassign",
+        json={"real_player_id": _OTHER_REAL_PLAYER_ID},
+    )
+
+    app.dependency_overrides.clear()
+    async with SessionFactory() as cleanup_session:
+        await cleanup_session.execute(
+            text("DELETE FROM player_identity_link WHERE player_id = :id"),
+            {"id": other_player_id},
+        )
+        await cleanup_session.execute(
+            text("DELETE FROM player WHERE player_id = :id"), {"id": other_player_id}
+        )
+        await cleanup_session.execute(
+            text("DELETE FROM national_team WHERE team_id = :id"), {"id": other_team_id}
+        )
+        await cleanup_session.commit()
+    assert response.status_code == 409

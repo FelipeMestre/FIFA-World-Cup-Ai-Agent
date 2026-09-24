@@ -14,6 +14,9 @@ class PlayerIdentityLinkRepositoryInterface(Protocol):
     async def update_status(
         self, link_id: int, status: LinkReviewStatus, reviewed_by_user_id: int | None
     ) -> PlayerIdentityLink: ...
+    async def reassign(
+        self, link_id: int, new_real_player_id: int, admin_user_id: int
+    ) -> PlayerIdentityLink: ...
     async def upsert_candidates(
         self, candidates: list[PlayerIdentityCandidate]
     ) -> UpsertResult: ...

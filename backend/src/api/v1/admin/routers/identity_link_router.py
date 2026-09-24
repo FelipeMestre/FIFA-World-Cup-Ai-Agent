@@ -9,11 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from src.api.v1.admin.dtos.identity_link_dtos import (
     IdentityLinkResponse,
     IdentityLinkReviewResponse,
+    ReassignLinkRequest,
 )
 from src.api.v1.auth.services.dependencies import require_admin
 from src.domain.ingestion.exceptions.ingestion_exceptions import (
     IdentityLinkAlreadyReviewedError,
     IdentityLinkNotFoundError,
+    RealPlayerAlreadyLinkedError,
+    RealPlayerNotFoundError,
 )
 from src.domain.ingestion.services.identity_link_review_service import (
     PlayerIdentityLinkReviewService,
@@ -84,6 +87,29 @@ async def reject_link(
     link_id: int, service: ReviewServiceDep, admin: AdminDep
 ) -> IdentityLinkResponse:
     link = await _review(service.reject, link_id, admin)
+    return IdentityLinkResponse.from_domain(link)
+
+
+@router.post(
+    "/{link_id}/reassign",
+    response_model=IdentityLinkResponse,
+    summary="Correct a doubtful identity-link match to a different real_player",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Link or real_player not found"},
+        status.HTTP_409_CONFLICT: {
+            "description": "real_player is already linked to a different player"
+        },
+    },
+)
+async def reassign_link(
+    link_id: int, body: ReassignLinkRequest, service: ReviewServiceDep, admin: AdminDep
+) -> IdentityLinkResponse:
+    try:
+        link = await service.reassign(link_id, body.real_player_id, admin_user_id=int(admin["sub"]))
+    except (IdentityLinkNotFoundError, RealPlayerNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except RealPlayerAlreadyLinkedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return IdentityLinkResponse.from_domain(link)
 
 

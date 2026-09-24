@@ -27,6 +27,16 @@ class IdentityLinkAlreadyReviewedError(IngestionError):
     """Raised when approving/rejecting a link that is not currently `pending`."""
 
 
+class RealPlayerNotFoundError(IngestionError):
+    """Raised when a `real_player` id used as a reassignment target does not exist."""
+
+
+class RealPlayerAlreadyLinkedError(IngestionError):
+    """Raised when reassigning a `player_identity_link` to a `real_player` id
+    already claimed by a different link -- `real_player_id` is unique.
+    """
+
+
 class TransfermarktSourceUnavailableError(IngestionError):
     """Raised by the Transfermarkt HTTP client on a non-200 response, or when
     the source is otherwise unreachable.
