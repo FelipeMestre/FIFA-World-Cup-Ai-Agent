@@ -118,6 +118,95 @@ ChatTurnEvent = (
 )
 
 
+def _widget_result_to_dict(widget: ToolWidgetResult) -> dict:
+    return {
+        "tool_call_id": widget.tool_call_id,
+        "tool_name": widget.tool_name,
+        "widget_type": widget.widget_type,
+        "data": widget.data,
+    }
+
+
+def _widget_result_from_dict(widget: dict) -> ToolWidgetResult:
+    return ToolWidgetResult(
+        tool_call_id=widget["tool_call_id"],
+        tool_name=widget["tool_name"],
+        widget_type=widget["widget_type"],
+        data=widget["data"],
+    )
+
+
+def _segment_to_dict(segment: str | ToolWidgetResult) -> dict:
+    if isinstance(segment, str):
+        return {"kind": "text", "content": segment}
+    return {"kind": "widget", **_widget_result_to_dict(segment)}
+
+
+def _segment_from_dict(segment: dict) -> str | ToolWidgetResult:
+    if segment["kind"] == "text":
+        return segment["content"]
+    return _widget_result_from_dict(segment)
+
+
+def chat_turn_event_payload(event: ChatTurnEvent) -> tuple[str, dict]:
+    """Maps one `ChatTurnEvent` to the Redis turn-stream shape.
+
+    Returns `(event_type, payload)`. `event_type` is the dataclass name.
+    `payload` is JSON-safe but not encoded -- the caller that writes the
+    stream (`XADD` values must be strings) encodes it.
+    """
+    if isinstance(event, (ReasoningDeltaEvent, ContentDeltaEvent)):
+        payload = {"content": event.content}
+    elif isinstance(event, ToolCallRequestedEvent):
+        payload = {"name": event.name}
+    elif isinstance(event, WidgetReadyEvent):
+        payload = {"widget": _widget_result_to_dict(event.widget)}
+    elif isinstance(event, CapReachedEvent):
+        payload = {"content": event.content, "clarification": event.clarification}
+    elif isinstance(event, PersistenceFailedEvent):
+        payload = {"detail": event.detail}
+    elif isinstance(event, MessageDoneEvent):
+        payload = {
+            "conversation_id": event.conversation_id,
+            "content": event.content,
+            "model": event.model,
+            "content_segments": [_segment_to_dict(segment) for segment in event.content_segments],
+        }
+    else:
+        raise ValueError(f"Unhandled chat stream event: {event!r}")
+    return type(event).__name__, payload
+
+
+def parse_chat_turn_event(event_type: str, payload: dict) -> ChatTurnEvent | None:
+    """Inverse of `chat_turn_event_payload`.
+
+    Returns None when `event_type` is not a domain event -- the job publishes
+    its own failure tags (an exception class name) on the same stream.
+    """
+    if event_type == "ReasoningDeltaEvent":
+        return ReasoningDeltaEvent(content=payload["content"])
+    if event_type == "ContentDeltaEvent":
+        return ContentDeltaEvent(content=payload["content"])
+    if event_type == "ToolCallRequestedEvent":
+        return ToolCallRequestedEvent(name=payload["name"])
+    if event_type == "WidgetReadyEvent":
+        return WidgetReadyEvent(widget=_widget_result_from_dict(payload["widget"]))
+    if event_type == "CapReachedEvent":
+        return CapReachedEvent(content=payload["content"], clarification=payload["clarification"])
+    if event_type == "PersistenceFailedEvent":
+        return PersistenceFailedEvent(detail=payload["detail"])
+    if event_type == "MessageDoneEvent":
+        return MessageDoneEvent(
+            conversation_id=payload["conversation_id"],
+            content=payload["content"],
+            model=payload["model"],
+            content_segments=[
+                _segment_from_dict(segment) for segment in payload["content_segments"]
+            ],
+        )
+    return None
+
+
 class ChatService:
     """Orchestrates a single chat turn: load history, run the bounded
     tool-execution loop against the LLM (delegated to `ToolCallExecutor`),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { streamChatEvents } from "@/features/chat/api/stream-chat-events";
+import { readChatStreamFrames, streamChatEvents } from "@/features/chat/api/stream-chat-events";
 
 /** Builds a `ReadableStream<Uint8Array>` from one or more SSE frame strings. */
 function sseStream(frames: string[]): ReadableStream<Uint8Array> {
@@ -44,6 +44,21 @@ describe("streamChatEvents", () => {
         parts: [{ type: "text", content: "It is currently 10am UTC." }],
         model: "anthropic/claude-sonnet-4.5",
       },
+    ]);
+  });
+
+  it("keeps the redis stream id as the resume cursor", async () => {
+    const stream = sseStream([
+      'id: 1712345678901-0\nevent: content_delta\ndata: {"content": "Hi"}\n\n',
+    ]);
+
+    const frames = [];
+    for await (const frame of readChatStreamFrames(stream)) {
+      frames.push(frame);
+    }
+
+    expect(frames).toEqual([
+      { id: "1712345678901-0", event: { type: "content_delta", content: "Hi" } },
     ]);
   });
 

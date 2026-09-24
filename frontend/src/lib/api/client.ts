@@ -50,6 +50,8 @@ export interface SendChatMessagePayload {
 export interface SendChatMessageAck {
   conversationId: string;
   title: string;
+  /** Exclusive Redis stream id to pass as `after` on the first watch. */
+  streamCursor: string;
 }
 
 /**
@@ -88,8 +90,16 @@ export async function sendChatMessage(
     throw new ApiError(await parseErrorDetail(response), response.status);
   }
 
-  const body = (await response.json()) as { conversation_id: string; title: string };
-  return { conversationId: body.conversation_id, title: body.title };
+  const body = (await response.json()) as {
+    conversation_id: string;
+    title: string;
+    stream_cursor: string;
+  };
+  return {
+    conversationId: body.conversation_id,
+    title: body.title,
+    streamCursor: body.stream_cursor,
+  };
 }
 
 /**
@@ -102,8 +112,10 @@ export async function sendChatMessage(
 export async function watchConversation(
   conversationId: string,
   signal?: AbortSignal,
+  after?: string,
 ): Promise<Response> {
-  const response = await fetch(`/api/conversations/${conversationId}/watch`, { signal });
+  const params = after ? `?after=${encodeURIComponent(after)}` : "";
+  const response = await fetch(`/api/conversations/${conversationId}/watch${params}`, { signal });
 
   if (response.status !== 204 && !response.ok) {
     throw new ApiError(await parseErrorDetail(response), response.status);

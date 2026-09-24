@@ -44,7 +44,11 @@ from src.infra.redis.interfaces.conversation_cache_repository_interface import (
 from src.infra.redis.repositories.conversation_cache_repository import (
     get_conversation_cache_repository,
 )
-from src.infra.task_queue.chat_tasks import TURN_IN_PROGRESS_TTL_SECONDS, turn_in_progress_key
+from src.infra.task_queue.chat_tasks import (
+    TURN_IN_PROGRESS_TTL_SECONDS,
+    last_stream_cursor,
+    turn_in_progress_key,
+)
 from src.infra.task_queue.pool import enqueue_chat_reply
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -124,10 +128,11 @@ async def send_message(
     # The one-turn-per-conversation guard: `SET NX` is the actual authority
     # here (see chat_tasks.py's module docstring) -- the job itself no
     # longer attempts its own reservation, it only refreshes and clears
-    # this flag.
+    # this flag. The value is the exclusive stream cursor for this turn.
+    stream_cursor = await last_stream_cursor(str(payload.conversation_id))
     reserved = await redis_client.set(
         turn_in_progress_key(str(payload.conversation_id)),
-        "1",
+        stream_cursor,
         nx=True,
         ex=TURN_IN_PROGRESS_TTL_SECONDS,
     )
@@ -141,4 +146,8 @@ async def send_message(
         str(payload.conversation_id), user_id, payload.message, user_message.id
     )
 
-    return SendMessageAckResponse(conversation_id=str(conversation.id), title=conversation.title)
+    return SendMessageAckResponse(
+        conversation_id=str(conversation.id),
+        title=conversation.title,
+        stream_cursor=stream_cursor,
+    )

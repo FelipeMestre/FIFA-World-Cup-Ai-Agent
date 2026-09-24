@@ -113,13 +113,15 @@ async def test_send_message_persists_user_message_and_returns_ack(client: AsyncC
 async def test_send_message_reserves_the_turn_in_progress_flag(client: AsyncClient) -> None:
     conversation_id = str(uuid4())
 
-    await client.post(
+    response = await client.post(
         "/api/v1/chat/messages",
         json={"conversation_id": conversation_id, "message": "First message"},
         headers={"Authorization": "Bearer test-token"},
     )
 
-    assert await redis_client.exists(turn_in_progress_key(conversation_id))
+    assert response.status_code == 202
+    assert response.json()["stream_cursor"] == "0-0"
+    assert await redis_client.get(turn_in_progress_key(conversation_id)) == "0-0"
 
     await redis_client.delete(turn_in_progress_key(conversation_id))
 

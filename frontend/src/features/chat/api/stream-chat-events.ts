@@ -3,7 +3,9 @@ import type { RawMessagePart } from "@/features/chat/schemas/message-part.schema
 /**
  * The backend's SSE event vocabulary (`ChatStreamEventType` in
  * `backend/src/infra/openrouter/schemas.py`). Each wire frame is
- * `event: {type}\ndata: {json}\n\n`; the `data:` JSON never repeats `type`.
+ * `id: {redis stream id}\nevent: {type}\ndata: {json}\n\n`. The `data:` JSON
+ * never repeats `type`. `id` is the resume cursor; frames written before
+ * cursors existed omit it.
  */
 
 export interface ReasoningDeltaEvent {
@@ -65,6 +67,11 @@ export type ChatStreamEvent =
   | MessageDoneEvent
   | ErrorEvent;
 
+export interface ChatStreamFrame {
+  id: string | null;
+  event: ChatStreamEvent;
+}
+
 const KNOWN_EVENT_TYPES: ReadonlySet<ChatStreamEvent["type"]> = new Set([
   "reasoning_delta",
   "content_delta",
@@ -79,12 +86,15 @@ function isKnownEventType(value: string): value is ChatStreamEvent["type"] {
   return KNOWN_EVENT_TYPES.has(value as ChatStreamEvent["type"]);
 }
 
-function parseFrame(frame: string): ChatStreamEvent | null {
+function parseFrame(frame: string): ChatStreamFrame | null {
+  let eventId: string | null = null;
   let eventType: string | null = null;
   const dataLines: string[] = [];
 
   for (const line of frame.split("\n")) {
-    if (line.startsWith("event:")) {
+    if (line.startsWith("id:")) {
+      eventId = line.slice("id:".length).trim();
+    } else if (line.startsWith("event:")) {
       eventType = line.slice("event:".length).trim();
     } else if (line.startsWith("data:")) {
       dataLines.push(line.slice("data:".length).trim());
@@ -96,7 +106,7 @@ function parseFrame(frame: string): ChatStreamEvent | null {
   }
 
   const data = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
-  return { type: eventType, ...data } as ChatStreamEvent;
+  return { id: eventId, event: { type: eventType, ...data } as ChatStreamEvent };
 }
 
 /**
@@ -107,9 +117,9 @@ function parseFrame(frame: string): ChatStreamEvent | null {
  * hook of its own and manages its own reconnection, which would fight the
  * one-watch-per-submit lifecycle here.
  */
-export async function* streamChatEvents(
+export async function* readChatStreamFrames(
   body: ReadableStream<Uint8Array>,
-): AsyncGenerator<ChatStreamEvent> {
+): AsyncGenerator<ChatStreamFrame> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -125,9 +135,9 @@ export async function* streamChatEvents(
       while (boundary !== -1) {
         const rawFrame = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
-        const event = parseFrame(rawFrame);
-        if (event) {
-          yield event;
+        const frame = parseFrame(rawFrame);
+        if (frame) {
+          yield frame;
         }
         boundary = buffer.indexOf("\n\n");
       }
@@ -138,5 +148,14 @@ export async function* streamChatEvents(
     }
   } finally {
     reader.releaseLock();
+  }
+}
+
+/** Same frames as `readChatStreamFrames`, without the resume cursor. */
+export async function* streamChatEvents(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<ChatStreamEvent> {
+  for await (const frame of readChatStreamFrames(body)) {
+    yield frame.event;
   }
 }

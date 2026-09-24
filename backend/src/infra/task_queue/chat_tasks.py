@@ -22,11 +22,14 @@ has already, synchronously and in this order: run `ChatService.start_turn`
 `turn_in_progress_key` with `SET NX` (the actual one-turn-per-conversation
 guard -- a duplicate enqueue is rejected there with a 409, before it ever
 reaches this task), and persisted the user's own message via
-`ChatService.persist_user_message`. This task never re-persists the user's
-message and never re-attempts the `NX` reservation -- it only refreshes the
-flag's TTL to a full window from when generation actually starts (the
-router's own TTL may have partly ticked down while queued) and is
-responsible for clearing it.
+`ChatService.persist_user_message`. The flag's value is the stream cursor
+captured at reservation: the last id already in `chat:turn-stream:{id}`,
+or `0-0` when the stream is empty. Watchers read strictly after that id,
+so an earlier turn's entries can stay in the same key. This task never
+re-persists the user's message, never re-attempts the `NX` reservation,
+and never overwrites that cursor -- it only refreshes the flag's TTL to a
+full window from when generation actually starts (the router's own TTL may
+have partly ticked down while queued) and is responsible for clearing it.
 
 A turn that fails outright (no reply produced at all -- `ChatServiceUnavailable`
 or any other exception) also records a `chat_turn_failure` row against
@@ -39,22 +42,14 @@ already ends in a normal `MessageDoneEvent` and never touches this table.
 
 import json
 import logging
+import re
 from uuid import UUID
 
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.services.chat_service import (
-    CapReachedEvent,
     ChatService,
     ChatTurnEvent,
-    ContentDeltaEvent,
-    MessageDoneEvent,
-    PersistenceFailedEvent,
-    ReasoningDeltaEvent,
-)
-from src.domain.chat.services.tool_call_executor import (
-    ToolCallRequestedEvent,
-    ToolWidgetResult,
-    WidgetReadyEvent,
+    chat_turn_event_payload,
 )
 from src.domain.chat.tools.registry import build_tool_registry
 from src.infra.openrouter.client import get_openrouter_client
@@ -98,52 +93,59 @@ def turn_in_progress_key(conversation_id: str) -> str:
     return f"chat:turn-in-progress:{conversation_id}"
 
 
-def _widget_result_to_dict(widget: ToolWidgetResult) -> dict:
-    return {
-        "tool_call_id": widget.tool_call_id,
-        "tool_name": widget.tool_name,
-        "widget_type": widget.widget_type,
-        "data": widget.data,
-    }
+# Exclusive start of an empty stream. `XREAD` after this id returns every
+# entry. Also the cursor stored on the in-progress flag when a turn is
+# reserved and the stream has no entries yet.
+STREAM_CURSOR_ORIGIN = "0-0"
+
+_STREAM_CURSOR_RE = re.compile(r"^\d+-\d+$")
 
 
-def _segment_to_dict(segment: str | ToolWidgetResult) -> dict:
-    if isinstance(segment, str):
-        return {"kind": "text", "content": segment}
-    return {"kind": "widget", **_widget_result_to_dict(segment)}
+def is_stream_cursor(value: str) -> bool:
+    return _STREAM_CURSOR_RE.fullmatch(value) is not None
+
+
+def _cursor_parts(cursor: str) -> tuple[int, int]:
+    millis, sequence = cursor.split("-", 1)
+    return int(millis), int(sequence)
+
+
+def stream_cursor_precedes(left: str, right: str) -> bool:
+    """True when `left` is strictly earlier than `right` in stream order."""
+    return _cursor_parts(left) < _cursor_parts(right)
+
+
+async def last_stream_cursor(conversation_id: str) -> str:
+    """The id a new turn must read after. `0-0` when the stream is empty."""
+    entries = await redis_client.xrevrange(turn_stream_key(conversation_id), count=1)
+    if not entries:
+        return STREAM_CURSOR_ORIGIN
+    return entries[0][0]
+
+
+async def stream_cursor_has_gap(conversation_id: str, cursor: str) -> bool:
+    """True when entries between `cursor` and the first retained id are gone.
+
+    `XREAD` after a missing id still returns every later entry. That tail is
+    not a resume of what the client has: the ids in between were trimmed or
+    the key was replaced. An empty stream is not a gap -- the turn may not
+    have published yet.
+    """
+    if cursor == STREAM_CURSOR_ORIGIN:
+        return False
+    entries = await redis_client.xrange(turn_stream_key(conversation_id), count=1)
+    if not entries:
+        return False
+    return stream_cursor_precedes(cursor, entries[0][0])
 
 
 def serialize_chat_turn_event(event: ChatTurnEvent) -> dict[str, str]:
-    """Flattens one `ChatTurnEvent` into a JSON-safe, string-valued dict for
-    `XADD` (Redis stream fields must be strings). `event_type` names the
-    dataclass; `payload` is that event's own fields, JSON-encoded.
-
-    Deliberately NOT the SSE wire DTO shape from `chat_dtos.py` -- this task
-    lives in the infra layer and must not import the API layer's DTOs
-    (backwards dependency). Whatever reads this stream back owns converting
-    this into a DTO, symmetric with how `chat_router.py`'s `_to_dto` already
-    converts a live `ChatTurnEvent` for the SSE path.
+    """Redis stream fields for one `ChatTurnEvent`. Field mapping lives in
+    `chat_turn_event_payload`; this only JSON-encodes it, because `XADD`
+    values must be strings.
     """
-    if isinstance(event, (ReasoningDeltaEvent, ContentDeltaEvent)):
-        payload = {"content": event.content}
-    elif isinstance(event, ToolCallRequestedEvent):
-        payload = {"name": event.name}
-    elif isinstance(event, WidgetReadyEvent):
-        payload = {"widget": _widget_result_to_dict(event.widget)}
-    elif isinstance(event, CapReachedEvent):
-        payload = {"content": event.content, "clarification": event.clarification}
-    elif isinstance(event, PersistenceFailedEvent):
-        payload = {"detail": event.detail}
-    elif isinstance(event, MessageDoneEvent):
-        payload = {
-            "conversation_id": event.conversation_id,
-            "content": event.content,
-            "model": event.model,
-            "content_segments": [_segment_to_dict(s) for s in event.content_segments],
-        }
-    else:
-        raise ValueError(f"Unhandled chat stream event: {event!r}")
-    return {"event_type": type(event).__name__, "payload": json.dumps(payload)}
+    event_type, payload = chat_turn_event_payload(event)
+    return {"event_type": event_type, "payload": json.dumps(payload)}
 
 
 async def _publish_error(stream_key: str, event_type: str, detail: str) -> None:
@@ -175,11 +177,11 @@ async def generate_chat_reply_task(
     stream_key = turn_stream_key(conversation_id)
     progress_key = turn_in_progress_key(conversation_id)
 
-    # The router already reserved this turn with `SET NX` before enqueueing
-    # -- refresh (not acquire) the flag's TTL now that generation is
-    # actually starting, so queueing delay never eats into the window.
-    await redis_client.set(progress_key, "1", ex=TURN_IN_PROGRESS_TTL_SECONDS)
-    await redis_client.delete(stream_key)  # drop any stale entries from a prior turn
+    # The router already reserved this turn with `SET NX` before enqueueing.
+    # Refresh the TTL only -- `SET` would overwrite the stream cursor stored
+    # as the flag's value. The stream itself stays: watchers skip earlier
+    # turns by reading after that cursor.
+    await redis_client.expire(progress_key, TURN_IN_PROGRESS_TTL_SECONDS)
 
     try:
         async with session_scope() as session:

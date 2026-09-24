@@ -24,6 +24,7 @@ from src.infra.postgres.repositories.conversation_repository import (
 )
 from src.infra.redis.config import redis_client
 from src.infra.task_queue.chat_tasks import (
+    last_stream_cursor,
     serialize_chat_turn_event,
     turn_in_progress_key,
     turn_stream_key,
@@ -175,5 +176,101 @@ async def test_watch_streams_backlog_and_stops_at_the_terminal_event(client: Asy
     done_type, done_data = events[-1]
     assert done_data["conversation_id"] == conversation_id
     assert done_data["parts"] == [{"type": "text", "content": "Here's the answer."}]
+
+    await redis_client.delete(stream_key, progress_key)
+
+
+def _done(conversation_id: str, content: str) -> MessageDoneEvent:
+    return MessageDoneEvent(
+        conversation_id=conversation_id,
+        content=content,
+        model="anthropic/claude-sonnet-4.5",
+        content_segments=[content],
+    )
+
+
+@pytest.mark.asyncio
+async def test_watch_skips_entries_from_before_the_turn_cursor(client: AsyncClient) -> None:
+    conversation_id = await _create_conversation()
+    stream_key = turn_stream_key(conversation_id)
+    progress_key = turn_in_progress_key(conversation_id)
+
+    await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(ContentDeltaEvent(content="previous turn"))
+    )
+    await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(_done(conversation_id, "previous turn"))
+    )
+    turn_cursor = await last_stream_cursor(conversation_id)
+    await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(ContentDeltaEvent(content="this turn"))
+    )
+    await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(_done(conversation_id, "this turn"))
+    )
+    await redis_client.set(progress_key, turn_cursor, ex=60)
+
+    response = await client.get(
+        f"/api/v1/conversations/{conversation_id}/watch",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse(response.text)
+    assert [event_type for event_type, _data in events] == ["content_delta", "message_done"]
+    assert events[0][1] == {"content": "this turn"}
+    assert "id: " in response.text
+
+    await redis_client.delete(stream_key, progress_key)
+
+
+@pytest.mark.asyncio
+async def test_watch_after_resumes_past_a_rendered_entry(client: AsyncClient) -> None:
+    conversation_id = await _create_conversation()
+    stream_key = turn_stream_key(conversation_id)
+    progress_key = turn_in_progress_key(conversation_id)
+
+    seen_id = await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(ContentDeltaEvent(content="already shown"))
+    )
+    await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(ContentDeltaEvent(content="still coming"))
+    )
+    await redis_client.xadd(stream_key, serialize_chat_turn_event(_done(conversation_id, "done")))
+    await redis_client.set(progress_key, "0-0", ex=60)
+
+    response = await client.get(
+        f"/api/v1/conversations/{conversation_id}/watch",
+        params={"after": seen_id},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    events = _parse_sse(response.text)
+    assert [data["content"] for event_type, data in events if event_type == "content_delta"] == [
+        "still coming"
+    ]
+
+    await redis_client.delete(stream_key, progress_key)
+
+
+@pytest.mark.asyncio
+async def test_watch_rejects_a_cursor_older_than_the_retained_stream(client: AsyncClient) -> None:
+    conversation_id = await _create_conversation()
+    stream_key = turn_stream_key(conversation_id)
+    progress_key = turn_in_progress_key(conversation_id)
+
+    await redis_client.xadd(
+        stream_key, serialize_chat_turn_event(ContentDeltaEvent(content="kept"))
+    )
+    await redis_client.set(progress_key, "1-0", ex=60)
+
+    response = await client.get(
+        f"/api/v1/conversations/{conversation_id}/watch",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "The stream cursor is no longer available"
 
     await redis_client.delete(stream_key, progress_key)

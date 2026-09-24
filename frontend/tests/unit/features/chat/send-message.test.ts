@@ -43,7 +43,11 @@ describe("sendMessage", () => {
   });
 
   it("acks the send, then streams events from the watch response", async () => {
-    sendChatMessageMock.mockResolvedValue({ conversationId: "conv-1", title: "A chat" });
+    sendChatMessageMock.mockResolvedValue({
+      conversationId: "conv-1",
+      title: "A chat",
+      streamCursor: "10-0",
+    });
     watchConversationMock.mockResolvedValue(
       sseResponse([
         'event: content_delta\ndata: {"content": "Hi"}\n\n',
@@ -57,7 +61,7 @@ describe("sendMessage", () => {
       { conversationId: "conv-1", message: "Hello" },
       undefined,
     );
-    expect(watchConversationMock).toHaveBeenCalledWith("conv-1", undefined);
+    expect(watchConversationMock).toHaveBeenCalledWith("conv-1", undefined, "10-0");
     expect(events).toEqual([
       { type: "content_delta", content: "Hi" },
       {
@@ -76,8 +80,35 @@ describe("sendMessage", () => {
     expect(watchConversationMock).not.toHaveBeenCalled();
   });
 
+  it("resumes after the last frame id when the watch body ends before a terminal event", async () => {
+    sendChatMessageMock.mockResolvedValue({
+      conversationId: "conv-1",
+      title: "A chat",
+      streamCursor: "10-0",
+    });
+    watchConversationMock
+      .mockResolvedValueOnce(
+        sseResponse(['id: 11-0\nevent: content_delta\ndata: {"content": "Hi"}\n\n']),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          'id: 12-0\nevent: message_done\ndata: {"conversation_id": "conv-1", "parts": [{"type": "text", "content": "Hi"}], "model": null}\n\n',
+        ]),
+      );
+
+    const events = await collect("conv-1", "Hello");
+
+    expect(watchConversationMock).toHaveBeenNthCalledWith(1, "conv-1", undefined, "10-0");
+    expect(watchConversationMock).toHaveBeenNthCalledWith(2, "conv-1", undefined, "11-0");
+    expect(events.map((event) => event.type)).toEqual(["content_delta", "message_done"]);
+  });
+
   it("throws when watch returns 204 (nothing in progress right after a fresh send)", async () => {
-    sendChatMessageMock.mockResolvedValue({ conversationId: "conv-1", title: "A chat" });
+    sendChatMessageMock.mockResolvedValue({
+      conversationId: "conv-1",
+      title: "A chat",
+      streamCursor: "10-0",
+    });
     watchConversationMock.mockResolvedValue(new Response(null, { status: 204 }));
 
     await expect(collect("conv-1", "Hello")).rejects.toThrow(ApiError);

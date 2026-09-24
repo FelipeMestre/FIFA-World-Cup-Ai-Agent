@@ -90,11 +90,15 @@ class SendMessageAckResponse(BaseModel):
     itself has not been generated yet. Callers should connect to
     `GET /conversations/{id}/watch` to observe it. `title` is included so
     the frontend can update the sidebar/header immediately for a brand-new
-    conversation, without waiting on anything else.
+    conversation, without waiting on anything else. `stream_cursor` is the
+    exclusive Redis stream id captured when this turn was reserved -- pass
+    it as `after` on the first watch so entries from the previous turn are
+    skipped.
     """
 
     conversation_id: str
     title: str
+    stream_cursor: str
 
 
 class ReasoningDeltaEventDto(BaseModel):

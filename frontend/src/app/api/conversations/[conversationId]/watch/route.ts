@@ -13,7 +13,7 @@ import { getSessionToken } from "@/lib/auth/session";
  * Route Handler is needed either way.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ conversationId: string }> },
 ) {
   const { conversationId } = await params;
@@ -26,11 +26,20 @@ export async function GET(
     return NextResponse.json({ detail: "Not authenticated" }, { status: 401 });
   }
 
+  const after = new URL(request.url).searchParams.get("after");
+  const watchUrl = new URL(`${BACKEND_API_URL}/conversations/${conversationId}/watch`);
+  if (after) {
+    watchUrl.searchParams.set("after", after);
+  }
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  const lastEventId = request.headers.get("Last-Event-ID");
+  if (lastEventId) {
+    headers["Last-Event-ID"] = lastEventId;
+  }
+
   let backendResponse: Response;
   try {
-    backendResponse = await fetch(`${BACKEND_API_URL}/conversations/${conversationId}/watch`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    backendResponse = await fetch(watchUrl, { headers });
   } catch {
     return NextResponse.json(
       { detail: "Could not reach the World Cup AI Scout backend" },
