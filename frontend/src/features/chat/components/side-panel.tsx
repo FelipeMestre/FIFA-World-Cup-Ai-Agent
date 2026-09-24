@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState, type ReactNode, type TransitionEvent } from "react";
 import { PanelLeftClose } from "lucide-react";
 
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -17,6 +18,9 @@ import type {
 } from "@/features/chat/types";
 
 const DESKTOP_BREAKPOINT = "(min-width: 768px)";
+const PANEL_CONTENT_WIDTH = "w-[480px]";
+const PANEL_OPEN_WIDTH = "w-[calc(3rem+480px)]";
+const PANEL_ENTER_MS = 300;
 
 function renderPanelBody(
   entity: EntityRef,
@@ -70,6 +74,85 @@ function renderPanelBody(
   }
 }
 
+function PanelToggle({
+  collapsed,
+  onCollapse,
+  onExpand,
+}: {
+  collapsed: boolean;
+  onCollapse: () => void;
+  onExpand: () => void;
+}) {
+  return (
+    <div className="flex w-12 shrink-0 flex-col items-center border-r border-border-subtle pt-1">
+      <button
+        type="button"
+        onClick={collapsed ? onExpand : onCollapse}
+        aria-label={collapsed ? "Expand panel" : "Collapse panel"}
+        className="focus-ring flex size-11 items-center justify-center rounded-md text-ink-secondary hover:bg-surface-800"
+      >
+        <PanelLeftClose
+          className={`size-5 transition-transform duration-300 ease-in-out ${
+            collapsed ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The first open grows the shell from the right edge. The full drawer stays
+ * pinned to that edge, so it slides into place instead of popping in. Once
+ * the slide finishes, later collapse only clips the content and leaves the rail.
+ */
+function DesktopDrawer({
+  entered,
+  settled,
+  collapsed,
+  onCollapse,
+  onExpand,
+  onSettled,
+  children,
+}: {
+  entered: boolean;
+  settled: boolean;
+  collapsed: boolean;
+  onCollapse: () => void;
+  onExpand: () => void;
+  onSettled: () => void;
+  children: ReactNode;
+}) {
+  const revealFromRight = !settled && !collapsed;
+  const shellWidth = revealFromRight
+    ? entered
+      ? PANEL_OPEN_WIDTH
+      : "w-0"
+    : collapsed
+      ? "w-12"
+      : PANEL_OPEN_WIDTH;
+
+  function handleTransitionEnd(event: TransitionEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget || event.propertyName !== "width") return;
+    if (revealFromRight && entered) onSettled();
+  }
+
+  return (
+    <div
+      onTransitionEnd={handleTransitionEnd}
+      className={`flex h-full shrink-0 overflow-hidden border-l border-border-strong bg-surface-900 transition-[width] duration-300 ease-in-out motion-reduce:transition-none ${
+        revealFromRight ? "justify-end" : "justify-start"
+      } ${shellWidth}`}
+    >
+      <div className={`flex h-full shrink-0 ${PANEL_OPEN_WIDTH}`}>
+        <PanelToggle collapsed={collapsed} onCollapse={onCollapse} onExpand={onExpand} />
+        <div className={`h-full overflow-y-auto ${PANEL_CONTENT_WIDTH}`}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The desktop drawer / mobile sheet container implementing design/README.md's
  * panel state machine: one entity at a time, stays open across turns,
@@ -101,49 +184,47 @@ export function SidePanel({
   onJumpToMessage: () => void;
 }) {
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const { openEntity, collapsed } = panelState;
+  const data = openEntity ? resolveEntity(openEntity) : null;
+  const isOpen = Boolean(openEntity && data);
+  const [entered, setEntered] = useState(false);
+  const [settled, setSettled] = useState(false);
 
-  if (!openEntity) return null;
-  const data = resolveEntity(openEntity);
-  if (!data) return null;
+  useEffect(() => {
+    if (!isOpen || !isDesktop || reduceMotion) {
+      setEntered(false);
+      setSettled(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() => setEntered(true));
+    const timer = window.setTimeout(() => setSettled(true), PANEL_ENTER_MS + 80);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, isDesktop, reduceMotion]);
+
+  if (!openEntity || !data) return null;
 
   if (isDesktop) {
     return (
-      <div className="flex shrink-0 border-l border-border-strong bg-surface-900">
-        <div className="flex w-12 shrink-0 flex-col items-center border-r border-border-subtle pt-1">
-          <button
-            type="button"
-            onClick={collapsed ? onExpand : onCollapse}
-            aria-label={collapsed ? "Expand panel" : "Collapse panel"}
-            className="focus-ring flex size-11 items-center justify-center rounded-md text-ink-secondary hover:bg-surface-800"
-          >
-            <PanelLeftClose
-              className={`size-5 transition-transform duration-300 ease-in-out ${
-                collapsed ? "rotate-180" : ""
-              }`}
-              aria-hidden
-            />
-          </button>
-        </div>
-        {/* Fixed-width inner content clipped by the outer's overflow-hidden
-            as its width animates -- a slide/wipe reveal instead of the
-            content itself squishing during the transition. */}
-        <div
-          className={`overflow-hidden transition-[width] duration-300 ease-in-out ${
-            collapsed ? "w-0" : "w-[433px]"
-          }`}
-        >
-          <div className="h-full w-[433px] overflow-y-auto">
-            {renderPanelBody(
-              openEntity,
-              data,
-              fromMessagePreview,
-              { onClose, onJumpToMessage },
-              false,
-            )}
-          </div>
-        </div>
-      </div>
+      <DesktopDrawer
+        entered={entered}
+        settled={settled || reduceMotion}
+        collapsed={collapsed}
+        onCollapse={onCollapse}
+        onExpand={onExpand}
+        onSettled={() => setSettled(true)}
+      >
+        {renderPanelBody(
+          openEntity,
+          data,
+          fromMessagePreview,
+          { onClose, onJumpToMessage },
+          false,
+        )}
+      </DesktopDrawer>
     );
   }
 

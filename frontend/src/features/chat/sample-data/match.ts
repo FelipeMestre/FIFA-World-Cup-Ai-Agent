@@ -47,7 +47,7 @@ export const sampleMatch: MatchSummary = {
     name: "Lamine Yamal",
     teamCode: "ESP",
     position: "FWD",
-    note: "Spain · FWD · 1 goal",
+    note: "Spain · Forward · 1 goal",
   },
   timeline: [
     { minute: "23'", kind: "goal", teamCode: "ESP", title: "Goal · Lamine Yamal", detail: "Assist Pedri · FRA 0–1 ESP" },

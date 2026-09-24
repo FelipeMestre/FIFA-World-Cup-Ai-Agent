@@ -3,6 +3,7 @@
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { SplitBarRow } from "@/features/chat/components/comparison-row";
 import { PanelHeader } from "@/features/chat/components/panel-header";
+import { positionLabel } from "@/features/chat/components/profile-tag";
 import { TimelineItem } from "@/features/chat/components/timeline-item";
 import type { MatchSummary } from "@/features/chat/types";
 
@@ -142,7 +143,7 @@ export function PanelMatch({
               {team.groups.map((group) => (
                 <div key={group.name} className="flex flex-col">
                   <span className="flex h-[22px] items-center text-label-sm text-ink-muted">
-                    {group.name}
+                    {positionLabel(group.name)}
                   </span>
                   {group.players.map((player) => (
                     <div

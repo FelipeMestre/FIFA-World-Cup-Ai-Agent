@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The Owl Analytics assistant mark (owl SVG on a white roundel). Used in the
+ * The Football Ai Scout assistant mark (owl SVG on a white roundel). Used in the
  * app header, chat bubbles and the login page -- brand violet is reserved
  * for exactly this and the page's one primary action, per design/README.md.
  */

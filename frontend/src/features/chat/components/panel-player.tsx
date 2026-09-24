@@ -3,9 +3,13 @@
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { BenchmarkBarRow } from "@/features/chat/components/comparison-row";
 import { PanelHeader } from "@/features/chat/components/panel-header";
+import { PlayerSeasonTable } from "@/features/chat/components/player-season-table";
+import { PlayerClubProfileFacts } from "@/features/chat/components/player-club-profile";
+import { PlayerTransferPath } from "@/features/chat/components/player-transfer-path";
 import {
   DisciplineTag,
   PositionTag,
+  positionLabel,
   TierTag,
 } from "@/features/chat/components/profile-tag";
 import type { PlayerSummary } from "@/features/chat/types";
@@ -34,7 +38,7 @@ export function PanelPlayer({
   return (
     <aside
       aria-label={`Player detail: ${player.name}`}
-      className="flex h-full flex-col bg-surface-900"
+      className="flex min-h-full flex-col bg-surface-900"
     >
       <PanelHeader
         entityLabel="Player detail"
@@ -56,7 +60,7 @@ export function PanelPlayer({
             <span className="text-heading-lg">{player.name}</span>
             <span className="text-body-sm text-ink-secondary">
               {player.teamCode} ·{" "}
-              {player.position === "GK" ? "Goalkeeper" : player.position} ·{" "}
+              {positionLabel(player.position)} ·{" "}
               {player.scopeLabel}
             </span>
           </div>
@@ -67,6 +71,10 @@ export function PanelPlayer({
           <DisciplineTag label={player.disciplineLabel} />
         </div>
       </section>
+
+      {player.clubProfile ? (
+        <PlayerClubProfileFacts profile={player.clubProfile} layout="panel" />
+      ) : null}
 
       <section className="flex shrink-0 flex-col gap-3 border-b border-border-subtle p-5">
         <div className="flex items-baseline justify-between gap-3">
@@ -98,7 +106,7 @@ export function PanelPlayer({
                 scope="col"
                 className="px-2 pr-3.5 text-right text-label-sm text-ink-muted"
               >
-                Pct · {player.position}
+                Pct · {positionLabel(player.position)}
               </th>
             </tr>
           </thead>
@@ -142,8 +150,8 @@ export function PanelPlayer({
         </table>
       </section>
 
-      <section className="flex grow flex-col gap-3.5 p-5">
-        <h3 className="text-heading-sm">Per 90 vs {player.position} average</h3>
+      <section className="flex shrink-0 flex-col gap-3.5 border-b border-border-subtle p-5">
+        <h3 className="text-heading-sm">Per 90 vs {positionLabel(player.position)} average</h3>
         <div className="flex gap-4 text-data-sm text-ink-secondary">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-3 rounded-sm bg-accent-live" />
@@ -151,7 +159,7 @@ export function PanelPlayer({
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-3 w-0.5 bg-data-neutral" />
-            {player.position} average
+            {positionLabel(player.position)} average
           </span>
         </div>
         {player.perNinetyVsPositionAverage.map((row) => (
@@ -165,10 +173,12 @@ export function PanelPlayer({
           />
         ))}
         <p className="text-body-sm text-ink-muted">
-          Per 90 = total ÷ minutes × 90. {player.position} average and
+          Per 90 = total ÷ minutes × 90. {positionLabel(player.position)} average and
           percentiles use players at this position with at least 270 minutes.
         </p>
       </section>
+      <PlayerTransferPath transfers={player.transfers ?? []} />
+      <PlayerSeasonTable seasons={player.careerSeasons ?? []} />
     </aside>
   );
 }

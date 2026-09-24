@@ -18,7 +18,7 @@ export function AppHeader({ threadSummary }: { threadSummary?: string }) {
     <header className="flex h-14 shrink-0 items-center gap-ds-2 border-b border-border-subtle bg-surface-900 px-ds-4 md:h-16 md:gap-ds-3 md:px-ds-6">
       <AssistantMark size={28} className="md:hidden" />
       <AssistantMark size={32} className="hidden md:flex" />
-      <span className="truncate text-heading-sm md:text-heading-md">Owl Analytics</span>
+      <span className="truncate text-heading-sm md:text-heading-md">Football Ai Scout</span>
       <span className="hidden h-[22px] items-center rounded-sm border border-border-strong px-ds-2 text-label-sm text-ink-secondary md:flex">
         World Cup 2026
       </span>

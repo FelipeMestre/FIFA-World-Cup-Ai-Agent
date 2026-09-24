@@ -1,10 +1,22 @@
 import { cn } from "@/lib/utils";
 
-/** Solid position tag: FWD, MID, DEF, GK. */
+const POSITION_LABELS: Record<string, string> = {
+  GK: "Goalkeeper",
+  DEF: "Defender",
+  MID: "Midfielder",
+  FWD: "Forward",
+};
+
+/** User-facing position text. Stored codes stay GK, DEF, MID, and FWD. */
+export function positionLabel(position: string): string {
+  return POSITION_LABELS[position] ?? position;
+}
+
+/** Solid position tag: Goalkeeper, Defender, Midfielder, Forward. */
 export function PositionTag({ position }: { position: string }) {
   return (
     <span className="flex h-6 items-center rounded-sm bg-surface-600 px-ds-2 text-label-sm text-ink-primary">
-      {position}
+      {positionLabel(position)}
     </span>
   );
 }

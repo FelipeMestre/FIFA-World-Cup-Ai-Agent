@@ -4,6 +4,7 @@ import { BarChart3 } from "lucide-react";
 
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { DivergingBarRow } from "@/features/chat/components/comparison-row";
+import { positionLabel } from "@/features/chat/components/profile-tag";
 import { WidgetFrame } from "@/features/chat/components/widget-frame";
 import type { PlayerComparison } from "@/features/chat/types";
 
@@ -40,7 +41,7 @@ export function WidgetCompare({
           <AvatarBadge label={playerA.initials} size={40} seriesColor="var(--color-accent-live)" />
           <span className="text-heading-md">{playerA.name}</span>
           <span className="text-body-sm text-ink-secondary">
-            {playerA.teamCode} · {playerA.position} · {playerA.minutes} min
+            {playerA.teamCode} · {positionLabel(playerA.position)} · {playerA.minutes} min
           </span>
         </div>
         <span className="text-label-sm text-ink-muted">vs</span>
@@ -48,7 +49,7 @@ export function WidgetCompare({
           <AvatarBadge label={playerB.initials} size={40} seriesColor="var(--color-ink-secondary)" />
           <span className="text-heading-md">{playerB.name}</span>
           <span className="text-body-sm text-ink-secondary">
-            {playerB.teamCode} · {playerB.position} · {playerB.minutes} min
+            {playerB.teamCode} · {positionLabel(playerB.position)} · {playerB.minutes} min
           </span>
         </div>
       </div>

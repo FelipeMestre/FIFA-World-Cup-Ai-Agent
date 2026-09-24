@@ -144,6 +144,49 @@ const playerSummarySchema = z.object({
   perNinetyVsPositionAverage: z.array(
     z.object({ label: z.string(), value: z.number(), positionAverage: z.number() }),
   ),
+  clubProfile: z
+    .object({
+      preferredFoot: z.string().nullable(),
+      subPosition: z.string().nullable(),
+      heightCm: z.number().nullable(),
+      dateOfBirth: z.string().nullable(),
+      citizenship: z.string().nullable(),
+      currentClub: z.string().nullable(),
+      marketValueEur: z.number().nullable(),
+      highestMarketValueEur: z.number().nullable(),
+      internationalCaps: z.number().nullable(),
+      internationalGoals: z.number().nullable(),
+    })
+    .nullable()
+    .optional(),
+  transfers: z
+    .array(
+      z.object({
+        transferDate: z.string(),
+        season: z.string().nullable(),
+        fromClub: z.string(),
+        toClub: z.string(),
+        feeEur: z.number().nullable(),
+        marketValueEur: z.number().nullable(),
+      }),
+    )
+    .optional(),
+  careerSeasons: z
+    .array(
+      z.object({
+        season: z.string(),
+        team: z.string().nullable(),
+        competitionId: z.string(),
+        competition: z.string(),
+        appearances: z.number(),
+        minutes: z.number(),
+        goals: z.number(),
+        assists: z.number(),
+        yellowCards: z.number(),
+        redCards: z.number(),
+      }),
+    )
+    .optional(),
 });
 
 const comparisonPlayerRefSchema = z.object({

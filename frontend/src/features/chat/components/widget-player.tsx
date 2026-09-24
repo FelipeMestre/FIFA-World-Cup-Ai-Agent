@@ -3,7 +3,13 @@
 import { User } from "lucide-react";
 
 import { AvatarBadge } from "@/components/shared/avatar-badge";
-import { DisciplineTag, PositionTag, TierTag } from "@/features/chat/components/profile-tag";
+import { PlayerClubProfileFacts } from "@/features/chat/components/player-club-profile";
+import {
+  DisciplineTag,
+  positionLabel,
+  PositionTag,
+  TierTag,
+} from "@/features/chat/components/profile-tag";
 import { StatChip } from "@/features/chat/components/stat-chip";
 import { WidgetFrame } from "@/features/chat/components/widget-frame";
 import type { PlayerSummary } from "@/features/chat/types";
@@ -33,7 +39,7 @@ export function WidgetPlayer({
         <div className="flex min-w-0 grow flex-col gap-0.5">
           <span className="text-heading-lg">{player.name}</span>
           <span className="text-body-sm text-ink-secondary">
-            {player.teamCode} · {player.position}
+            {player.teamCode} · {positionLabel(player.position)}
           </span>
         </div>
       </div>
@@ -46,6 +52,10 @@ export function WidgetPlayer({
           <DisciplineTag label={player.disciplineLabel} />
         </div>
       </div>
+
+      {player.clubProfile ? (
+        <PlayerClubProfileFacts profile={player.clubProfile} layout="widget" />
+      ) : null}
 
       <div className="grid grow grid-cols-2 content-start gap-2 px-4 pb-4 sm:grid-cols-4">
         {player.chips.map((chip) => (
