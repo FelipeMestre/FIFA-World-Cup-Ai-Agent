@@ -3,6 +3,8 @@ export interface SyntheticPlayerSummary {
   id: number;
   teamId: number;
   name: string;
+  /** The WC2026 national team's country name (e.g. "Brazil"). */
+  nationality: string;
   position: string;
   clubTeam: string;
   marketValueEur: number;

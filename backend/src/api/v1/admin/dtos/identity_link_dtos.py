@@ -45,6 +45,7 @@ class SyntheticPlayerSummary(BaseModel):
     id: int
     team_id: int
     name: str
+    nationality: str
     position: str
     club_team: str
     market_value_eur: int
@@ -54,11 +55,12 @@ class SyntheticPlayerSummary(BaseModel):
     goals: int
 
     @classmethod
-    def from_domain(cls, player: Player) -> "SyntheticPlayerSummary":
+    def from_domain(cls, player: Player, nationality: str) -> "SyntheticPlayerSummary":
         return cls(
             id=player.id,
             team_id=player.team_id,
             name=player.name,
+            nationality=nationality,
             position=player.position,
             club_team=player.club_team,
             market_value_eur=player.market_value_eur,
@@ -138,6 +140,8 @@ class IdentityLinkReviewResponse(BaseModel):
             match_confidence=review.link.match_confidence,
             status=review.link.status.value,
             created_at=review.link.created_at,
-            synthetic_player=SyntheticPlayerSummary.from_domain(review.synthetic_player),
+            synthetic_player=SyntheticPlayerSummary.from_domain(
+                review.synthetic_player, review.synthetic_player_nationality
+            ),
             real_player=RealPlayerSummary.from_domain(review.real_player),
         )

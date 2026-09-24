@@ -93,6 +93,8 @@ async def test_list_pending_includes_seeded_link_with_comparison_data(
     assert pending_link["link_id"] in ids
     seeded = next(item for item in body if item["id"] == pending_link["link_id"])
     assert seeded["synthetic_player"]["id"] == pending_link["player_id"]
+    assert isinstance(seeded["synthetic_player"]["nationality"], str)
+    assert seeded["synthetic_player"]["nationality"] != ""
     assert seeded["real_player"]["player_id"] == _REAL_PLAYER_ID
     assert seeded["real_player"]["first_name"] == "Test"
 

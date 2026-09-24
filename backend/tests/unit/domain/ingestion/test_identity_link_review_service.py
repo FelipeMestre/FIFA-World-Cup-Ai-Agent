@@ -64,6 +64,7 @@ def _review(link_id: int, status: LinkReviewStatus) -> PlayerIdentityLinkReview:
     return PlayerIdentityLinkReview(
         link=_link(link_id, status),
         synthetic_player=_synthetic_player(),
+        synthetic_player_nationality="Testland",
         real_player=_real_player(),
     )
 
