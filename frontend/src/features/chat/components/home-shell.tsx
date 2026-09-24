@@ -245,7 +245,10 @@ export function HomeShell({
                 {/* Hero + Prompts + Composer. Scrolls inside the shell rather than
                     scrolling the page, so the header and sidebar stay put on short
                     viewports. */}
-                <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto">
+                <div
+                  data-chat-scroll-container
+                  className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-x-hidden overflow-y-auto"
+                >
                   {hasThread && (
                     <HomeThread
                       messages={messages}
