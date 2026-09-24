@@ -18,16 +18,16 @@ from src.api.v1.chat.dtos.chat_dtos import (
     ToolCallEventDto,
     WidgetReadyEventDto,
 )
-from src.domain.chat.services.chat_service import (
+from src.domain.chat.services.chat_turn_events import (
     CapReachedEvent,
     ChatTurnEvent,
-    ContentDeltaEvent,
     MessageDoneEvent,
     PersistenceFailedEvent,
-    ReasoningDeltaEvent,
     parse_chat_turn_event,
 )
 from src.domain.chat.services.tool_call_executor import (
+    ContentDeltaEvent,
+    ReasoningDeltaEvent,
     ToolCallRequestedEvent,
     ToolWidgetResult,
     WidgetReadyEvent,
@@ -89,12 +89,27 @@ def client_message(entry_id: str, event_type: str, payload: dict) -> dict:
     return body
 
 
-def user_event_message(entry_id: str, payload: dict) -> dict:
-    """One `conversation_updated` SSE frame's `data:` body, read from the
-    per-user stream (`user_events_key`). Same `{"type": ..., "cursor": ...,
-    **payload}` shape `client_message` already uses for `UserMessageEvent`,
-    for consistency between the two frame kinds the merged SSE endpoint
-    emits -- `payload` already carries `conversation_id`/`title`/`icon`
-    from `serialize_conversation_categorized_event`.
+# Maps a per-user-stream `event_type` (the Redis stream field written by
+# `serialize_conversation_created_event`/`serialize_conversation_categorized_event`)
+# to the wire vocabulary `GET /users/events` (`user_events_router.py`) uses --
+# both the frame's `event:` name and its `data.type` field share this same
+# value, so one mapping derives both instead of hardcoding either.
+_USER_EVENT_WIRE_TYPE: dict[str, str] = {
+    "ConversationCreatedEvent": "conversation_created",
+    "ConversationCategorizedEvent": "conversation_updated",
+}
+
+
+def user_event_message(entry_id: str, event_type: str, payload: dict) -> tuple[str, dict]:
+    """One per-user-stream SSE frame, read from the per-user stream
+    (`user_events_key`). Returns `(sse_event_name, data_body)`: the `event:`
+    frame name to send, and the `data:` body -- `{"type": ..., "cursor": ...,
+    **payload}`, the same shape `client_message` already uses for
+    `UserMessageEvent`, for consistency between event kinds. Raises
+    `ValueError` for an `event_type` this module doesn't know how to frame --
+    fail fast rather than silently emit a malformed or type-less frame.
     """
-    return {"type": "conversation_updated", "cursor": entry_id, **payload}
+    wire_type = _USER_EVENT_WIRE_TYPE.get(event_type)
+    if wire_type is None:
+        raise ValueError(f"Unhandled user-stream event_type: {event_type!r}")
+    return wire_type, {"type": wire_type, "cursor": entry_id, **payload}

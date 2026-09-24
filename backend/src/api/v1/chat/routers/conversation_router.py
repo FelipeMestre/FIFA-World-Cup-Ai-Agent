@@ -18,7 +18,7 @@ from src.api.v1.chat.dtos.conversation_dtos import (
     UpdateConversationTitleRequest,
 )
 from src.api.v1.chat.services.chat_service_factory import build_chat_service
-from src.api.v1.chat.sse import client_message, user_event_message
+from src.api.v1.chat.sse import client_message
 from src.domain.chat.exceptions.chat_exceptions import (
     TURN_ALREADY_IN_PROGRESS_DETAIL,
     ConversationOwnershipError,
@@ -47,12 +47,10 @@ from src.infra.task_queue.chat_streams import (
     TURN_IN_PROGRESS_TTL_SECONDS,
     is_stream_cursor,
     last_stream_cursor,
-    last_user_events_cursor,
     resume_turn_cursor,
     serialize_user_message_event,
     turn_in_progress_key,
     turn_stream_key,
-    user_events_key,
 )
 from src.infra.task_queue.pool import enqueue_chat_reply
 
@@ -256,39 +254,15 @@ _READ_BLOCK_MS = 1_000
 _KEEPALIVE_EMPTY_POLLS = 15
 
 
-async def _resume_cursors(
-    last_event_id: str | None, conversation_id: str, user_id: int
-) -> tuple[str, str]:
-    """Where a fresh SSE connection starts reading each stream half.
-
-    `Last-Event-ID` is `f"{turn_cursor}|{user_cursor}"` -- a Redis stream id
-    is always `<ms>-<seq>`, which never contains `|`, so splitting on it is
-    unambiguous. A missing or malformed header (not exactly two valid
-    stream-cursor-shaped halves) falls back to fresh defaults instead of
-    guessing: `resume_turn_cursor` for the turn stream (in-progress turns
-    replay from their reservation cursor, an idle conversation starts at the
-    tail) and `last_user_events_cursor` for the user stream (always starts
-    at the tail -- a fresh connection should not replay a user's whole
-    categorization history).
-    """
-    if last_event_id is not None:
-        parts = last_event_id.split("|")
-        if len(parts) == 2 and all(is_stream_cursor(part) for part in parts):
-            return parts[0], parts[1]
-    return await resume_turn_cursor(conversation_id), await last_user_events_cursor(user_id)
-
-
 async def _conversation_events(
-    request: Request, turn_key: str, user_key: str, turn_cursor: str, user_cursor: str
+    request: Request, turn_key: str, turn_cursor: str
 ) -> AsyncIterator[str]:
     empty_polls = 0
     while True:
         if await request.is_disconnected():
             return
 
-        response = await redis_client.xread(
-            {turn_key: turn_cursor, user_key: user_cursor}, block=_READ_BLOCK_MS
-        )
+        response = await redis_client.xread({turn_key: turn_cursor}, block=_READ_BLOCK_MS)
         if not response:
             empty_polls += 1
             if empty_polls >= _KEEPALIVE_EMPTY_POLLS:
@@ -297,36 +271,22 @@ async def _conversation_events(
             continue
         empty_polls = 0
 
-        for stream_name, entries in response:
+        for _stream_name, entries in response:
             for entry_id, fields in entries:
-                if stream_name == turn_key:
-                    turn_cursor = entry_id
-                    event_name = "turn"
-                    data = client_message(
-                        entry_id, fields["event_type"], json.loads(fields["payload"])
-                    )
-                else:
-                    user_cursor = entry_id
-                    event_name = "conversation_updated"
-                    data = user_event_message(entry_id, json.loads(fields["payload"]))
-
-                yield (
-                    f"id: {turn_cursor}|{user_cursor}\n"
-                    f"event: {event_name}\n"
-                    f"data: {json.dumps(data)}\n\n"
-                )
+                turn_cursor = entry_id
+                data = client_message(entry_id, fields["event_type"], json.loads(fields["payload"]))
+                yield f"id: {turn_cursor}\nevent: turn\ndata: {json.dumps(data)}\n\n"
 
 
 @router.get(
     "/{conversation_id}/events",
-    summary="Merged realtime event stream for a conversation",
+    summary="Turn event stream for a conversation",
     description="Server-Sent Events replacement for the old live WebSocket's receive side -- "
-    "one connection, multi-key `XREAD` over this conversation's turn stream and the "
-    "requesting user's account-wide categorization-event stream. `event: turn` frames carry "
-    "the same shape the old socket sent; `event: conversation_updated` frames carry "
-    "`conversation_id`/`title`/`icon` for whichever conversation a background categorization "
-    "job just finished, regardless of which conversation is open. Resumes from the "
-    "`Last-Event-ID` header when present and valid. Returns 404 for both a missing "
+    "single-key `XREAD` over this conversation's turn stream only. `event: turn` frames carry "
+    "the same shape the old socket sent. Account-wide events (a conversation being created "
+    "or a background categorization job finishing) are delivered separately over "
+    "`GET /users/events`, not on this connection -- see `user_events_router.py`. Resumes from "
+    "the `Last-Event-ID` header when present and valid. Returns 404 for both a missing "
     "conversation and one owned by another user alike -- existence is never leaked to a "
     "non-owner, matching `GET /conversations/{id}/messages`'s convention (not "
     "`POST .../messages`'s 403, which is this router's write-path convention).",
@@ -344,11 +304,13 @@ async def stream_conversation_events(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
     turn_key = turn_stream_key(str(conversation_id))
-    user_key = user_events_key(user_id)
-    turn_cursor, user_cursor = await _resume_cursors(last_event_id, str(conversation_id), user_id)
+    if last_event_id is not None and is_stream_cursor(last_event_id):
+        turn_cursor = last_event_id
+    else:
+        turn_cursor = await resume_turn_cursor(str(conversation_id))
 
     return StreamingResponse(
-        _conversation_events(request, turn_key, user_key, turn_cursor, user_cursor),
+        _conversation_events(request, turn_key, turn_cursor),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

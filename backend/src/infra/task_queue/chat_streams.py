@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal, get_args
 
-from src.domain.chat.services.chat_service import ChatTurnEvent, chat_turn_event_payload
+from src.domain.chat.services.chat_turn_events import ChatTurnEvent, chat_turn_event_payload
 from src.infra.redis.config import redis_client
 
 # Matches `generate_chat_reply_task`'s own 5-minute Arq timeout (see
@@ -179,11 +179,11 @@ def serialize_chat_turn_event(event: ChatTurnEvent) -> dict[str, str]:
 class ConversationCategorizedEvent:
     """Published to `user_events_key(user_id)` once `categorize_conversation_task`
     resolves a title + icon for a newly created conversation. Deliberately
-    NOT part of the `ChatTurnEvent` union in `chat_service.py`: that union is
-    the per-conversation turn state machine's own events, published to a
-    different (per-conversation) stream, while this event is produced by
-    that job for the per-user stream instead -- it just happens to live in
-    this module because that is what every other event's (de)serializer
+    NOT part of the `ChatTurnEvent` union in `chat_turn_events.py`: that
+    union is the per-conversation turn state machine's own events, published
+    to a different (per-conversation) stream, while this event is produced
+    by that job for the per-user stream instead -- it just happens to live
+    in this module because that is what every other event's (de)serializer
     lives in.
     """
 
@@ -209,3 +209,36 @@ def serialize_conversation_categorized_event(
         }
     )
     return {"event_type": "ConversationCategorizedEvent", "payload": payload}
+
+
+@dataclass(frozen=True)
+class ConversationCreatedEvent:
+    """Published to `user_events_key(user_id)` by `ChatService.start_turn`
+    the moment a brand-new conversation row is created (before any
+    categorization has run) -- the fix for a device sitting on the sidebar
+    with no conversation open never learning a new conversation exists at
+    all. `title` is the send endpoint's own truncated first-message default,
+    not an LLM-generated one (that still arrives later as a
+    `ConversationCategorizedEvent`); `created_at` is carried explicitly (ISO
+    8601) so the frontend can build a full sidebar row from this event alone,
+    without an extra `GET /conversations` round trip.
+    """
+
+    conversation_id: str
+    title: str
+    created_at: str
+
+
+def serialize_conversation_created_event(event: ConversationCreatedEvent) -> dict[str, str]:
+    """Redis stream fields for one `ConversationCreatedEvent`. Same
+    `{"event_type": ..., "payload": ...}` shape every other event in this
+    module uses.
+    """
+    payload = json.dumps(
+        {
+            "conversation_id": event.conversation_id,
+            "title": event.title,
+            "created_at": event.created_at,
+        }
+    )
+    return {"event_type": "ConversationCreatedEvent", "payload": payload}

@@ -102,7 +102,7 @@ that conversation.
   - Tests: resume-from-cursor behavior, both stream types forwarded with
     correct `event:` tagging.
 
-- [ ] **T5 — Frontend: full SSE+POST migration** (route: delegated writer —
+- [x] **T5 — Frontend: full SSE+POST migration** (route: delegated writer —
   merged with what was separately T6, since send/receive are wired together
   in the same hook and splitting them across two agents touching the same
   files back-to-back is more error-prone than one coherent pass; ~8-10 files)
@@ -287,3 +287,92 @@ that conversation.
   this-change pattern T3 already documented.
   `ruff check` + `ruff format` clean on every touched file (one `ruff format`
   line-wrap in `conversation_router.py`, no logic change).
+- 2026-09-24: T5 done, commit 4e656f2. A real race condition was caught by
+  the writer's own live browser testing (not by unit tests): opening the SSE
+  connection before a brand-new conversation's first POST creates the row
+  404s it, and unlike WebSocket, `EventSource` never retries after a non-2xx
+  initial response -- permanently stranding the connection, not just
+  delaying it. Fixed by deferring `ensureEvents` until after the send
+  succeeds, only for the newly-minted-conversation case. Verified
+  independently: re-ran the full frontend suite myself (63/64 passed, the
+  one failure in `login-form.test.tsx` confirmed pre-existing and unrelated
+  by rg-scoping the diff — that file was never touched), grepped the whole
+  `frontend/` tree for WebSocket/live-ticket/conversation-live references
+  (zero remain outside two explanatory comments), and read every changed
+  file directly: `conversation-events.ts`, the race-condition fix in
+  `use-chat-thread.ts`, the SSE proxy route (independently confirmed its
+  `cacheComponents: true` / route-segment-config claim against
+  `next.config.ts` and the local Next 16 docs, not just trusted the writer's
+  citation), `apply-live-event.ts`, and `use-conversation-list.ts`. All
+  correct.
+
+## Status: feature complete (T1-T5), then one real gap found in use
+All 5 original tasks done, verified, and committed as 5 work-unit commits
+plus one small fix commit (icon exposed on `ConversationSummaryDto`) on
+`claude/chat-categorization-realtime-sync-b5bee9`. No WebSocket code remains
+anywhere in the app.
+
+- [ ] **T6 — Dedicated per-user SSE endpoint: fix cross-window sync**
+  (route: split into a backend writer then a frontend writer, same reasoning
+  as T1-T4/T5 — the backend event contract needs to be final before the
+  frontend consumer is written)
+  - User report (2026-09-24): created a conversation in one browser window,
+    it never appeared in a second window's sidebar. Root cause confirmed by
+    reading the code, not assumed: (1) there was no "conversation created"
+    event at all, only "categorized" — a brand-new conversation had no
+    broadcast mechanism whatsoever; (2) `GET /conversations/{id}/events` is
+    per-conversation-scoped and only opens once a conversation is selected
+    (`ensureEvents` in `use-chat-thread.ts` is gated on `urlConversationId`),
+    so a window sitting on the empty `/home` screen has no live connection
+    at all, independent of (1).
+  - Fix: a genuinely per-user `GET /users/events` SSE endpoint (no
+    `conversation_id`, just the authenticated user's own stream), opened
+    once by `useConversationList` for as long as the sidebar is mounted —
+    not gated on any conversation being selected. New `ConversationCreatedEvent`
+    published to the existing `user:events:{user_id}` stream from
+    `ChatService.start_turn` when `created` is `True` (same stream, same
+    `MAXLEN` trimming `categorize_conversation_task` already uses — direct
+    precedent, `start_turn` already imports infra directly for
+    `enqueue_categorize_conversation`).
+  - Un-merge `GET /conversations/{id}/events` back down to turn-stream-only
+    now that the dedicated endpoint supersedes its user-stream half —
+    the pipe-delimited combined `Last-Event-ID`/multi-key `XREAD` complexity
+    T4 introduced goes away; existing `test_conversation_events.py`
+    assertions about `conversation_updated` frames move to a new test file
+    for the user-events endpoint.
+  - Frontend: new `user-events.ts` (types + `connectUserEvents`), new
+    `/api/users/events` proxy route, `useConversationList` owns the
+    connection and both prepends (`conversation_created`, deduped against
+    whatever the existing `isSending`-toggle refetch already added) and
+    patches in place (`conversation_updated`, unchanged logic). Remove the
+    now-redundant `conversation_updated` routing from `use-chat-thread.ts`/
+    `conversation-events.ts`/`home-shell.tsx` — that event no longer travels
+    over the per-conversation connection.
+  - Leave the existing `isSending`-toggle `refreshConversations()` in
+    `home-shell.tsx` alone — it still earns its keep for `updated_at`-based
+    reordering on the sending window itself, which this fix does not
+    replace.
+
+## Progress (T6)
+- 2026-09-24: T6 backend done. Two deviations from spec, both verified
+  legitimate before accepting them: (1) `chat_service.py` needed
+  `user_events_key`/`ConversationCreatedEvent` from `chat_streams.py`, but
+  `chat_streams.py` already imported `ChatTurnEvent`/`chat_turn_event_payload`
+  from `chat_service.py` since T4 — a genuine circular import, confirmed by
+  reading both files, not assumed. Fixed by extracting the shared event
+  vocabulary into a new `chat_turn_events.py` that both import from. (2) That
+  split was also forced independently: `chat_service.py` was already 406
+  lines (confirmed via `git show 4e656f2:...`), over the 400-line cap,
+  *before* this task added anything. Both files now under the cap (275 +
+  176). New `GET /users/events` (`user_events_router.py`) matches spec
+  exactly. `GET /conversations/{id}/events` un-merged back to turn-only,
+  proven (not just claimed) by a test that seeds an entry on the user stream
+  alongside a turn entry and asserts only the turn frame arrives. Verified
+  independently: re-ran 26 tests myself, confirmed the app boots with 25
+  routes (was 24), read every diff directly including the exact `start_turn`
+  XADD block and the generalized `user_event_message` helper in `sse.py` —
+  all correct. `ruff` clean on every touched file (one unrelated
+  pre-existing formatting drift in `player_club_career_repository.py`,
+  confirmed untouched by this task, left alone).
+- 2026-09-24: Starting T6 frontend (dedicated user-events connection,
+  sidebar prepend-on-create).

@@ -1,6 +1,5 @@
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,14 +8,16 @@ from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.model.chat_message import ChatMessage
 from src.domain.chat.model.conversation import Conversation
 from src.domain.chat.model.message import Message
+from src.domain.chat.services.chat_turn_events import (
+    CapReachedEvent,
+    ChatTurnEvent,
+    MessageDoneEvent,
+    PersistenceFailedEvent,
+)
 from src.domain.chat.services.tool_call_executor import (
-    ContentDeltaEvent,
-    ReasoningDeltaEvent,
     ToolCallExecutor,
-    ToolCallRequestedEvent,
     ToolWidgetResult,
     TurnResolvedEvent,
-    WidgetReadyEvent,
 )
 from src.domain.chat.tools.registry import ALL_TOOL_SCHEMAS, ToolDefinition
 from src.infra.openrouter.exceptions import OpenRouterRequestFailed
@@ -31,8 +32,15 @@ from src.infra.postgres.interfaces.conversation_repository_interface import (
 )
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
+from src.infra.redis.config import redis_client
 from src.infra.redis.interfaces.conversation_cache_repository_interface import (
     ConversationCacheRepositoryInterface,
+)
+from src.infra.task_queue.chat_streams import (
+    USER_EVENTS_STREAM_MAXLEN,
+    ConversationCreatedEvent,
+    serialize_conversation_created_event,
+    user_events_key,
 )
 from src.infra.task_queue.pool import enqueue_categorize_conversation
 
@@ -53,159 +61,6 @@ SYSTEM_PROMPT = (
 CONVERSATION_HISTORY_TTL_SECONDS = 60 * 60 * 24  # 24h
 
 DEFAULT_TOOL_SCHEMAS: list[dict] = ALL_TOOL_SCHEMAS
-
-
-@dataclass(frozen=True)
-class CapReachedEvent:
-    """The tool-execution loop's iteration cap tripped. `content` is the
-    best-effort partial content accumulated so far; `clarification` is the
-    clarification-ask text appended after it. Always followed by a
-    `MessageDoneEvent` carrying the same combined text.
-    """
-
-    content: str
-    clarification: str
-
-
-@dataclass(frozen=True)
-class PersistenceFailedEvent:
-    """Non-fatal: the Postgres durable write for this turn (or the
-    `conversation.touch()` alongside it) failed. Unlike `ChatServiceUnavailable`
-    (which aborts the stream before any content has been sent), this is
-    raised *after* the reply has already streamed to the user via
-    `content_delta`/`widget_ready` events, so the turn always still finishes
-    with a `MessageDoneEvent` -- this event only warns the frontend that the
-    just-shown message may not survive a reload. The Redis cache write is
-    handled separately and never surfaces here: it is a rebuildable
-    read-through cache and its own failure is swallowed silently.
-    """
-
-    detail: str
-
-
-@dataclass(frozen=True)
-class MessageDoneEvent:
-    """Terminal event for one chat turn: the conversation has been
-    persisted and `content` is the final text shown to the user (either the
-    assistant's normal reply, or the cap-trip's partial content plus
-    clarification).
-
-    `content_segments` is what a full-message render (e.g. the SSE `parts`
-    array, or a page reload replaying this message) should actually be
-    built from -- text and widgets in the order they occurred, matching
-    what was already shown live via `WidgetReadyEvent`. It is *not* just
-    `[content, *widgets]`: on a normal completion this is `ToolCallExecutor`'s
-    own `content_segments`, preserving true interleaving; on a cap-trip it
-    collapses to a single `content` segment (widgets from an incomplete,
-    already-degraded turn aren't worth threading through -- the frontend
-    ignores these `parts` in that case anyway, keeping its own
-    already-rendered content instead).
-    """
-
-    conversation_id: str
-    content: str
-    model: str | None
-    content_segments: list[str | ToolWidgetResult]
-
-
-ChatTurnEvent = (
-    ReasoningDeltaEvent
-    | ContentDeltaEvent
-    | ToolCallRequestedEvent
-    | WidgetReadyEvent
-    | CapReachedEvent
-    | PersistenceFailedEvent
-    | MessageDoneEvent
-)
-
-
-def _widget_result_to_dict(widget: ToolWidgetResult) -> dict:
-    return {
-        "tool_call_id": widget.tool_call_id,
-        "tool_name": widget.tool_name,
-        "widget_type": widget.widget_type,
-        "data": widget.data,
-    }
-
-
-def _widget_result_from_dict(widget: dict) -> ToolWidgetResult:
-    return ToolWidgetResult(
-        tool_call_id=widget["tool_call_id"],
-        tool_name=widget["tool_name"],
-        widget_type=widget["widget_type"],
-        data=widget["data"],
-    )
-
-
-def _segment_to_dict(segment: str | ToolWidgetResult) -> dict:
-    if isinstance(segment, str):
-        return {"kind": "text", "content": segment}
-    return {"kind": "widget", **_widget_result_to_dict(segment)}
-
-
-def _segment_from_dict(segment: dict) -> str | ToolWidgetResult:
-    if segment["kind"] == "text":
-        return segment["content"]
-    return _widget_result_from_dict(segment)
-
-
-def chat_turn_event_payload(event: ChatTurnEvent) -> tuple[str, dict]:
-    """Maps one `ChatTurnEvent` to the Redis turn-stream shape.
-
-    Returns `(event_type, payload)`. `event_type` is the dataclass name.
-    `payload` is JSON-safe but not encoded -- the caller that writes the
-    stream (`XADD` values must be strings) encodes it.
-    """
-    if isinstance(event, (ReasoningDeltaEvent, ContentDeltaEvent)):
-        payload = {"content": event.content}
-    elif isinstance(event, ToolCallRequestedEvent):
-        payload = {"name": event.name}
-    elif isinstance(event, WidgetReadyEvent):
-        payload = {"widget": _widget_result_to_dict(event.widget)}
-    elif isinstance(event, CapReachedEvent):
-        payload = {"content": event.content, "clarification": event.clarification}
-    elif isinstance(event, PersistenceFailedEvent):
-        payload = {"detail": event.detail}
-    elif isinstance(event, MessageDoneEvent):
-        payload = {
-            "conversation_id": event.conversation_id,
-            "content": event.content,
-            "model": event.model,
-            "content_segments": [_segment_to_dict(segment) for segment in event.content_segments],
-        }
-    else:
-        raise ValueError(f"Unhandled chat stream event: {event!r}")
-    return type(event).__name__, payload
-
-
-def parse_chat_turn_event(event_type: str, payload: dict) -> ChatTurnEvent | None:
-    """Inverse of `chat_turn_event_payload`.
-
-    Returns None when `event_type` is not a domain event -- the job publishes
-    its own failure tags (an exception class name) on the same stream.
-    """
-    if event_type == "ReasoningDeltaEvent":
-        return ReasoningDeltaEvent(content=payload["content"])
-    if event_type == "ContentDeltaEvent":
-        return ContentDeltaEvent(content=payload["content"])
-    if event_type == "ToolCallRequestedEvent":
-        return ToolCallRequestedEvent(name=payload["name"])
-    if event_type == "WidgetReadyEvent":
-        return WidgetReadyEvent(widget=_widget_result_from_dict(payload["widget"]))
-    if event_type == "CapReachedEvent":
-        return CapReachedEvent(content=payload["content"], clarification=payload["clarification"])
-    if event_type == "PersistenceFailedEvent":
-        return PersistenceFailedEvent(detail=payload["detail"])
-    if event_type == "MessageDoneEvent":
-        return MessageDoneEvent(
-            conversation_id=payload["conversation_id"],
-            content=payload["content"],
-            model=payload["model"],
-            content_segments=[
-                _segment_from_dict(segment) for segment in payload["content_segments"]
-            ],
-        )
-    return None
 
 
 class ChatService:
@@ -265,6 +120,20 @@ class ChatService:
             # that might still roll back would let the job run (or race)
             # against a conversation that was never actually persisted.
             await enqueue_categorize_conversation(str(conversation_id), user_id, first_message)
+            # Published so a device with no conversation open yet -- e.g.
+            # sitting on the empty sidebar -- learns a new conversation
+            # exists at all, via `GET /users/events` (`user_events_router.py`).
+            await redis_client.xadd(
+                user_events_key(user_id),
+                serialize_conversation_created_event(
+                    ConversationCreatedEvent(
+                        conversation_id=str(conversation_id),
+                        title=default_title,
+                        created_at=conversation.created_at.isoformat(),
+                    )
+                ),
+                maxlen=USER_EVENTS_STREAM_MAXLEN,
+            )
         return conversation
 
     async def persist_user_message(self, conversation_id: UUID, content: str) -> ChatMessage:
