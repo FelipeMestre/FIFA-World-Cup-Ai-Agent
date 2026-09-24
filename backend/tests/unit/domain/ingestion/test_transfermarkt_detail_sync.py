@@ -77,9 +77,7 @@ async def test_sync_player_scoped_tables_filters_by_matched_player_ids():
     repository = _FakeIngestionRepository()
     sync = _detail_sync(client, repository)
 
-    counts = await sync.sync_player_scoped_tables(
-        matched_real_player_ids={1}, known_club_ids={"10", "11"}
-    )
+    counts = await sync.sync_player_scoped_tables(real_player_ids={1}, known_club_ids={"10", "11"})
 
     assert counts == {"player_valuations": 1, "transfers": 1}
     valuation_call = next(
@@ -115,9 +113,7 @@ async def test_sync_player_scoped_tables_nulls_unresolvable_transfer_club_ids():
     repository = _FakeIngestionRepository()
     sync = _detail_sync(client, repository)
 
-    counts = await sync.sync_player_scoped_tables(
-        matched_real_player_ids={1}, known_club_ids={"11"}
-    )
+    counts = await sync.sync_player_scoped_tables(real_player_ids={1}, known_club_ids={"11"})
 
     assert counts["transfers"] == 1
     transfer_call = next(
@@ -167,7 +163,7 @@ async def test_sync_match_data_drops_lineup_rows_with_unresolvable_club_id():
     sync = _detail_sync(client, repository)
 
     counts = await sync.sync_match_data(
-        matched_real_player_ids={1}, matched_real_club_ids={10}, known_club_ids={"10"}
+        real_player_ids={1}, real_club_ids={10}, known_club_ids={"10"}
     )
 
     assert counts["game_lineups"] == 1
@@ -210,7 +206,7 @@ async def test_sync_match_data_nulls_unresolvable_event_player_references():
     sync = _detail_sync(client, repository)
 
     counts = await sync.sync_match_data(
-        matched_real_player_ids={1}, matched_real_club_ids={10}, known_club_ids={"10"}
+        real_player_ids={1}, real_club_ids={10}, known_club_ids={"10"}
     )
 
     assert counts["game_events"] == 1
@@ -250,7 +246,7 @@ async def test_sync_match_data_nulls_unresolvable_club_game_opponent():
     sync = _detail_sync(client, repository)
 
     counts = await sync.sync_match_data(
-        matched_real_player_ids=set(), matched_real_club_ids={10}, known_club_ids={"10"}
+        real_player_ids=set(), real_club_ids={10}, known_club_ids={"10"}
     )
 
     assert counts["club_games"] == 1
@@ -290,7 +286,7 @@ async def test_sync_season_stats_joins_appearances_to_games_by_id():
     repository = _FakeIngestionRepository()
     sync = _detail_sync(client, repository)
 
-    row_count = await sync.sync_season_stats(matched_real_player_ids={1})
+    row_count = await sync.sync_season_stats(real_player_ids={1})
 
     assert row_count == 1
     schema_cls, rows, conflict_columns = repository.calls[0]
@@ -317,7 +313,7 @@ async def test_sync_season_stats_returns_zero_when_no_matched_appearances():
     repository = _FakeIngestionRepository()
     sync = _detail_sync(client, repository)
 
-    row_count = await sync.sync_season_stats(matched_real_player_ids={1})
+    row_count = await sync.sync_season_stats(real_player_ids={1})
 
     assert row_count == 0
     assert repository.calls == []
@@ -350,7 +346,7 @@ async def test_sync_season_stats_chunks_large_aggregated_result():
     original_chunk_size = detail_sync_module._SEASON_STAT_CHUNK_SIZE
     detail_sync_module._SEASON_STAT_CHUNK_SIZE = 2
     try:
-        row_count = await sync.sync_season_stats(matched_real_player_ids=set(range(1, 6)))
+        row_count = await sync.sync_season_stats(real_player_ids=set(range(1, 6)))
     finally:
         detail_sync_module._SEASON_STAT_CHUNK_SIZE = original_chunk_size
 
@@ -375,7 +371,7 @@ async def test_sync_player_scoped_tables_skips_populated_tables_when_resuming():
     sync = _detail_sync(client, repository)
 
     counts = await sync.sync_player_scoped_tables(
-        matched_real_player_ids={1}, known_club_ids=set(), skip_populated=True
+        real_player_ids={1}, known_club_ids=set(), skip_populated=True
     )
 
     assert counts["player_valuations"] == 0
@@ -392,8 +388,8 @@ async def test_sync_match_data_skips_populated_tables_when_resuming():
     sync = _detail_sync(client, repository)
 
     counts = await sync.sync_match_data(
-        matched_real_player_ids=set(),
-        matched_real_club_ids=set(),
+        real_player_ids=set(),
+        real_club_ids=set(),
         known_club_ids=set(),
         skip_populated=True,
     )
@@ -408,7 +404,7 @@ async def test_sync_season_stats_skips_when_resuming_and_populated():
     repository = _FakeIngestionRepository(populated_schemas={RealPlayerSeasonStatSchema})
     sync = _detail_sync(client, repository)
 
-    row_count = await sync.sync_season_stats(matched_real_player_ids={1}, skip_populated=True)
+    row_count = await sync.sync_season_stats(real_player_ids={1}, skip_populated=True)
 
     assert row_count == 0
     assert client.requested_tables == []
