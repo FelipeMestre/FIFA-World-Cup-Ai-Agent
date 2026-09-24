@@ -66,3 +66,31 @@ async def test_search_requires_admin(client: AsyncClient, seeded_real_player: No
 
     app.dependency_overrides.clear()
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_a_query_shorter_than_two_characters(client: AsyncClient) -> None:
+    # A 1-character query would ILIKE-scan nearly every real_player row --
+    # rejected at the request boundary rather than silently executed.
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.get("/api/v1/admin/real-players/search", params={"q": "m"})
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_a_limit_above_the_server_cap(
+    client: AsyncClient, seeded_real_player: None
+) -> None:
+    # Caps how many rows a single request can pull, regardless of what a
+    # caller asks for -- the picker only ever needs one page of candidates.
+    app.dependency_overrides[parse_jwt_data] = _admin_token_data
+
+    response = await client.get(
+        "/api/v1/admin/real-players/search", params={"q": "mbap", "limit": 500}
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 422

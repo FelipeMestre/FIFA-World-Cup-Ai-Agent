@@ -6,7 +6,7 @@ looks up the actual intended Transfermarkt player by name.
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.ingestion.model.real_player import RealPlayer
@@ -50,11 +50,15 @@ class _SqlAlchemyRealPlayerRepository:
         return _to_domain(row) if row else None
 
     async def search(self, query: str, limit: int = 20, offset: int = 0) -> list[RealPlayer]:
-        full_name = func.concat(RealPlayerSchema.first_name, " ", RealPlayerSchema.last_name)
+        # Matches the pg_trgm GIN index on the stored `full_name` column
+        # (migration a1a2adf5c8b4) -- an ILIKE directly on that column, not
+        # a query-time concatenation, is what makes the planner use it
+        # instead of a sequential scan as the table grows to Transfermarkt's
+        # full player count.
         pattern = f"%{query.strip()}%"
         result = await self._session.execute(
             select(RealPlayerSchema)
-            .where(full_name.ilike(pattern))
+            .where(RealPlayerSchema.full_name.ilike(pattern))
             .order_by(RealPlayerSchema.last_name, RealPlayerSchema.first_name)
             .limit(limit)
             .offset(offset)

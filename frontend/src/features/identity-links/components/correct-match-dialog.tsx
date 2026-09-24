@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,9 +17,23 @@ import { searchRealPlayers } from "@/features/identity-links/api/search-real-pla
 import type { RealPlayerSummary } from "@/features/identity-links/types";
 import { ApiError } from "@/lib/api/client";
 
+/** Matches the backend's `q: Query(min_length=2)` -- below this, a query
+ * would either 422 or (worse, pre-validation) force a near-unfiltered
+ * ILIKE scan over every `real_player` row.
+ */
+const MIN_QUERY_LENGTH = 2;
+const SEARCH_DEBOUNCE_MS = 300;
+/** Backend caps `limit` at 50; 20 is what this picker actually asks for --
+ * one page of realistic candidates, not the whole table.
+ */
+const RESULT_LIMIT = 20;
+
 /** Search-and-pick dialog backing the "correct match" action: the admin
  * looks up the real Transfermarkt player a doubtful link should actually
- * point to, and confirms it here.
+ * point to, and confirms it here. Search is live (debounced as the admin
+ * types) rather than requiring an explicit submit -- the backend does the
+ * actual chunking via SQL LIMIT, so a live query per keystroke never pulls
+ * more than `RESULT_LIMIT` rows.
  */
 export function CorrectMatchDialog({
   open,
@@ -38,6 +52,7 @@ export function CorrectMatchDialog({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectingId, setSelectingId] = useState<number | null>(null);
   const [selectError, setSelectError] = useState<string | null>(null);
+  const latestQueryRef = useRef<string>("");
 
   useEffect(() => {
     if (open) {
@@ -48,20 +63,39 @@ export function CorrectMatchDialog({
     }
   }, [open, initialQuery]);
 
-  async function handleSearch(event: FormEvent) {
-    event.preventDefault();
+  useEffect(() => {
+    if (!open) return;
     const trimmed = query.trim();
-    if (!trimmed) return;
-    setIsSearching(true);
-    setSearchError(null);
-    try {
-      setResults(await searchRealPlayers(trimmed));
-    } catch (caught) {
-      setSearchError(caught instanceof ApiError ? caught.message : "Search failed");
-    } finally {
+    if (trimmed.length < MIN_QUERY_LENGTH) {
+      setResults([]);
+      setSearchError(null);
       setIsSearching(false);
+      return;
     }
-  }
+
+    setIsSearching(true);
+    const timeoutId = setTimeout(() => {
+      latestQueryRef.current = trimmed;
+      searchRealPlayers(trimmed, RESULT_LIMIT)
+        .then((players) => {
+          // A faster later keystroke can resolve after this one -- only
+          // apply the response that matches the query still on screen.
+          if (latestQueryRef.current !== trimmed) return;
+          setResults(players);
+          setSearchError(null);
+        })
+        .catch((caught) => {
+          if (latestQueryRef.current !== trimmed) return;
+          setSearchError(caught instanceof ApiError ? caught.message : "Search failed");
+        })
+        .finally(() => {
+          if (latestQueryRef.current !== trimmed) return;
+          setIsSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeoutId);
+  }, [open, query]);
 
   async function handleSelect(realPlayerId: number) {
     setSelectingId(realPlayerId);
@@ -78,70 +112,96 @@ export function CorrectMatchDialog({
     }
   }
 
+  const trimmedQuery = query.trim();
+  const belowMinLength = trimmedQuery.length > 0 && trimmedQuery.length < MIN_QUERY_LENGTH;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-surface-800 text-ink-primary ring-border-strong">
+      <DialogContent className="max-w-3xl sm:max-w-3xl bg-surface-800 text-ink-primary ring-border-strong">
         <DialogHeader>
           <DialogTitle>Correct match</DialogTitle>
           <DialogDescription className="text-ink-secondary">
-            Search Transfermarkt for the real player this roster entry should link to.
+            Type the player&apos;s Transfermarkt name -- results load automatically.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSearch} className="flex items-end gap-ds-2">
-          <div className="flex grow flex-col gap-1.5">
-            <Label htmlFor="real-player-query" className="text-label-md text-ink-secondary">
-              Player name
-            </Label>
-            <Input
-              id="real-player-query"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="e.g. Kylian Mbappe"
-              className="h-10 border-border-strong bg-surface-900 text-ink-primary"
-            />
-          </div>
-          <Button type="submit" disabled={isSearching || !query.trim()}>
-            {isSearching ? "Searching…" : "Search"}
-          </Button>
-        </form>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="real-player-query" className="text-label-md text-ink-secondary">
+            Player name
+          </Label>
+          <Input
+            id="real-player-query"
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="e.g. Kylian Mbappe"
+            className="h-10 border-border-strong bg-surface-900 text-ink-primary"
+          />
+          {belowMinLength ? (
+            <p className="text-label-sm text-ink-muted">
+              Keep typing -- at least {MIN_QUERY_LENGTH} characters.
+            </p>
+          ) : null}
+        </div>
 
         {searchError ? <p className="text-body-sm text-data-negative">{searchError}</p> : null}
         {selectError ? <p className="text-body-sm text-data-negative">{selectError}</p> : null}
 
-        <div className="flex max-h-80 flex-col gap-ds-2 overflow-y-auto">
-          {results.length === 0 && !isSearching && !searchError ? (
-            <p className="text-body-sm text-ink-muted">
-              {query.trim() ? "No matches yet -- try Search." : "Type a name and search."}
+        <div className="max-h-96 overflow-auto rounded-lg border border-border-subtle">
+          {trimmedQuery.length < MIN_QUERY_LENGTH ? (
+            <p className="p-ds-4 text-body-sm text-ink-muted">
+              Type a name above to search Transfermarkt players.
             </p>
-          ) : null}
-          {results.map((player) => (
-            <div
-              key={player.playerId}
-              className="flex items-center justify-between gap-ds-3 rounded-lg border border-border-subtle bg-surface-900 p-ds-3"
-            >
-              <div className="flex flex-col">
-                <span className="text-body-md text-ink-primary">
-                  {player.firstName} {player.lastName}
-                </span>
-                <span className="text-body-sm text-ink-muted">
-                  {player.position}
-                  {player.dateOfBirth ? ` · b. ${player.dateOfBirth}` : ""}
-                  {player.countryOfCitizenship ? ` · ${player.countryOfCitizenship}` : ""}
-                </span>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={selectingId !== null}
-                onClick={() => handleSelect(player.playerId)}
-                className="border-border-strong text-ink-primary hover:bg-surface-700"
-              >
-                {selectingId === player.playerId ? "Applying…" : "Use this match"}
-              </Button>
-            </div>
-          ))}
+          ) : isSearching && results.length === 0 ? (
+            <p className="p-ds-4 text-body-sm text-ink-muted">Searching…</p>
+          ) : results.length === 0 && !searchError ? (
+            <p className="p-ds-4 text-body-sm text-ink-muted">
+              No players found for &ldquo;{trimmedQuery}&rdquo;.
+            </p>
+          ) : (
+            <table className="w-full min-w-[640px] border-collapse text-left text-body-sm">
+              <thead className="sticky top-0 bg-surface-900">
+                <tr className="text-label-sm text-ink-muted">
+                  <th className="px-ds-3 py-ds-2 font-medium">Name</th>
+                  <th className="px-ds-3 py-ds-2 font-medium">Position</th>
+                  <th className="px-ds-3 py-ds-2 font-medium">Born</th>
+                  <th className="px-ds-3 py-ds-2 font-medium">Nationality</th>
+                  <th className="px-ds-3 py-ds-2 font-medium">&nbsp;</th>
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((player) => (
+                  <tr key={player.playerId} className="border-t border-border-subtle">
+                    <td className="px-ds-3 py-ds-2 whitespace-nowrap text-ink-primary">
+                      {player.firstName} {player.lastName}
+                    </td>
+                    <td className="px-ds-3 py-ds-2 whitespace-nowrap text-ink-secondary">
+                      {player.position}
+                      {player.subPosition ? ` (${player.subPosition})` : ""}
+                    </td>
+                    <td className="px-ds-3 py-ds-2 whitespace-nowrap text-ink-secondary">
+                      {player.dateOfBirth ?? "—"}
+                    </td>
+                    <td className="px-ds-3 py-ds-2 whitespace-nowrap text-ink-secondary">
+                      {player.countryOfCitizenship ?? "—"}
+                    </td>
+                    <td className="px-ds-3 py-ds-2 text-right">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={selectingId !== null}
+                        onClick={() => handleSelect(player.playerId)}
+                        className="border-border-strong whitespace-nowrap text-ink-primary hover:bg-surface-700"
+                      >
+                        {selectingId === player.playerId ? "Applying…" : "Use this match"}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <DialogFooter className="border-border-subtle bg-surface-800">
