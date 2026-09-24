@@ -61,6 +61,12 @@ export function HomeShell({
       // Native history so Next does not remount the home layout on first send.
       window.history.replaceState(window.history.state, "", `/home/${id}`);
     },
+    onConversationUpdated: (event) => {
+      conversationList.applyConversationUpdate(event.conversationId, {
+        title: event.title,
+        icon: event.icon,
+      });
+    },
   });
   const panel = useChatPanel();
   const conversationList = useConversationList();
@@ -185,6 +191,8 @@ export function HomeShell({
                   setRenameTarget({
                     id: conversationId,
                     title: threadTitle,
+                    icon: conversationList.conversations.find((row) => row.id === conversationId)
+                      ?.icon ?? null,
                     updatedAt: new Date().toISOString(),
                     createdAt: new Date().toISOString(),
                     isGenerating: false,

@@ -33,5 +33,19 @@ export function useConversationList() {
     return updated;
   }, []);
 
-  return { conversations, isLoading, loadError, refresh, rename };
+  /**
+   * Patches a row's title/icon in place from a live `conversation_updated`
+   * SSE event -- no refetch, and (unlike `rename`) no reordering, since a
+   * background categorization event is not a user-initiated action.
+   */
+  const applyConversationUpdate = useCallback(
+    (conversationId: string, patch: { title: string; icon: string }) => {
+      setConversations((prev) =>
+        prev.map((row) => (row.id === conversationId ? { ...row, ...patch } : row)),
+      );
+    },
+    [],
+  );
+
+  return { conversations, isLoading, loadError, refresh, rename, applyConversationUpdate };
 }

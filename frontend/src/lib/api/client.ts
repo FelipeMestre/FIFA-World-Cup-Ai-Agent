@@ -2,8 +2,9 @@
  * Small typed fetch wrapper for client components. Calls our own Next.js
  * Route Handlers (`/api/auth/login`, `/api/conversations`) -- never the
  * FastAPI backend directly, and never sees the bearer token. The live
- * conversation socket is opened by `connectConversationLive`, which asks
- * a Route Handler for a one-time ticket rather than putting the JWT in JS.
+ * conversation stream is opened by `connectConversationEvents`, a plain
+ * `EventSource` against a Route Handler that holds the session cookie and
+ * proxies the backend's SSE response through.
  */
 
 export class ApiError extends Error {

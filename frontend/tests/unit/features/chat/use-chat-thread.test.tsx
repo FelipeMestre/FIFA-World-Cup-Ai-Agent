@@ -2,58 +2,107 @@ import { useEffect } from "react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ChatStreamEvent, LiveServerEvent } from "@/features/chat/api/conversation-live";
+import type { ChatStreamEvent, ConversationEvent } from "@/features/chat/api/conversation-events";
 import type { ConversationReplay } from "@/features/chat/api/get-conversation-messages";
 import { sampleTeam } from "@/features/chat/sample-data/team";
 import type { ChatMessage } from "@/features/chat/types";
 import { clearInFlightTurns } from "@/features/chat/in-flight-turn";
+import { ApiError } from "@/lib/api/client";
 
-type Deliver = (event: LiveServerEvent) => void;
+type Deliver = (event: ConversationEvent) => void;
 
 const harness = vi.hoisted(() => ({
-  sendScripts: [] as Array<(deliver: (event: LiveServerEvent) => void) => void | Promise<void>>,
-  connectScripts: [] as Array<(deliver: (event: LiveServerEvent) => void) => void>,
+  sendScripts: [] as Array<(publish: (event: ConversationEvent) => void) => void | Promise<void>>,
+  connectScripts: [] as Array<(deliver: (event: ConversationEvent) => void) => void>,
   sentMessages: [] as { conversationId: string; message: string }[],
-  openedHandlers: [] as Array<(event: LiveServerEvent) => void>,
+  openedHandlers: [] as Array<(event: ConversationEvent) => void>,
+  // A durable per-conversation event log plus its live listeners, modeling
+  // the backend's Redis stream + SSE resume: `publish` always appends, and
+  // a (re)connecting client first replays everything published so far,
+  // then keeps receiving live pushes. This lets `sendMessage`'s mock
+  // publish before a connection exists (submit() defers opening the SSE
+  // connection for a brand-new conversation until the send itself
+  // succeeds -- opening it earlier would race the backend's own
+  // conversation-creation write) just as correctly as when a connection is
+  // already open (an existing conversation's connection, opened by the
+  // mount/history effect before submit() runs).
+  logs: new Map<string, ConversationEvent[]>(),
+  listeners: new Map<string, Deliver[]>(),
+  nextMessageId: 0,
 }));
 
-vi.mock("@/features/chat/api/conversation-live", async () => {
-  const actual = await vi.importActual<typeof import("@/features/chat/api/conversation-live")>(
-    "@/features/chat/api/conversation-live",
+function publish(conversationId: string, event: ConversationEvent) {
+  const log = harness.logs.get(conversationId) ?? [];
+  log.push(event);
+  harness.logs.set(conversationId, log);
+  for (const deliver of harness.listeners.get(conversationId) ?? []) deliver(event);
+}
+
+vi.mock("@/features/chat/api/conversation-events", async () => {
+  const actual = await vi.importActual<typeof import("@/features/chat/api/conversation-events")>(
+    "@/features/chat/api/conversation-events",
   );
   return {
     ...actual,
-    connectConversationLive: (conversationId: string, onEvent: Deliver) => {
+    connectConversationEvents: (conversationId: string, onEvent: Deliver) => {
       let closed = false;
       const deliver: Deliver = (event) => {
         if (!closed) onEvent(event);
       };
       harness.openedHandlers.push(deliver);
-      const onConnect = harness.connectScripts.shift();
-      queueMicrotask(() => onConnect?.(deliver));
+      const listeners = harness.listeners.get(conversationId) ?? [];
+      listeners.push(deliver);
+      harness.listeners.set(conversationId, listeners);
+
+      const alreadyPublished = harness.logs.get(conversationId) ?? [];
+      queueMicrotask(() => {
+        for (const event of alreadyPublished) deliver(event);
+        const onConnect = harness.connectScripts.shift();
+        onConnect?.(deliver);
+      });
+
       return {
         conversationId,
-        isClosed: () => closed,
         close() {
           closed = true;
-        },
-        send(message: string) {
-          harness.sentMessages.push({ conversationId, message });
-          deliver({
-            type: "user_message",
-            content: message,
-            message_id: 1,
-            conversation_id: conversationId,
-            title: "",
-            cursor: `${harness.sentMessages.length}-0`,
-          });
-          const script = harness.sendScripts.shift();
-          void script?.(deliver);
+          const current = harness.listeners.get(conversationId);
+          if (!current) return;
+          const index = current.indexOf(deliver);
+          if (index !== -1) current.splice(index, 1);
         },
       };
     },
   };
 });
+
+/**
+ * The real `sendMessage` is a POST ack only -- the `user_message` echo and
+ * the reply both arrive separately over the conversation's SSE connection
+ * (backend replays them from the turn's reservation cursor). This mock
+ * reproduces that by publishing to the conversation's log/listeners rather
+ * than assuming a connection is already open, mirroring how the old WS
+ * mock's `send()` synchronously echoed a `user_message` frame.
+ */
+const sendMessageMock = vi.fn(async (conversationId: string, message: string) => {
+  harness.sentMessages.push({ conversationId, message });
+  harness.nextMessageId += 1;
+  const messageId = harness.nextMessageId;
+  publish(conversationId, {
+    type: "user_message",
+    content: message,
+    message_id: messageId,
+    conversation_id: conversationId,
+    title: "",
+    cursor: `${messageId}-0`,
+  });
+  const script = harness.sendScripts.shift();
+  if (script) await script((event) => publish(conversationId, event));
+  return { conversationId, messageId };
+});
+
+vi.mock("@/features/chat/api/send-message", () => ({
+  sendMessage: (conversationId: string, message: string) => sendMessageMock(conversationId, message),
+}));
 
 const getConversationMessagesMock = vi.fn();
 vi.mock("@/features/chat/api/get-conversation-messages", () => ({
@@ -63,7 +112,7 @@ vi.mock("@/features/chat/api/get-conversation-messages", () => ({
 // Import after the mocks above so the hook picks them up.
 const { useChatThread } = await import("@/features/chat/hooks/use-chat-thread");
 
-/** Events the next `send()` delivers after its `user_message`. */
+/** Events the next `submit()`'s send delivers after its `user_message`. */
 function queueSend(events: ChatStreamEvent[]) {
   harness.sendScripts.push((deliver) => {
     for (const event of events) deliver(event);
@@ -122,6 +171,10 @@ describe("useChatThread", () => {
     harness.connectScripts.length = 0;
     harness.sentMessages.length = 0;
     harness.openedHandlers.length = 0;
+    harness.logs.clear();
+    harness.listeners.clear();
+    harness.nextMessageId = 0;
+    sendMessageMock.mockClear();
     getConversationMessagesMock.mockReset();
     getConversationMessagesMock.mockResolvedValue({
       conversationId: "550e8400-e29b-41d4-a716-446655440000",
@@ -288,9 +341,39 @@ describe("useChatThread", () => {
     expect(assistantMessage.isStreaming).toBe(false);
   });
 
+  it("calls sendMessage (not a WS send) with the conversation id and text", async () => {
+    const { result } = renderHook(() => useChatThread());
+
+    await act(async () => {
+      await result.current.submit("Hi there");
+    });
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    const [conversationId, content] = sendMessageMock.mock.calls[0] as [string, string];
+    expect(content).toBe("Hi there");
+    expect(harness.sentMessages).toContainEqual({ conversationId, message: "Hi there" });
+  });
+
+  it("marks the assistant message errored (not streaming) when the send POST is rejected", async () => {
+    sendMessageMock.mockImplementationOnce(async (conversationId: string, message: string) => {
+      harness.sentMessages.push({ conversationId, message });
+      throw new ApiError("A reply is already being generated for this conversation", 409);
+    });
+
+    const { result } = renderHook(() => useChatThread());
+
+    await act(async () => {
+      await result.current.submit("Hello");
+    });
+
+    const assistantMessage = lastMessage(result.current.messages);
+    expect(assistantMessage.error).toBe("A reply is already being generated for this conversation");
+    expect(assistantMessage.isStreaming).toBe(false);
+    expect(result.current.isSending).toBe(false);
+  });
+
   it("mints a conversation UUID and reports it before the first send", async () => {
     const onConversationCreated = vi.fn();
-    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const { result } = renderHook(() =>
       useChatThread({ urlConversationId: null, onConversationCreated }),
@@ -311,7 +394,6 @@ describe("useChatThread", () => {
   it("reuses the URL conversation id and does not mint another", async () => {
     const urlId = "550e8400-e29b-41d4-a716-446655440000";
     const onConversationCreated = vi.fn();
-    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const { result } = renderHook(() =>
       useChatThread({ urlConversationId: urlId, onConversationCreated }),
@@ -529,7 +611,6 @@ describe("useChatThread", () => {
 
   it("restores the in-flight turn after the hook remounts on the minted URL", async () => {
     const onConversationCreated = vi.fn();
-    queueSend([{ type: "error", detail: "The chat assistant is temporarily unavailable" }]);
 
     const first = renderHook(() =>
       useChatThread({ urlConversationId: null, onConversationCreated }),
@@ -754,5 +835,37 @@ describe("useChatThread", () => {
     });
     expect(result.current.isSending).toBe(false);
     expect(result.current.messages).toHaveLength(2);
+  });
+
+  it("routes a conversation_updated SSE event to onConversationUpdated instead of the message thread", async () => {
+    const urlId = "550e8400-e29b-41d4-a716-446655440000";
+    const onConversationUpdated = vi.fn();
+
+    const { result } = renderHook(() =>
+      useChatThread({ urlConversationId: urlId, onConversationUpdated }),
+    );
+
+    await waitFor(() => {
+      expect(harness.openedHandlers).toHaveLength(1);
+    });
+
+    act(() => {
+      harness.openedHandlers[0]?.({
+        type: "conversation_updated",
+        conversation_id: urlId,
+        title: "Argentina's defensive record",
+        icon: "team",
+        cursor: "12-0",
+      });
+    });
+
+    expect(onConversationUpdated).toHaveBeenCalledExactlyOnceWith({
+      conversationId: urlId,
+      title: "Argentina's defensive record",
+      icon: "team",
+    });
+    // Not a thread event -- the message list is untouched.
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.isSending).toBe(false);
   });
 });

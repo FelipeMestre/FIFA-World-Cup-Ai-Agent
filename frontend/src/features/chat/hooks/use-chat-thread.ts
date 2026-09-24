@@ -3,16 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  connectConversationLive,
-  isCursorAtOrBefore,
-  type LiveConnection,
-  type LiveServerEvent,
-} from "@/features/chat/api/conversation-live";
+  applyLiveEvent,
+  isTerminalLiveEvent,
+  markLastAssistantErrored,
+} from "@/features/chat/apply-live-event";
+import {
+  connectConversationEvents,
+  type ConversationEvent,
+  type EventsConnection,
+} from "@/features/chat/api/conversation-events";
 import {
   getConversationMessages,
   type ConversationReplay,
 } from "@/features/chat/api/get-conversation-messages";
-import { applyLiveEvent, isTerminalLiveEvent } from "@/features/chat/apply-live-event";
+import { sendMessage } from "@/features/chat/api/send-message";
 import { newConversationId } from "@/features/chat/conversation-id";
 import {
   forgetInFlightTurn,
@@ -20,6 +24,7 @@ import {
   rememberInFlightTurn,
 } from "@/features/chat/in-flight-turn";
 import type { ChatMessage, EntityRef, MessagePart } from "@/features/chat/types";
+import { ApiError } from "@/lib/api/client";
 
 function makeId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -55,12 +60,20 @@ function mergeHistory(previous: ChatMessage[], replay: ChatMessage[]): ChatMessa
 export type UseChatThreadArgs = {
   urlConversationId?: string | null;
   onConversationCreated?: (id: string) => void;
+  /** Fired for a `conversation_updated` SSE event -- a background
+   * categorization result for this conversation, on this or another device.
+   * Wired to `useConversationList.applyConversationUpdate` by the caller;
+   * this hook only owns the message thread, not the sidebar list. */
+  onConversationUpdated?: (event: { conversationId: string; title: string; icon: string }) => void;
 };
 
 /**
- * Owns the message thread and the conversation id. One websocket stays open
- * for the conversation on screen; every client attached to it applies the
- * same `user_message` and reply events.
+ * Owns the message thread and the conversation id. One SSE connection stays
+ * open for the conversation on screen (`GET /conversations/{id}/events`);
+ * every client attached to it applies the same `user_message` and reply
+ * events. Sending is a separate POST (`sendMessage`) -- `EventSource`
+ * reconnects and resumes (`Last-Event-ID`) natively, so there is no
+ * client-side cursor/dedup tracking here the way the old WebSocket needed.
  *
  * The conversation UUID is minted on the client before the first send and
  * pushed into the URL by the caller (`onConversationCreated`).
@@ -68,6 +81,7 @@ export type UseChatThreadArgs = {
 export function useChatThread({
   urlConversationId = null,
   onConversationCreated,
+  onConversationUpdated,
 }: UseChatThreadArgs = {}) {
   const restored = urlConversationId ? readInFlightTurn(urlConversationId) : undefined;
   const [messages, setMessagesState] = useState<ChatMessage[]>(() => restored ?? []);
@@ -80,13 +94,14 @@ export function useChatThread({
   conversationIdRef.current = conversationId;
   const onConversationCreatedRef = useRef(onConversationCreated);
   onConversationCreatedRef.current = onConversationCreated;
+  const onConversationUpdatedRef = useRef(onConversationUpdated);
+  onConversationUpdatedRef.current = onConversationUpdated;
   const previousUrlIdRef = useRef(urlConversationId);
   const skipHistoryLoadRef = useRef(Boolean(restored?.length));
   const historyRequestIdRef = useRef(0);
   const hydratedConversationIdRef = useRef<string | null>(null);
-  const liveRef = useRef<LiveConnection | null>(null);
-  const cursorsRef = useRef(new Map<string, string>());
-  const onLiveEventRef = useRef<(event: LiveServerEvent) => void>(() => {});
+  const eventsRef = useRef<EventsConnection | null>(null);
+  const onLiveEventRef = useRef<(event: ConversationEvent) => void>(() => {});
 
   const setMessages = useCallback(
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -101,30 +116,35 @@ export function useChatThread({
   );
 
   onLiveEventRef.current = (event) => {
+    if (event.type === "conversation_updated") {
+      onConversationUpdatedRef.current?.({
+        conversationId: event.conversation_id,
+        title: event.title,
+        icon: event.icon,
+      });
+      return;
+    }
     setMessages((prev) => applyLiveEvent(prev, event));
     if (isTerminalLiveEvent(event)) setIsSending(false);
     else if (event.type === "user_message") setIsSending(true);
   };
 
-  const ensureLive = useCallback((id: string) => {
-    const current = liveRef.current;
-    if (current && current.conversationId === id && !current.isClosed()) return current;
+  const ensureEvents = useCallback((id: string) => {
+    const current = eventsRef.current;
+    if (current && current.conversationId === id) return current;
     current?.close();
-    const connection = connectConversationLive(id, (event) => {
+    const connection = connectConversationEvents(id, (event) => {
       if (conversationIdRef.current !== id) return;
-      const seen = cursorsRef.current.get(id);
-      if (event.cursor && seen && isCursorAtOrBefore(event.cursor, seen)) return;
-      if (event.cursor) cursorsRef.current.set(id, event.cursor);
       onLiveEventRef.current(event);
     });
-    liveRef.current = connection;
+    eventsRef.current = connection;
     return connection;
   }, []);
 
   useEffect(() => {
     return () => {
-      liveRef.current?.close();
-      liveRef.current = null;
+      eventsRef.current?.close();
+      eventsRef.current = null;
     };
   }, [urlConversationId]);
 
@@ -155,7 +175,7 @@ export function useChatThread({
     }
     if (hydratedConversationIdRef.current === urlConversationId) {
       setIsLoadingHistory(false);
-      ensureLive(urlConversationId);
+      ensureEvents(urlConversationId);
       return;
     }
     if (skipHistoryLoadRef.current) {
@@ -163,13 +183,13 @@ export function useChatThread({
       skipHistoryLoadRef.current = false;
       if (skipForMintedTurn) {
         setIsLoadingHistory(false);
-        ensureLive(urlConversationId);
+        ensureEvents(urlConversationId);
         return;
       }
     }
     if ((readInFlightTurn(urlConversationId)?.length ?? 0) > 0) {
       setIsLoadingHistory(false);
-      ensureLive(urlConversationId);
+      ensureEvents(urlConversationId);
       return;
     }
 
@@ -189,11 +209,11 @@ export function useChatThread({
       setMessages((prev) => mergeHistory(prev, replay.messages));
       setConversationId(urlConversationId);
       setIsLoadingHistory(false);
-      ensureLive(urlConversationId);
+      ensureEvents(urlConversationId);
     })();
 
     return () => controller.abort();
-  }, [ensureLive, setMessages, urlConversationId]);
+  }, [ensureEvents, setMessages, urlConversationId]);
 
   const entityRegistry = useMemo(() => {
     const registry = new Map<string, unknown>();
@@ -239,9 +259,41 @@ export function useChatThread({
       if (didMintConversation) onConversationCreatedRef.current?.(activeConversationId);
       setIsSending(true);
       historyRequestIdRef.current += 1;
-      ensureLive(activeConversationId).send(text);
+
+      // For an existing conversation the row already exists (and the
+      // connection is normally already open from the mount/history
+      // effect), so opening it here too is a safe, idempotent no-op.
+      // For a brand-new, client-minted conversation the row does not
+      // exist until this send's own `start_turn` creates it -- opening
+      // the SSE connection before that races the merged endpoint's
+      // existence check and can 404 it *permanently*: unlike a dropped
+      // connection, `EventSource` does not retry after a non-2xx initial
+      // response, so this is deferred until the send has actually
+      // succeeded, once the conversation is guaranteed to exist. The
+      // backend's own resume-from-reservation-cursor behavior still
+      // replays the `user_message` entry this send just published, so
+      // nothing is missed by opening it slightly later.
+      if (!didMintConversation) ensureEvents(activeConversationId);
+
+      try {
+        await sendMessage(activeConversationId, text);
+      } catch (error) {
+        // The conversation may have been switched away from while the POST
+        // was in flight -- the thread state is no longer this turn's, so
+        // there is nothing left here to mark errored (mirrors the old
+        // per-connection cursor guard's staleness check).
+        if (conversationIdRef.current !== activeConversationId) return;
+        const detail = error instanceof ApiError ? error.message : "Could not send the message";
+        setMessages((prev) => markLastAssistantErrored(prev, detail));
+        setIsSending(false);
+        return;
+      }
+
+      if (didMintConversation && conversationIdRef.current === activeConversationId) {
+        ensureEvents(activeConversationId);
+      }
     },
-    [ensureLive, setMessages],
+    [ensureEvents, setMessages],
   );
 
   const hydrate = useCallback(
@@ -257,8 +309,8 @@ export function useChatThread({
 
   const reset = useCallback(() => {
     if (conversationIdRef.current) forgetInFlightTurn(conversationIdRef.current);
-    liveRef.current?.close();
-    liveRef.current = null;
+    eventsRef.current?.close();
+    eventsRef.current = null;
     setMessagesState([]);
     setConversationId(null);
     conversationIdRef.current = null;

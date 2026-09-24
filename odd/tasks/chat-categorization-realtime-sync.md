@@ -102,20 +102,31 @@ that conversation.
   - Tests: resume-from-cursor behavior, both stream types forwarded with
     correct `event:` tagging.
 
-- [ ] **T5 — Frontend: SSE proxy route + consumer hook** (route: delegated
-  writer — proxy route + hook rewrite + list-store wiring: 3-4 files)
-  - `app/api/conversations/[conversationId]/events/route.ts`: cookie-authed
-    streaming proxy to backend SSE endpoint.
-  - Replace `conversation-live.ts`'s WS client with an `EventSource`-based
-    hook (delete hand-rolled reconnect/pending-queue logic — native resume
-    replaces it).
-  - Sidebar/`use-conversation-list.ts` applies `conversation_updated` events
-    live regardless of which conversation is open.
-
-- [ ] **T6 — Frontend: POST send + cleanup** (route: delegated writer —
-  send function + `use-chat-thread.ts` wiring: 2-3 files)
-  - New `sendMessage` as a plain `POST`, replacing the WS `send` frame.
-  - Remove now-dead `live-ticket` route and any WS-specific client code.
+- [ ] **T5 — Frontend: full SSE+POST migration** (route: delegated writer —
+  merged with what was separately T6, since send/receive are wired together
+  in the same hook and splitting them across two agents touching the same
+  files back-to-back is more error-prone than one coherent pass; ~8-10 files)
+  - New `conversation-events.ts` (replaces `conversation-live.ts`):
+    `EventSource`-based, native `Last-Event-ID` resume (delete the hand-rolled
+    reconnect/pending-queue/`cursorsRef`/`isCursorAtOrBefore` dedup — all
+    superseded by native SSE resume).
+  - New `send-message.ts`: plain POST, replacing the WS `send` frame.
+  - New streaming SSE proxy route + new POST proxy route (`proxyBackendJson`
+    fits the latter directly). Delete `live-ticket/route.ts`.
+  - `use-chat-thread.ts`: SSE for receive, POST for send; a POST failure
+    (403/409) replaces the old `rejected` WS event — caught directly, not
+    awaited as a stream event.
+  - `use-conversation-list.ts`: new `applyConversationUpdate` patches a row's
+    title/icon in place from a live `conversation_updated` event, wired
+    through `home-shell.tsx` the same way `onConversationCreated` already is.
+  - `ConversationSummary`/zod schema: add `icon`. Sidebar row: render it via
+    a category→lucide-icon lookup (the backend's `icon` is a semantic
+    category key — general/player/team/match/tactics/transfer/injury/
+    stats/history — not a literal icon name).
+  - Note (told to the user directly, not a blocker): a device with the
+    sidebar open but no conversation selected has no SSE connection at all,
+    same as the old WS design already had — "every connected device" means
+    every device with *some* conversation open, not literally always-on.
 
 ## Acceptance criteria
 - Sending a message works end-to-end via POST + SSE turn events (parity with
@@ -127,6 +138,18 @@ that conversation.
 - No WebSocket code paths remain for this feature.
 
 ## Progress
+- 2026-09-24: Extra fix before T5 — `ConversationSummaryDto` (`GET
+  /conversations`) never actually exposed `icon` (T1's column existed but
+  was never serialized); a reload would silently drop what a live
+  `conversation_updated` event just delivered. Fixed directly (2-line,
+  mechanical), commit 6d9cfb8.
+- 2026-09-24: T5 delegated (merged former T5+T6 into one frontend task — see
+  the task entry above for why). Also flagged to the user: the merged SSE
+  endpoint is per-conversation-scoped (`GET /conversations/{id}/events`), so
+  a device with the sidebar open but no conversation selected has no live
+  connection at all — same limit the old WS design already had. "Every
+  connected device" means every device with *some* conversation open, not a
+  standalone always-on per-user channel.
 - 2026-09-24: Task file created. Starting T1.
 - 2026-09-24: T1 done, commit 357dffa. RED→GREEN verified (14 passed in
   `test_conversation_repository.py`), migration applied + reversed + reapplied
