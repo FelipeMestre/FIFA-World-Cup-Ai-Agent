@@ -1,15 +1,39 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IdentityLinkReviewCard } from "@/features/identity-links/components/identity-link-review-card";
+import { PendingLinksPaginator } from "@/features/identity-links/components/pending-links-paginator";
 import { usePendingIdentityLinks } from "@/features/identity-links/hooks/use-pending-identity-links";
+import type { IdentityLinkReviewStatus } from "@/features/identity-links/types";
 
-/** Admin-only review queue: every `player_identity_link` still `pending`,
- * with approve / reject / correct-match actions per row.
+const STATUS_FILTERS: { value: IdentityLinkReviewStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+];
+
+/** Admin-only review queue: `player_identity_link`s filtered to one review
+ * status at a time, with approve / reject / correct-match actions per row,
+ * 50 to a page.
  */
 export function IdentityLinksReviewList() {
-  const { reviews, isLoading, loadError, refresh, approve, reject, reassign } =
-    usePendingIdentityLinks();
+  const {
+    status,
+    changeStatus,
+    reviews,
+    isLoading,
+    loadError,
+    refresh,
+    approve,
+    reject,
+    reassign,
+    page,
+    totalPages,
+    total,
+    pageSize,
+    goToPage,
+  } = usePendingIdentityLinks();
 
   return (
     <div className="flex flex-col gap-ds-4">
@@ -31,6 +55,19 @@ export function IdentityLinksReviewList() {
         </Button>
       </div>
 
+      <Tabs
+        value={status}
+        onValueChange={(value) => changeStatus(value as IdentityLinkReviewStatus)}
+      >
+        <TabsList>
+          {STATUS_FILTERS.map((filter) => (
+            <TabsTrigger key={filter.value} value={filter.value}>
+              {filter.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       {loadError ? (
         <p className="rounded-lg border border-border-subtle bg-surface-800 p-ds-4 text-body-sm text-data-negative">
           {loadError}
@@ -39,13 +76,13 @@ export function IdentityLinksReviewList() {
 
       {!isLoading && !loadError && reviews.length === 0 ? (
         <p className="rounded-lg border border-border-subtle bg-surface-800 p-ds-6 text-center text-body-md text-ink-secondary">
-          No pending matches. Everything from the last Transfermarkt sync has been reviewed.
+          No {status} matches.
         </p>
       ) : null}
 
       {isLoading && reviews.length === 0 ? (
         <p className="rounded-lg border border-border-subtle bg-surface-800 p-ds-6 text-center text-body-md text-ink-secondary">
-          Loading pending matches…
+          Loading {status} matches…
         </p>
       ) : null}
 
@@ -60,6 +97,15 @@ export function IdentityLinksReviewList() {
           />
         ))}
       </div>
+
+      <PendingLinksPaginator
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        isLoading={isLoading}
+        onPageChange={goToPage}
+      />
     </div>
   );
 }

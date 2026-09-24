@@ -4,11 +4,12 @@ auto-accept confidence threshold.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from src.api.v1.admin.dtos.identity_link_dtos import (
     IdentityLinkResponse,
     IdentityLinkReviewResponse,
+    PaginatedIdentityLinkReviewResponse,
     ReassignLinkRequest,
 )
 from src.api.v1.auth.services.dependencies import require_admin
@@ -18,6 +19,7 @@ from src.domain.ingestion.exceptions.ingestion_exceptions import (
     RealPlayerAlreadyLinkedError,
     RealPlayerNotFoundError,
 )
+from src.domain.ingestion.model.player_identity_link import LinkReviewStatus
 from src.domain.ingestion.services.identity_link_review_service import (
     PlayerIdentityLinkReviewService,
 )
@@ -47,15 +49,27 @@ ReviewServiceDep = Annotated[
 
 
 @router.get(
-    "/pending",
-    response_model=list[IdentityLinkReviewResponse],
-    summary="List pending identity-link matches with full comparison data",
+    "",
+    response_model=PaginatedIdentityLinkReviewResponse,
+    summary="List identity-link matches with full comparison data, filterable by status",
 )
-async def list_pending_links(
-    service: ReviewServiceDep, admin: AdminDep, limit: int = 100, offset: int = 0
-) -> list[IdentityLinkReviewResponse]:
-    reviews = await service.list_pending(limit=limit, offset=offset)
-    return [IdentityLinkReviewResponse.from_domain(review) for review in reviews]
+async def list_links(
+    service: ReviewServiceDep,
+    admin: AdminDep,
+    review_status: Annotated[
+        LinkReviewStatus | None, Query(alias="status")
+    ] = LinkReviewStatus.PENDING,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PaginatedIdentityLinkReviewResponse:
+    reviews = await service.list_by_status(review_status, limit=limit, offset=offset)
+    total = await service.count_by_status(review_status)
+    return PaginatedIdentityLinkReviewResponse(
+        items=[IdentityLinkReviewResponse.from_domain(review) for review in reviews],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(

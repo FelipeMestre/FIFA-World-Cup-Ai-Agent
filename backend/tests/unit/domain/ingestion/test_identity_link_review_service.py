@@ -75,15 +75,15 @@ class _FakeRepository:
         self.update_calls: list[tuple[int, LinkReviewStatus, int | None]] = []
         self.reassign_calls: list[tuple[int, int, int]] = []
 
-    async def list_pending(
-        self, limit: int = 100, offset: int = 0
+    async def list_by_status(
+        self, status: LinkReviewStatus | None, limit: int = 100, offset: int = 0
     ) -> list[PlayerIdentityLinkReview]:
-        pending = [
+        matching = [
             _review(link.id, link.status)
             for link in self._links.values()
-            if link.status == LinkReviewStatus.PENDING
+            if status is None or link.status == status
         ]
-        return pending[offset : offset + limit]
+        return matching[offset : offset + limit]
 
     async def get(self, link_id: int) -> PlayerIdentityLink | None:
         return self._links.get(link_id)
@@ -116,17 +116,47 @@ class _FakeRepository:
     async def upsert_candidates(self, candidates):  # pragma: no cover - unused here
         raise NotImplementedError
 
+    async def count_by_status(self, status: LinkReviewStatus | None) -> int:
+        return sum(1 for link in self._links.values() if status is None or link.status == status)
+
 
 @pytest.mark.asyncio
-async def test_list_pending_returns_only_pending_links():
+async def test_list_by_status_filters_to_the_requested_status():
     repository = _FakeRepository(
         {1: _link(1, LinkReviewStatus.PENDING), 2: _link(2, LinkReviewStatus.APPROVED)}
     )
     service = PlayerIdentityLinkReviewService(repository)
 
-    result = await service.list_pending()
+    result = await service.list_by_status(LinkReviewStatus.PENDING)
 
     assert [review.link.id for review in result] == [1]
+
+
+@pytest.mark.asyncio
+async def test_list_by_status_returns_every_status_when_none():
+    repository = _FakeRepository(
+        {1: _link(1, LinkReviewStatus.PENDING), 2: _link(2, LinkReviewStatus.APPROVED)}
+    )
+    service = PlayerIdentityLinkReviewService(repository)
+
+    result = await service.list_by_status(None)
+
+    assert {review.link.id for review in result} == {1, 2}
+
+
+@pytest.mark.asyncio
+async def test_count_by_status_counts_only_the_requested_status():
+    repository = _FakeRepository(
+        {
+            1: _link(1, LinkReviewStatus.PENDING),
+            2: _link(2, LinkReviewStatus.APPROVED),
+            3: _link(3, LinkReviewStatus.PENDING),
+        }
+    )
+    service = PlayerIdentityLinkReviewService(repository)
+
+    assert await service.count_by_status(LinkReviewStatus.PENDING) == 2
+    assert await service.count_by_status(None) == 3
 
 
 @pytest.mark.asyncio

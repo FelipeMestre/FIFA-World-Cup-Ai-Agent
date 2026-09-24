@@ -145,3 +145,15 @@ class IdentityLinkReviewResponse(BaseModel):
             ),
             real_player=RealPlayerSummary.from_domain(review.real_player),
         )
+
+
+class PaginatedIdentityLinkReviewResponse(BaseModel):
+    """A page of pending identity-link reviews, plus the total count needed
+    to render a paginator (current page count alone can't tell the admin
+    UI how many pages exist).
+    """
+
+    items: list[IdentityLinkReviewResponse]
+    total: int
+    limit: int
+    offset: int

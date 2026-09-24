@@ -4,7 +4,11 @@ import {
   realPlayerSummarySchema,
   toRealPlayerSummary,
 } from "@/features/identity-links/schemas/real-player.schema";
-import type { IdentityLinkReview, MatchMethod } from "@/features/identity-links/types";
+import type {
+  IdentityLinkReview,
+  MatchMethod,
+  PendingIdentityLinksPage,
+} from "@/features/identity-links/types";
 
 const matchMethodSchema = z.enum(["exact_name_dob", "exact_name_team", "fuzzy_name", "manual"]);
 const reviewStatusSchema = z.enum(["pending", "approved", "rejected"]);
@@ -38,6 +42,24 @@ export const identityLinkReviewSchema = z.object({
 });
 
 export const identityLinkReviewListSchema = z.array(identityLinkReviewSchema);
+
+export const pendingIdentityLinksPageSchema = z.object({
+  items: identityLinkReviewListSchema,
+  total: z.number().int(),
+  limit: z.number().int(),
+  offset: z.number().int(),
+});
+
+export function toPendingIdentityLinksPage(
+  row: z.infer<typeof pendingIdentityLinksPageSchema>,
+): PendingIdentityLinksPage {
+  return {
+    items: row.items.map(toIdentityLinkReview),
+    total: row.total,
+    limit: row.limit,
+    offset: row.offset,
+  };
+}
 
 export function toIdentityLinkReview(
   row: z.infer<typeof identityLinkReviewSchema>,
