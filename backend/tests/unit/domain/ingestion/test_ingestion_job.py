@@ -12,6 +12,7 @@ from src.domain.ingestion.model.ingestion_job import (
     IngestionJobStatus,
     IngestionJobType,
 )
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 
 
 def _queued_job() -> IngestionJob:
@@ -84,3 +85,42 @@ def test_mark_failed_from_succeeded_raises() -> None:
 
     with pytest.raises(InvalidJobTransitionError):
         succeeded_job.mark_failed("too late")
+
+
+def test_record_stage_checkpoint_from_running_succeeds() -> None:
+    running_job = _queued_job().mark_running()
+
+    checkpointed = running_job.record_stage_checkpoint(TransfermarktSyncStage.CLUBS)
+
+    assert checkpointed.current_stage == "clubs"
+    assert len(checkpointed.stage_checkpoints) == 1
+    assert checkpointed.stage_checkpoints[0]["stage"] == "clubs"
+    assert checkpointed.stage_checkpoints[0]["completed_at"]
+    assert running_job.stage_checkpoints == [], "original job must stay immutable"
+
+
+def test_record_stage_checkpoint_accumulates_history_in_order() -> None:
+    job = _queued_job().mark_running()
+
+    job = job.record_stage_checkpoint(TransfermarktSyncStage.NATIONAL_TEAMS)
+    job = job.record_stage_checkpoint(TransfermarktSyncStage.CLUBS)
+
+    assert [checkpoint["stage"] for checkpoint in job.stage_checkpoints] == [
+        "national_teams",
+        "clubs",
+    ]
+    assert job.current_stage == "clubs"
+
+
+def test_record_stage_checkpoint_from_queued_raises() -> None:
+    queued_job = _queued_job()
+
+    with pytest.raises(InvalidJobTransitionError):
+        queued_job.record_stage_checkpoint(TransfermarktSyncStage.CLUBS)
+
+
+def test_record_stage_checkpoint_from_succeeded_raises() -> None:
+    succeeded_job = _queued_job().mark_running().mark_succeeded({"team": 48})
+
+    with pytest.raises(InvalidJobTransitionError):
+        succeeded_job.record_stage_checkpoint(TransfermarktSyncStage.CLUBS)

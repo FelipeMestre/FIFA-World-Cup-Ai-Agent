@@ -2,6 +2,7 @@ import { Suspense, type ReactNode } from "react";
 import { redirect } from "next/navigation";
 
 import { AdminHeader } from "@/components/layout/admin-header";
+import { AdminNavTabs } from "@/components/layout/admin-nav-tabs";
 import { getCurrentUser } from "@/features/auth/api/get-current-user";
 import { hasSession } from "@/lib/auth/session";
 
@@ -36,6 +37,9 @@ async function AuthedAdminShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-col bg-surface-950 text-ink-primary">
       <AdminHeader userName={user.name} />
       <main className="mx-auto w-full max-w-5xl flex-1 px-ds-4 py-ds-6 md:px-ds-6">
+        <div className="mb-ds-4">
+          <AdminNavTabs />
+        </div>
         {children}
       </main>
     </div>

@@ -1,5 +1,6 @@
 import pytest
 
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 from src.domain.ingestion.services import transfermarkt_detail_sync as detail_sync_module
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.season_stat_aggregation_service import (
@@ -40,6 +41,14 @@ class _FakeIngestionRepository:
 
     async def has_rows(self, schema_cls) -> bool:
         return schema_cls in self._populated_schemas
+
+
+class _FakeProgressTracker:
+    def __init__(self) -> None:
+        self.checkpointed_stages: list[str] = []
+
+    async def checkpoint(self, stage: TransfermarktSyncStage) -> None:
+        self.checkpointed_stages.append(stage.value)
 
 
 def _detail_sync(client: _FakeTransfermarktClient, repository: _FakeIngestionRepository):
@@ -408,3 +417,69 @@ async def test_sync_season_stats_skips_when_resuming_and_populated():
 
     assert row_count == 0
     assert client.requested_tables == []
+
+
+@pytest.mark.asyncio
+async def test_sync_player_scoped_tables_checkpoints_each_stage_when_progress_given() -> None:
+    client = _FakeTransfermarktClient({"player_valuations": [], "transfers": []})
+    repository = _FakeIngestionRepository()
+    sync = _detail_sync(client, repository)
+    progress = _FakeProgressTracker()
+
+    await sync.sync_player_scoped_tables(
+        real_player_ids=set(), known_club_ids=set(), progress=progress
+    )
+
+    assert progress.checkpointed_stages == ["player_valuations", "transfers"]
+
+
+@pytest.mark.asyncio
+async def test_sync_player_scoped_tables_checkpoints_a_skipped_stage_too() -> None:
+    client = _FakeTransfermarktClient({"player_valuations": [], "transfers": []})
+    repository = _FakeIngestionRepository(populated_schemas={RealPlayerValuationSchema})
+    sync = _detail_sync(client, repository)
+    progress = _FakeProgressTracker()
+
+    await sync.sync_player_scoped_tables(
+        real_player_ids=set(), known_club_ids=set(), skip_populated=True, progress=progress
+    )
+
+    assert progress.checkpointed_stages == ["player_valuations", "transfers"]
+
+
+@pytest.mark.asyncio
+async def test_sync_match_data_checkpoints_each_stage_when_progress_given() -> None:
+    client = _FakeTransfermarktClient({"game_lineups": [], "game_events": [], "club_games": []})
+    repository = _FakeIngestionRepository()
+    sync = _detail_sync(client, repository)
+    progress = _FakeProgressTracker()
+
+    await sync.sync_match_data(
+        real_player_ids=set(), real_club_ids=set(), known_club_ids=set(), progress=progress
+    )
+
+    assert progress.checkpointed_stages == ["game_lineups", "game_events", "club_games"]
+
+
+@pytest.mark.asyncio
+async def test_sync_season_stats_checkpoints_when_progress_given() -> None:
+    client = _FakeTransfermarktClient({"games": [], "appearances": []})
+    repository = _FakeIngestionRepository()
+    sync = _detail_sync(client, repository)
+    progress = _FakeProgressTracker()
+
+    await sync.sync_season_stats(real_player_ids=set(), progress=progress)
+
+    assert progress.checkpointed_stages == ["real_player_season_stat"]
+
+
+@pytest.mark.asyncio
+async def test_sync_season_stats_checkpoints_even_when_skipped() -> None:
+    client = _FakeTransfermarktClient({"games": [], "appearances": []})
+    repository = _FakeIngestionRepository(populated_schemas={RealPlayerSeasonStatSchema})
+    sync = _detail_sync(client, repository)
+    progress = _FakeProgressTracker()
+
+    await sync.sync_season_stats(real_player_ids=set(), skip_populated=True, progress=progress)
+
+    assert progress.checkpointed_stages == ["real_player_season_stat"]

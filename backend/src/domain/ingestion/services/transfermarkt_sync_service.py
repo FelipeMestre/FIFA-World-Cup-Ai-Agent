@@ -17,8 +17,10 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from src.domain.ingestion.model.ingestion_job import IngestionJob
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 from src.domain.ingestion.services import csv_parsers as parsers
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
+from src.domain.ingestion.services.job_progress_tracker import JobProgressTracker
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
 )
@@ -97,11 +99,14 @@ class TransfermarktSyncService:
         # here -- it silently replaces the real error with a masking one.
         running_job = job.mark_running()
         running_job = await self._ingestion_job_repository.update(running_job)
-        row_counts = await self._run_pipeline(skip_populated)
-        succeeded_job = running_job.mark_succeeded(row_counts)
+        progress = JobProgressTracker(running_job, self._ingestion_job_repository)
+        row_counts = await self._run_pipeline(skip_populated, progress)
+        succeeded_job = progress.job.mark_succeeded(row_counts)
         return await self._ingestion_job_repository.update(succeeded_job)
 
-    async def _run_pipeline(self, skip_populated: bool) -> dict[str, int]:
+    async def _run_pipeline(
+        self, skip_populated: bool, progress: JobProgressTracker
+    ) -> dict[str, int]:
         row_counts: dict[str, int] = {}
 
         # `national_team` base rows come only from the synthetic WC2026
@@ -190,6 +195,7 @@ class TransfermarktSyncService:
                 NationalTeamSchema, create_rows, conflict_columns=("transfermarkt_id",)
             )
             row_counts["national_teams"] = update_result.row_count + create_result.row_count
+        await progress.checkpoint(TransfermarktSyncStage.NATIONAL_TEAMS)
 
         if skip_populated and await self._ingestion_repository.has_rows(RealClubSchema):
             known_club_ids = {
@@ -214,6 +220,7 @@ class TransfermarktSyncService:
             # nulled out rather than dropping the row or relaxing the
             # constraint.
             known_club_ids = {row["club_id"] for row in club_rows}
+        await progress.checkpoint(TransfermarktSyncStage.CLUBS)
 
         if skip_populated and await self._ingestion_repository.has_rows(RealPlayerSchema):
             persisted_players = await self._ingestion_repository.fetch_columns(
@@ -262,19 +269,20 @@ class TransfermarktSyncService:
             }
 
             await self._identity_link_repository.upsert_candidates(candidates)
+        await progress.checkpoint(TransfermarktSyncStage.PLAYERS)
 
         row_counts.update(
             await self._detail_sync.sync_player_scoped_tables(
-                all_real_player_ids, known_club_ids, skip_populated
+                all_real_player_ids, known_club_ids, skip_populated, progress
             )
         )
         row_counts.update(
             await self._detail_sync.sync_match_data(
-                all_real_player_ids, all_real_club_ids, known_club_ids, skip_populated
+                all_real_player_ids, all_real_club_ids, known_club_ids, skip_populated, progress
             )
         )
         row_counts["real_player_season_stat"] = await self._detail_sync.sync_season_stats(
-            all_real_player_ids, skip_populated
+            all_real_player_ids, skip_populated, progress
         )
         return row_counts
 
