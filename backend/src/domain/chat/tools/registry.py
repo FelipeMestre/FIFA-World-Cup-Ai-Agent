@@ -8,8 +8,8 @@ Two tiers:
 - `build_tool_registry(...)` -- assembles the full per-request registry,
   adding any tool whose handler is bound to a request-scoped dependency
   (currently `get_team_analysis`, bound to an `AsyncSession`-backed
-  repository). Called from the conversation live socket
-  (`src/api/v1/chat/routers/live_router.py`), once per send, the same way
+  repository). Called from `generate_chat_reply_task`
+  (`src/infra/task_queue/chat_tasks.py`), once per turn, the same way
   `get_national_team_repository` et al. are -- never at import time, since
   the session it closes over doesn't exist yet then.
 

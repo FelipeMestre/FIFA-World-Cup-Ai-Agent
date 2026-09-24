@@ -69,7 +69,9 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
 
 async def _seed_conversation(session: AsyncSession, user_id: int = _USER_ID) -> object:
     conversation_repository = _SqlAlchemyConversationRepository(session)
-    conversation = await conversation_repository.get_or_create(uuid4(), user_id, "Test chat")
+    conversation, _created = await conversation_repository.get_or_create(
+        uuid4(), user_id, "Test chat"
+    )
     await session.commit()
     return conversation.id
 

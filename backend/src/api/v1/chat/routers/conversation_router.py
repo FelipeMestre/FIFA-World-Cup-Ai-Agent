@@ -1,7 +1,10 @@
+import json
+from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.auth.services.dependencies import JwtDataDep
@@ -10,7 +13,16 @@ from src.api.v1.chat.dtos.conversation_dtos import (
     ConversationMessageDto,
     ConversationMessagesResponse,
     ConversationSummaryDto,
+    SendMessageRequest,
+    SendMessageResponse,
     UpdateConversationTitleRequest,
+)
+from src.api.v1.chat.services.chat_service_factory import build_chat_service
+from src.api.v1.chat.sse import client_message
+from src.domain.chat.exceptions.chat_exceptions import (
+    TURN_ALREADY_IN_PROGRESS_DETAIL,
+    ConversationOwnershipError,
+    TurnAlreadyInProgress,
 )
 from src.domain.chat.model.chat_message import ChatMessage
 from src.domain.chat.model.chat_message_widget import ChatMessageWidget
@@ -31,7 +43,16 @@ from src.infra.postgres.repositories.chat_turn_failure_repository import (
 )
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.redis.config import redis_client
-from src.infra.task_queue.chat_tasks import turn_in_progress_key
+from src.infra.task_queue.chat_streams import (
+    TURN_IN_PROGRESS_TTL_SECONDS,
+    is_stream_cursor,
+    last_stream_cursor,
+    resume_turn_cursor,
+    serialize_user_message_event,
+    turn_in_progress_key,
+    turn_stream_key,
+)
+from src.infra.task_queue.pool import enqueue_chat_reply
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -51,6 +72,7 @@ def _to_summary_dto(conversation: Conversation, is_generating: bool) -> Conversa
     return ConversationSummaryDto(
         id=conversation.id,
         title=conversation.title,
+        icon=conversation.icon,
         updated_at=conversation.updated_at,
         created_at=conversation.created_at,
         is_generating=is_generating,
@@ -126,6 +148,63 @@ async def update_conversation_title(
     return _to_summary_dto(updated, is_generating=bool(is_generating))
 
 
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=SendMessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Send a message in a conversation",
+    description="Persists the user message, publishes it on the conversation's turn "
+    "stream, and enqueues reply generation. The reply itself, and any live-published "
+    "user-message echo, are read back via `GET /conversations/{id}/events` (SSE). "
+    "Returns 409 while a reply is already being generated for this conversation, and 403 "
+    "for a conversation owned by another user.",
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "Conversation owned by another user"},
+        status.HTTP_409_CONFLICT: {"description": "A reply is already being generated"},
+    },
+)
+async def send_message(
+    conversation_id: UUID,
+    payload: SendMessageRequest,
+    session: SessionDep,
+    jwt_data: JwtDataDep,
+) -> SendMessageResponse:
+    user_id = int(jwt_data["sub"])
+    chat_service = build_chat_service(session)
+    try:
+        conversation = await chat_service.start_turn(
+            conversation_id=conversation_id, user_id=user_id, first_message=payload.content
+        )
+        cursor = await last_stream_cursor(str(conversation_id))
+        reserved = await redis_client.set(
+            turn_in_progress_key(str(conversation_id)),
+            cursor,
+            nx=True,
+            ex=TURN_IN_PROGRESS_TTL_SECONDS,
+        )
+        if not reserved:
+            raise TurnAlreadyInProgress()
+    except ConversationOwnershipError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Conversation not found"
+        ) from exc
+    except TurnAlreadyInProgress as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=TURN_ALREADY_IN_PROGRESS_DETAIL
+        ) from exc
+
+    user_message = await chat_service.persist_user_message(conversation_id, payload.content)
+    await redis_client.xadd(
+        turn_stream_key(str(conversation_id)),
+        serialize_user_message_event(
+            str(conversation.id), user_message.id, payload.content, conversation.title
+        ),
+    )
+    await enqueue_chat_reply(str(conversation_id), user_id, payload.content, user_message.id)
+
+    return SendMessageResponse(conversation_id=conversation.id, message_id=user_message.id)
+
+
 @router.get(
     "/{conversation_id}/messages",
     response_model=ConversationMessagesResponse,
@@ -160,4 +239,85 @@ async def get_conversation_messages(
         title=conversation.title,
         last_turn_failure=last_turn_failure,
         messages=[_to_message_dto(message) for message in messages],
+    )
+
+
+# Same blocking window the old live socket's `_pump` used -- long enough to
+# avoid busy-polling Redis, short enough that a disconnect (checked once per
+# iteration) or a keep-alive comment is never more than ~1s late.
+_READ_BLOCK_MS = 1_000
+
+# ~15 consecutive empty `XREAD` polls (~15s at `_READ_BLOCK_MS`) before a
+# keep-alive comment is sent -- purely an infra-correctness concern: a
+# reverse proxy or load balancer sitting between the client and this
+# response can decide an idle connection is dead and close it.
+_KEEPALIVE_EMPTY_POLLS = 15
+
+
+async def _conversation_events(
+    request: Request, turn_key: str, turn_cursor: str
+) -> AsyncIterator[str]:
+    empty_polls = 0
+    while True:
+        if await request.is_disconnected():
+            return
+
+        response = await redis_client.xread({turn_key: turn_cursor}, block=_READ_BLOCK_MS)
+        if not response:
+            empty_polls += 1
+            if empty_polls >= _KEEPALIVE_EMPTY_POLLS:
+                yield ": keep-alive\n\n"
+                empty_polls = 0
+            continue
+        empty_polls = 0
+
+        for _stream_name, entries in response:
+            for entry_id, fields in entries:
+                turn_cursor = entry_id
+                data = client_message(entry_id, fields["event_type"], json.loads(fields["payload"]))
+                yield f"id: {turn_cursor}\nevent: turn\ndata: {json.dumps(data)}\n\n"
+
+
+@router.get(
+    "/{conversation_id}/events",
+    summary="Turn event stream for a conversation",
+    description="Server-Sent Events replacement for the old live WebSocket's receive side -- "
+    "single-key `XREAD` over this conversation's turn stream only. `event: turn` frames carry "
+    "the same shape the old socket sent. Account-wide events (a conversation being created "
+    "or a background categorization job finishing) are delivered separately over "
+    "`GET /users/events`, not on this connection -- see `user_events_router.py`. Resumes from "
+    "the `Last-Event-ID` header when present and valid. Returns 404 for both a missing "
+    "conversation and one owned by another user alike -- existence is never leaked to a "
+    "non-owner, matching `GET /conversations/{id}/messages`'s convention (not "
+    "`POST .../messages`'s 403, which is this router's write-path convention).",
+)
+async def stream_conversation_events(
+    conversation_id: UUID,
+    request: Request,
+    conversation_repo: ConversationRepositoryDep,
+    jwt_data: JwtDataDep,
+    last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+) -> StreamingResponse:
+    user_id = int(jwt_data["sub"])
+    conversation = await conversation_repo.get_owned(conversation_id, user_id)
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    turn_key = turn_stream_key(str(conversation_id))
+    if last_event_id is not None and is_stream_cursor(last_event_id):
+        turn_cursor = last_event_id
+    else:
+        turn_cursor = await resume_turn_cursor(str(conversation_id))
+
+    return StreamingResponse(
+        _conversation_events(request, turn_key, turn_cursor),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Reverse proxies like nginx buffer a response by default, which
+            # would defeat SSE entirely -- this tells them not to. Has no
+            # effect locally, but matters once this sits behind one.
+            "X-Accel-Buffering": "no",
+        },
     )

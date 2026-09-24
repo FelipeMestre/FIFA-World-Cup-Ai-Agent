@@ -17,3 +17,9 @@ class Conversation:
     title: str
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # LLM-assigned icon (fixed enum, see `categorize_conversation_task`);
+    # None until the categorization job resolves it.
+    icon: str | None = None
+    # False once a user manually renames the conversation -- guards
+    # `update_category` against overwriting that rename.
+    title_is_generated: bool = True

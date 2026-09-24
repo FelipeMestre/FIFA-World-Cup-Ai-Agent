@@ -1,4 +1,4 @@
-import type { LiveServerEvent } from "@/features/chat/api/conversation-live";
+import type { ChatStreamEvent, UserMessageEvent } from "@/features/chat/api/conversation-events";
 import { parseMessageParts } from "@/features/chat/parse-message-parts";
 import { messagePartSchema } from "@/features/chat/schemas/message-part.schema";
 import type { ChatMessage, MessagePart } from "@/features/chat/types";
@@ -46,21 +46,35 @@ function updateLastAssistant(
   return next.map((message) => (message.id === assistantId ? updater(message) : message));
 }
 
+export type ConversationThreadEvent = (ChatStreamEvent & { cursor?: string }) | UserMessageEvent;
+
 /**
- * Applies one live-socket event onto the thread. A `user_message` that
+ * Marks the last (or a freshly-started) assistant message as failed. Used
+ * both for a live `error` stream event and, from `use-chat-thread.ts`, for
+ * a `sendMessage` POST that was rejected (403/409) before any SSE event
+ * arrived -- the direct replacement for the old WS `rejected` event, which
+ * no longer exists in the SSE wire vocabulary.
+ */
+export function markLastAssistantErrored(messages: ChatMessage[], detail: string): ChatMessage[] {
+  return updateLastAssistant(messages, (message) => ({
+    ...message,
+    error: detail,
+    isStreaming: false,
+    activeToolName: undefined,
+  }));
+}
+
+/**
+ * Applies one SSE `turn` event onto the thread. A `user_message` that
  * matches the optimistic bubble already on screen is ignored; the same
  * event on another window appends the user text and a streaming assistant.
+ * Does not handle `conversation_updated` -- that event patches the sidebar
+ * list (`useConversationList.applyConversationUpdate`), not this thread.
  */
-export function applyLiveEvent(messages: ChatMessage[], event: LiveServerEvent): ChatMessage[] {
-  if (event.type === "rejected") {
-    return updateLastAssistant(messages, (message) => ({
-      ...message,
-      error: event.detail,
-      isStreaming: false,
-      activeToolName: undefined,
-    }));
-  }
-
+export function applyLiveEvent(
+  messages: ChatMessage[],
+  event: ConversationThreadEvent,
+): ChatMessage[] {
   if (event.type === "user_message") {
     const last = messages[messages.length - 1];
     const previous = messages[messages.length - 2];
@@ -117,17 +131,12 @@ export function applyLiveEvent(messages: ChatMessage[], event: LiveServerEvent):
         activeToolName: undefined,
       }));
     case "error":
-      return updateLastAssistant(messages, (message) => ({
-        ...message,
-        error: event.detail,
-        isStreaming: false,
-        activeToolName: undefined,
-      }));
+      return markLastAssistantErrored(messages, event.detail);
     default:
       return messages;
   }
 }
 
-export function isTerminalLiveEvent(event: LiveServerEvent): boolean {
-  return event.type === "message_done" || event.type === "error" || event.type === "rejected";
+export function isTerminalLiveEvent(event: ConversationThreadEvent): boolean {
+  return event.type === "message_done" || event.type === "error";
 }

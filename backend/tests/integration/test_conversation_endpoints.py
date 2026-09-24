@@ -1,11 +1,14 @@
-"""Integration tests for the `/api/v1/conversations` router (T5):
+"""Integration tests for the `/api/v1/conversations` router:
 `GET /conversations` (sidebar list), `PATCH /conversations/{id}` (title
-rename), `GET /conversations/{id}/messages` (full replay). Uses real
-Postgres (no mocking, per AGENTS.md's testing anti-pattern table) and
-`app.dependency_overrides` for auth, mirroring
+rename), `GET /conversations/{id}/messages` (full replay), and
+`POST /conversations/{id}/messages` (HTTP send). The merged SSE endpoint
+(`GET /conversations/{id}/events`) has its own file, `test_conversation_events.py`.
+Uses real Postgres (no mocking, per AGENTS.md's testing anti-pattern table)
+and `app.dependency_overrides` for auth, mirroring
 `test_chat_send_message.py`'s conventions.
 """
 
+import json
 from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import uuid4
@@ -26,7 +29,7 @@ from src.infra.postgres.repositories.conversation_repository import (
     _SqlAlchemyConversationRepository,
 )
 from src.infra.redis.config import redis_client
-from src.infra.task_queue.chat_tasks import turn_in_progress_key
+from src.infra.task_queue.chat_streams import turn_in_progress_key, turn_stream_key
 from src.main import app
 
 _USER_ID = 990701
@@ -37,12 +40,23 @@ _OTHER_USER_ID = 990702
 async def _seed_users() -> AsyncGenerator[None]:
     async with SessionFactory() as session:
         for user_id in (_USER_ID, _OTHER_USER_ID):
+            # `name` is passed as its own bound parameter rather than derived
+            # in SQL from a reused `:email` -- reusing one bound param across
+            # two different inferred types (`text` from `split_part`, then
+            # `character varying` from the column itself) trips asyncpg's
+            # `AmbiguousParameterError`. Same fix as
+            # `test_chat_service_start_turn.py`/`test_categorize_conversation_task.py`
+            # for the identical pre-existing systemic bug.
             await session.execute(
                 text(
                     'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
-                    "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', false, now())"
+                    "VALUES (:id, :email, :name, 'hash', false, now())"
                 ),
-                {"id": user_id, "email": f"conversation-endpoints-test-{user_id}@example.test"},
+                {
+                    "id": user_id,
+                    "email": f"conversation-endpoints-test-{user_id}@example.test",
+                    "name": f"conversation-endpoints-test-{user_id}",
+                },
             )
         await session.commit()
     yield
@@ -92,9 +106,15 @@ def _override_auth() -> AsyncGenerator[None]:
 async def _create_conversation(user_id: int, title: str) -> Any:
     async with SessionFactory() as session:
         repo = _SqlAlchemyConversationRepository(session)
-        conversation = await repo.get_or_create(uuid4(), user_id, title)
+        conversation, _created = await repo.get_or_create(uuid4(), user_id, title)
         await session.commit()
         return conversation
+
+
+async def _cleanup_turn_state(conversation_id: str) -> None:
+    await redis_client.delete(
+        turn_in_progress_key(conversation_id), turn_stream_key(conversation_id)
+    )
 
 
 @pytest.mark.asyncio
@@ -294,3 +314,120 @@ async def test_get_conversation_messages_surfaces_failure_only_on_the_last_messa
         headers={"Authorization": "Bearer test-token"},
     )
     assert retried_response.json()["last_turn_failure"] is None
+
+
+@pytest.mark.asyncio
+async def test_send_message_persists_publishes_and_enqueues_reply_and_categorization(
+    client: AsyncClient, monkeypatch
+) -> None:
+    """The HTTP send path (T3) must do exactly what the WS `send` frame does
+    today: persist the user message, publish a `UserMessageEvent` on the
+    conversation's turn stream, and enqueue `generate_chat_reply_task`.
+    Because this is a brand-new conversation, `ChatService.start_turn`'s
+    existing `created`-only enqueue (T2) must also fire the categorization
+    job -- locking in that both send paths get that behavior "for free"
+    from sharing `start_turn`, with no extra wiring in this endpoint.
+    """
+    conversation_id = uuid4()
+    reply_calls: list[tuple[str, int, str, int]] = []
+    categorize_calls: list[tuple[str, int, str]] = []
+
+    async def _fake_enqueue_chat_reply(
+        conversation_id: str, user_id: int, user_message: str, user_message_id: int
+    ) -> None:
+        reply_calls.append((conversation_id, user_id, user_message, user_message_id))
+
+    async def _fake_enqueue_categorize(
+        conversation_id: str, user_id: int, first_message: str
+    ) -> None:
+        categorize_calls.append((conversation_id, user_id, first_message))
+
+    monkeypatch.setattr(
+        "src.api.v1.chat.routers.conversation_router.enqueue_chat_reply",
+        _fake_enqueue_chat_reply,
+    )
+    monkeypatch.setattr(
+        "src.domain.chat.services.chat_service.enqueue_categorize_conversation",
+        _fake_enqueue_categorize,
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/messages",
+        json={"content": "Hello there"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["conversation_id"] == str(conversation_id)
+    assert isinstance(body["message_id"], int)
+
+    async with SessionFactory() as session:
+        messages = await _SqlAlchemyChatMessageRepository(session).list_for_conversation(
+            conversation_id, _USER_ID
+        )
+    assert [(m.role, m.content) for m in messages] == [("user", "Hello there")]
+
+    entries = await redis_client.xrange(turn_stream_key(str(conversation_id)))
+    assert len(entries) == 1
+    _entry_id, fields = entries[0]
+    assert fields["event_type"] == "UserMessageEvent"
+    payload = json.loads(fields["payload"])
+    assert payload == {
+        "conversation_id": str(conversation_id),
+        "message_id": body["message_id"],
+        "content": "Hello there",
+        "title": "Hello there",
+    }
+
+    assert reply_calls == [(str(conversation_id), _USER_ID, "Hello there", body["message_id"])]
+    assert categorize_calls == [(str(conversation_id), _USER_ID, "Hello there")]
+
+    await _cleanup_turn_state(str(conversation_id))
+
+
+@pytest.mark.asyncio
+async def test_send_message_409_when_turn_already_in_progress(
+    client: AsyncClient, monkeypatch
+) -> None:
+    conversation = await _create_conversation(_USER_ID, "Existing conversation")
+    await redis_client.set(turn_in_progress_key(str(conversation.id)), "1-0", ex=60)
+
+    async def _fake_enqueue_chat_reply(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("must not be reached once the turn reservation is rejected")
+
+    monkeypatch.setattr(
+        "src.api.v1.chat.routers.conversation_router.enqueue_chat_reply",
+        _fake_enqueue_chat_reply,
+    )
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation.id}/messages",
+        json={"content": "Should be rejected"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A reply is already being generated for this conversation"
+
+    async with SessionFactory() as session:
+        messages = await _SqlAlchemyChatMessageRepository(session).list_for_conversation(
+            conversation.id, _USER_ID
+        )
+    assert messages == []
+
+    await _cleanup_turn_state(str(conversation.id))
+
+
+@pytest.mark.asyncio
+async def test_send_message_403_for_another_users_conversation(client: AsyncClient) -> None:
+    conversation = await _create_conversation(_OTHER_USER_ID, "Not yours")
+
+    response = await client.post(
+        f"/api/v1/conversations/{conversation.id}/messages",
+        json={"content": "Trying to hijack"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Conversation not found"

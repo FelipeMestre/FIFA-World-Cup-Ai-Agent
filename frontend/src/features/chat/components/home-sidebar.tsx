@@ -1,10 +1,60 @@
 import Link from "next/link";
-import { Loader2, LogOut, Pencil, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BarChart3,
+  HeartPulse,
+  History,
+  Loader2,
+  LogOut,
+  MessageCircle,
+  Pencil,
+  Route,
+  ShieldCheck,
+  UserRound,
+  Users,
+  Volleyball,
+} from "lucide-react";
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
 import { initialsFromName } from "@/features/auth/initials";
 import { groupConversations } from "@/features/chat/group-conversations";
 import type { ConversationSummary } from "@/features/chat/types";
+
+/**
+ * The backend's `icon` is a semantic category key
+ * (`CategoryIcon`/`CATEGORY_ICONS` in `backend/src/infra/task_queue/chat_streams.py`),
+ * not a literal icon component name -- mapped here to a concrete glyph.
+ * `null` (not yet categorized) or an unrecognized value both fall back to
+ * `MessageCircle`, the same glyph every conversation used before categorization
+ * existed. Each branch renders its icon tag directly (rather than resolving
+ * a component reference into a variable first) so `eslint-plugin-react-hooks`'s
+ * `static-components` rule -- which flags a JSX tag whose component identity
+ * is computed during render -- has nothing to flag; every tag here is a
+ * literal, stable top-level import.
+ */
+function CategoryGlyph({ icon, className }: { icon: string | null; className: string }) {
+  switch (icon) {
+    case "player":
+      return <UserRound className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "team":
+      return <Users className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "match":
+      return <Volleyball className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "tactics":
+      return <Route className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "transfer":
+      return <ArrowLeftRight className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "injury":
+      return <HeartPulse className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "stats":
+      return <BarChart3 className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "history":
+      return <History className={className} strokeWidth={1.5} aria-hidden="true" />;
+    case "general":
+    default:
+      return <MessageCircle className={className} strokeWidth={1.5} aria-hidden="true" />;
+  }
+}
 
 function ConversationRow({
   conversation,
@@ -37,19 +87,10 @@ function ConversationRow({
             aria-hidden="true"
           />
         ) : (
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            className={isActive ? "text-brand" : "text-ink-muted"}
-            strokeWidth="1.5"
-            strokeLinecap="square"
-            aria-hidden="true"
-          >
-            <path d="M3 4h14v10H8l-3 3v-3H3z" />
-          </svg>
+          <CategoryGlyph
+            icon={conversation.icon}
+            className={isActive ? "size-4 shrink-0 text-brand" : "size-4 shrink-0 text-ink-muted"}
+          />
         )}
         <span className="flex-1 truncate">{conversation.title || "New chat"}</span>
         {conversation.isGenerating ? (

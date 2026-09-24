@@ -6,7 +6,7 @@ from src.api.v1.admin.routers.ingestion_router import router as ingestion_router
 from src.api.v1.admin.routers.real_player_router import router as real_player_router
 from src.api.v1.auth.routers.auth_router import router as auth_router
 from src.api.v1.chat.routers.conversation_router import router as conversation_router
-from src.api.v1.chat.routers.live_router import router as live_router
+from src.api.v1.chat.routers.user_events_router import router as user_events_router
 from src.api.v1.matches.routers.match_router import router as match_router
 from src.api.v1.national_teams.routers.national_team_router import (
     router as national_team_router,
@@ -18,8 +18,8 @@ SHOW_DOCS_IN = {"local", "staging"}
 
 API_V1_ROUTERS = (
     auth_router,
-    live_router,
     conversation_router,
+    user_events_router,
     national_team_router,
     match_router,
     player_router,

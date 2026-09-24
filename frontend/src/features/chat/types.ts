@@ -316,6 +316,8 @@ export type ChatRole = "user" | "assistant";
 export interface ConversationSummary {
   id: string;
   title: string;
+  /** Semantic category key (general/player/team/match/tactics/transfer/injury/stats/history) assigned by the background categorization job. `null` until categorization resolves, or for an unrecognized value. */
+  icon: string | null;
   updatedAt: string;
   createdAt: string;
   /** True while a background reply is being generated for this conversation -- a snapshot from the last `GET /conversations` fetch, not a live subscription. */

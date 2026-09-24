@@ -188,6 +188,8 @@ export function HomeShell({
                   setRenameTarget({
                     id: conversationId,
                     title: threadTitle,
+                    icon: conversationList.conversations.find((row) => row.id === conversationId)
+                      ?.icon ?? null,
                     updatedAt: new Date().toISOString(),
                     createdAt: new Date().toISOString(),
                     isGenerating: false,

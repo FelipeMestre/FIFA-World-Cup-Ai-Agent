@@ -37,3 +37,18 @@ class ConversationOwnershipError(ChatError):
     return `None` instead, so existence of another user's conversation is
     never leaked via an exception vs. `None` distinction.
     """
+
+
+TURN_ALREADY_IN_PROGRESS_DETAIL = "A reply is already being generated for this conversation"
+
+
+class TurnAlreadyInProgress(ChatError):
+    """Raised when a turn reservation (`SET NX EX` on `turn_in_progress_key`)
+    fails because another turn is already in progress for the conversation.
+    Turned into an HTTP 409 by `POST /conversations/{id}/messages`
+    (`conversation_router.py`), the only send path since the live WebSocket
+    route was removed.
+    """
+
+    def __init__(self, message: str = TURN_ALREADY_IN_PROGRESS_DETAIL) -> None:
+        super().__init__(message)
