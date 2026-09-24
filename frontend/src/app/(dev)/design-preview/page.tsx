@@ -13,11 +13,13 @@ import { useState } from "react";
 import { PanelCompare } from "@/features/chat/components/panel-compare";
 import { PanelMatch } from "@/features/chat/components/panel-match";
 import { PanelPlayer } from "@/features/chat/components/panel-player";
+import { PanelRanking } from "@/features/chat/components/panel-ranking";
 import { PanelTeam } from "@/features/chat/components/panel-team";
 import { SidePanel } from "@/features/chat/components/side-panel";
 import { WidgetCompare } from "@/features/chat/components/widget-compare";
 import { WidgetMatch } from "@/features/chat/components/widget-match";
 import { WidgetPlayer } from "@/features/chat/components/widget-player";
+import { WidgetRanking } from "@/features/chat/components/widget-ranking";
 import { WidgetTeam } from "@/features/chat/components/widget-team";
 import { useChatPanel } from "@/features/chat/hooks/use-chat-panel";
 import {
@@ -25,6 +27,7 @@ import {
   sampleMatch,
   samplePlayerForward,
   samplePlayerGoalkeeper,
+  sampleRanking,
   sampleTeam,
 } from "@/features/chat/sample-data";
 
@@ -86,6 +89,11 @@ export default function DesignPreviewPage() {
             active={activeKey === "compare"}
             onViewDetails={() => toggle("compare")}
           />
+          <WidgetRanking
+            ranking={sampleRanking}
+            active={activeKey === "ranking"}
+            onViewDetails={() => toggle("ranking")}
+          />
         </Section>
 
         <Section title="Panels — 560px desktop">
@@ -117,6 +125,14 @@ export default function DesignPreviewPage() {
             <PanelCompare
               comparison={sampleComparison}
               fromMessage="Compare Messi vs Mbappé"
+              onClose={() => {}}
+              onJumpToMessage={() => {}}
+            />
+          </div>
+          <div className="h-[1360px] w-[560px] overflow-y-auto rounded-lg border border-border-strong">
+            <PanelRanking
+              ranking={sampleRanking}
+              fromMessage="Rank the forwards by goals"
               onClose={() => {}}
               onJumpToMessage={() => {}}
             />

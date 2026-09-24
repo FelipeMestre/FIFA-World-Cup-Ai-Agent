@@ -7,12 +7,14 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { PanelCompare } from "@/features/chat/components/panel-compare";
 import { PanelMatch } from "@/features/chat/components/panel-match";
 import { PanelPlayer } from "@/features/chat/components/panel-player";
+import { PanelRanking } from "@/features/chat/components/panel-ranking";
 import { PanelTeam } from "@/features/chat/components/panel-team";
 import type {
   EntityRef,
   MatchSummary,
   PanelState,
   PlayerComparison,
+  PlayerRanking,
   PlayerSummary,
   TeamSummary,
 } from "@/features/chat/types";
@@ -64,6 +66,15 @@ function renderPanelBody(
       return (
         <PanelCompare
           comparison={data as PlayerComparison}
+          isSheet={isSheet}
+          fromMessage={fromMessage}
+          {...handlers}
+        />
+      );
+    case "ranking":
+      return (
+        <PanelRanking
+          ranking={data as PlayerRanking}
           isSheet={isSheet}
           fromMessage={fromMessage}
           {...handlers}

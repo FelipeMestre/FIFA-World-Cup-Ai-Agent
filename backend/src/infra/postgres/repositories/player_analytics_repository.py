@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.chat.exceptions import chat_exceptions
 from src.domain.player_analytics.model.player_analysis import PlayerAnalysis
 from src.domain.player_analytics.model.player_comparison import PlayerComparison
+from src.domain.player_analytics.model.player_ranking import PlayerRanking, PlayerRankingRequest
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.player_analytics_repository_interface import (
     PlayerAnalyticsRepositoryInterface,
@@ -34,6 +35,7 @@ from src.infra.postgres.interfaces.player_club_career_repository_interface impor
 )
 from src.infra.postgres.repositories import _player_analysis_view as analysis_view
 from src.infra.postgres.repositories import _player_comparison_view as comparison_view
+from src.infra.postgres.repositories import _player_ranking_query as ranking_query
 from src.infra.postgres.repositories._player_stat_helpers import (
     Position,
     first_letter_for_position,
@@ -145,6 +147,9 @@ class _SqlAlchemyPlayerAnalyticsRepository:
                 "Percentiles ranked against same-position players with minutes played > 0."
             ),
         )
+
+    async def get_player_ranking(self, request: PlayerRankingRequest) -> PlayerRanking:
+        return await ranking_query.get_player_ranking(self._session, request)
 
     async def _require_player(self, player_query: str) -> PlayerSchema:
         player_row = await self._resolve_player(player_query)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { messagePartSchema } from "@/features/chat/schemas/message-part.schema";
-import { samplePlayerForward, sampleTeam } from "@/features/chat/sample-data";
+import { samplePlayerForward, sampleRanking, sampleTeam } from "@/features/chat/sample-data";
 
 describe("messagePartSchema", () => {
   it("accepts a well-formed text part -- the only variant the live backend sends today", () => {
@@ -40,6 +40,15 @@ describe("messagePartSchema", () => {
       ),
     );
     const result = messagePartSchema.safeParse({ type: "player_widget", data: legacy });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a ranking_widget part matching PlayerRanking", () => {
+    const result = messagePartSchema.safeParse({
+      type: "ranking_widget",
+      data: sampleRanking,
+    });
 
     expect(result.success).toBe(true);
   });

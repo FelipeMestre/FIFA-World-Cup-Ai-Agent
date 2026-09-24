@@ -7,6 +7,7 @@ export type {
   MessagePart,
   PanelState,
   PlayerComparison,
+  PlayerRanking,
   PlayerSummary,
   TeamSummary,
 } from "@/features/chat/types";

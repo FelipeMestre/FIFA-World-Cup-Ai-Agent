@@ -58,3 +58,34 @@ _COMPETITION_NAMES: dict[str, str] = {
 
 def competition_name(competition_id: str) -> str:
     return _COMPETITION_NAMES.get(competition_id, competition_id)
+
+
+def resolve_competition_id(query: str) -> str | None:
+    """Map a user/model competition string to a Transfermarkt code.
+
+    Accepts an exact code (`GB1`) or a unique display name (`Premier League`).
+    Ambiguous or empty input returns `None` so the ranking tool can fail
+    fast instead of ranking the whole table.
+    """
+    stripped = query.strip()
+    if not stripped:
+        return None
+    upper = stripped.upper()
+    if upper in _COMPETITION_NAMES:
+        return upper
+    lowered = stripped.casefold()
+    exact_names = [
+        competition_id
+        for competition_id, name in _COMPETITION_NAMES.items()
+        if name.casefold() == lowered
+    ]
+    if len(exact_names) == 1:
+        return exact_names[0]
+    contained = [
+        competition_id
+        for competition_id, name in _COMPETITION_NAMES.items()
+        if lowered in name.casefold()
+    ]
+    if len(contained) == 1:
+        return contained[0]
+    return None

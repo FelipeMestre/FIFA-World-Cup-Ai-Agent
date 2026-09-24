@@ -179,9 +179,7 @@ async def conversation_live(websocket: WebSocket, conversation_id: UUID) -> None
     await websocket.accept()
     send_lock = asyncio.Lock()
     pump_task = asyncio.create_task(_pump(websocket, str(conversation_id), send_lock))
-    receive_task = asyncio.create_task(
-        _receive(websocket, conversation_id, user_id, send_lock)
-    )
+    receive_task = asyncio.create_task(_receive(websocket, conversation_id, user_id, send_lock))
     try:
         done, pending = await asyncio.wait(
             {pump_task, receive_task}, return_when=asyncio.FIRST_COMPLETED

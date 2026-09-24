@@ -2,6 +2,7 @@ import { AssistantText } from "@/features/chat/components/chat-bubble";
 import { WidgetCompare } from "@/features/chat/components/widget-compare";
 import { WidgetMatch } from "@/features/chat/components/widget-match";
 import { WidgetPlayer } from "@/features/chat/components/widget-player";
+import { WidgetRanking } from "@/features/chat/components/widget-ranking";
 import { WidgetTeam } from "@/features/chat/components/widget-team";
 import type { EntityRef, MessagePart } from "@/features/chat/types";
 
@@ -63,6 +64,16 @@ export function MessagePartView({
       return (
         <WidgetCompare
           comparison={part.data}
+          active={isActive(ref, openEntity)}
+          onViewDetails={() => onOpenEntity(ref)}
+        />
+      );
+    }
+    case "ranking_widget": {
+      const ref: EntityRef = { type: "ranking", id: part.data.id };
+      return (
+        <WidgetRanking
+          ranking={part.data}
           active={isActive(ref, openEntity)}
           onViewDetails={() => onOpenEntity(ref)}
         />

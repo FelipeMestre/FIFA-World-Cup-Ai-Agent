@@ -20,6 +20,13 @@ class SamePlayerComparisonError(ChatError):
     """
 
 
+class RankingQueryError(ChatError):
+    """Raised when a `get_player_ranking` call cannot run: unknown
+    competition, a criterion that does not exist on that scope, or a
+    goalkeeper-only sort used with a non-GK position filter.
+    """
+
+
 class ConversationOwnershipError(ChatError):
     """Raised when a `conversation` row exists for the given id but belongs
     to a different `user_id`. UUID unguessability is never treated as

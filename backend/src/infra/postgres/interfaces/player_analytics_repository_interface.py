@@ -6,6 +6,7 @@ from typing import Protocol
 
 from src.domain.player_analytics.model.player_analysis import PlayerAnalysis
 from src.domain.player_analytics.model.player_comparison import PlayerComparison
+from src.domain.player_analytics.model.player_ranking import PlayerRanking, PlayerRankingRequest
 
 
 class PlayerAnalyticsRepositoryInterface(Protocol):
@@ -34,5 +35,15 @@ class PlayerAnalyticsRepositoryInterface(Protocol):
 
         Raises `PlayerNotFoundError` when either query fails to resolve, and
         `SamePlayerComparisonError` when both resolve to the same player.
+        """
+        ...
+
+    async def get_player_ranking(self, request: PlayerRankingRequest) -> PlayerRanking:
+        """Rank squad players by `request.rank_by`.
+
+        `world_cup` reads `player_stat`. `transfermarkt` sums approved-link
+        `real_player_season_stat` rows inside the season window and
+        competition filter. Returns an empty `rows` list when nothing
+        matches; does not mix the two scopes.
         """
         ...
