@@ -141,18 +141,16 @@ class _SqlAlchemyPlayerClubCareerRepository:
         self, real_player_id: int, transfers: list[PlayerTransfer]
     ) -> list[PlayerSeasonStat]:
         stat = RealPlayerSeasonStatSchema
-        stmt = (
-            select(
-                stat.season,
-                stat.competition_id,
-                stat.appearances,
-                stat.minutes_played,
-                stat.goals,
-                stat.assists,
-                stat.yellow_cards,
-                stat.red_cards,
-            ).where(stat.real_player_id == real_player_id)
-        )
+        stmt = select(
+            stat.season,
+            stat.competition_id,
+            stat.appearances,
+            stat.minutes_played,
+            stat.goals,
+            stat.assists,
+            stat.yellow_cards,
+            stat.red_cards,
+        ).where(stat.real_player_id == real_player_id)
         rows = (await self._session.execute(stmt)).all()
         seasons = [
             PlayerSeasonStat(

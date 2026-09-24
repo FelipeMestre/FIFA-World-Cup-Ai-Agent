@@ -52,8 +52,23 @@ class CompareWidgetPart(BaseModel):
     data: dict
 
 
+class RankingWidgetPart(BaseModel):
+    """`data` is `PlayerRanking.model_dump(mode="json", by_alias=True)` --
+    already camelCased for the frontend's `PlayerRanking` contract.
+    Produced by the `query_player_stats` chat tool.
+    """
+
+    type: Literal["ranking_widget"] = "ranking_widget"
+    data: dict
+
+
 MessagePart = Annotated[
-    TextPart | TeamWidgetPart | MatchWidgetPart | PlayerWidgetPart | CompareWidgetPart,
+    TextPart
+    | TeamWidgetPart
+    | MatchWidgetPart
+    | PlayerWidgetPart
+    | CompareWidgetPart
+    | RankingWidgetPart,
     Field(discriminator="type"),
 ]
 
@@ -65,12 +80,17 @@ MessagePart = Annotated[
 # the mapping has exactly one place to drift from.
 WIDGET_TYPE_TO_PART_CLASS: dict[
     str,
-    type[TeamWidgetPart] | type[MatchWidgetPart] | type[PlayerWidgetPart] | type[CompareWidgetPart],
+    type[TeamWidgetPart]
+    | type[MatchWidgetPart]
+    | type[PlayerWidgetPart]
+    | type[CompareWidgetPart]
+    | type[RankingWidgetPart],
 ] = {
     "team_widget": TeamWidgetPart,
     "match_widget": MatchWidgetPart,
     "player_widget": PlayerWidgetPart,
     "compare_widget": CompareWidgetPart,
+    "ranking_widget": RankingWidgetPart,
 }
 
 

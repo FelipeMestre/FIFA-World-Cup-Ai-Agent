@@ -226,12 +226,48 @@ const playerComparisonSchema = z.object({
   minMinutesCaption: z.string(),
 });
 
+const playerRankingSchema = z.object({
+  id: z.string(),
+  scope: z.enum(["world_cup", "transfermarkt"]),
+  rankBy: z.string(),
+  rankByLabel: z.string(),
+  scopeLabel: z.string(),
+  footerCaption: z.string(),
+  rows: z.array(
+    z.object({
+      rank: z.number(),
+      playerId: z.string(),
+      name: z.string(),
+      initials: z.string(),
+      teamCode: z.string(),
+      clubTeam: z.string(),
+      position: positionSchema,
+      value: z.string(),
+      sortValue: z.number(),
+      appearances: z.number(),
+      minutes: z.number(),
+      goals: z.number(),
+      assists: z.number(),
+      yellowCards: z.number(),
+      redCards: z.number(),
+      heightCm: z.number(),
+      age: z.number(),
+      starts: z.number().nullish(),
+      penaltyGoals: z.number().nullish(),
+      saves: z.number().nullish(),
+      cleanSheets: z.number().nullish(),
+      goalsConceded: z.number().nullish(),
+    }),
+  ),
+});
+
 export const messagePartSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), content: z.string() }),
   z.object({ type: z.literal("team_widget"), data: teamSummarySchema }),
   z.object({ type: z.literal("match_widget"), data: matchSummarySchema }),
   z.object({ type: z.literal("player_widget"), data: playerSummarySchema }),
   z.object({ type: z.literal("compare_widget"), data: playerComparisonSchema }),
+  z.object({ type: z.literal("ranking_widget"), data: playerRankingSchema }),
 ]);
 
 /** Loosely typed part as received over the wire, before validation. */

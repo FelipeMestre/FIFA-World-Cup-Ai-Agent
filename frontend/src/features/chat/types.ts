@@ -12,10 +12,10 @@ export type ResultLetter = "W" | "D" | "L";
 /** design/README.md's hard data-limit rule: positions only GK/DEF/MID/FWD. */
 export type Position = "GK" | "DEF" | "MID" | "FWD";
 
-export interface EntityRef {
-  type: "team" | "match" | "player" | "compare";
+export type EntityRef = {
+  type: "team" | "match" | "player" | "compare" | "ranking";
   id: string;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Team
@@ -263,6 +263,44 @@ export interface PlayerComparison {
 }
 
 // ---------------------------------------------------------------------------
+// Player ranking
+
+export interface PlayerRankingRow {
+  rank: number;
+  playerId: string;
+  name: string;
+  initials: string;
+  teamCode: string;
+  clubTeam: string;
+  position: Position;
+  value: string;
+  sortValue: number;
+  appearances: number;
+  minutes: number;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  heightCm: number;
+  age: number;
+  starts?: number | null;
+  penaltyGoals?: number | null;
+  saves?: number | null;
+  cleanSheets?: number | null;
+  goalsConceded?: number | null;
+}
+
+export interface PlayerRanking {
+  id: string;
+  scope: "world_cup" | "transfermarkt";
+  rankBy: string;
+  rankByLabel: string;
+  scopeLabel: string;
+  footerCaption: string;
+  rows: PlayerRankingRow[];
+}
+
+// ---------------------------------------------------------------------------
 // Message parts (the backend's discriminated union)
 
 export type MessagePart =
@@ -270,7 +308,8 @@ export type MessagePart =
   | { type: "team_widget"; data: TeamSummary }
   | { type: "match_widget"; data: MatchSummary }
   | { type: "player_widget"; data: PlayerSummary }
-  | { type: "compare_widget"; data: PlayerComparison };
+  | { type: "compare_widget"; data: PlayerComparison }
+  | { type: "ranking_widget"; data: PlayerRanking };
 
 export type ChatRole = "user" | "assistant";
 

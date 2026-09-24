@@ -1,11 +1,13 @@
 """Protocol for the player analytics repository used by the
-`get_player_analysis` chat tool.
+`get_player_analysis`, `get_player_comparison`, and `query_player_stats`
+chat tools.
 """
 
 from typing import Protocol
 
 from src.domain.player_analytics.model.player_analysis import PlayerAnalysis
 from src.domain.player_analytics.model.player_comparison import PlayerComparison
+from src.domain.player_analytics.model.player_ranking import PlayerRanking, QueryPlayerStatsRequest
 
 
 class PlayerAnalyticsRepositoryInterface(Protocol):
@@ -34,5 +36,15 @@ class PlayerAnalyticsRepositoryInterface(Protocol):
 
         Raises `PlayerNotFoundError` when either query fails to resolve, and
         `SamePlayerComparisonError` when both resolve to the same player.
+        """
+        ...
+
+    async def query_player_stats(self, request: QueryPlayerStatsRequest) -> PlayerRanking:
+        """Filter and sort squad players by allowlisted fields.
+
+        `world_cup` reads `player_stat`. `club_seasons` sums approved-link
+        `real_player_season_stat` rows inside the season window and
+        competition filter. Returns an empty `rows` list when nothing
+        matches; does not mix the two datasets.
         """
         ...

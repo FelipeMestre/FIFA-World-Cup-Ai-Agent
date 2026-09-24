@@ -47,6 +47,11 @@ from src.domain.chat.tools.get_team_analysis import (
     GetTeamAnalysisArgs,
     build_get_team_analysis_handler,
 )
+from src.domain.chat.tools.query_player_stats import (
+    QUERY_PLAYER_STATS_SCHEMA,
+    QueryPlayerStatsArgs,
+    build_query_player_stats_handler,
+)
 from src.domain.chat.tools.tool_execution_result import ToolExecutionResult
 from src.infra.postgres.interfaces.match_analytics_repository_interface import (
     MatchAnalyticsRepositoryInterface,
@@ -91,6 +96,7 @@ ALL_TOOL_SCHEMAS: list[dict] = [
     GET_PLAYER_ANALYSIS_SCHEMA,
     GET_MATCH_ANALYSIS_SCHEMA,
     GET_PLAYER_COMPARISON_SCHEMA,
+    QUERY_PLAYER_STATS_SCHEMA,
 ]
 
 
@@ -128,5 +134,11 @@ def build_tool_registry(
             args_model=GetPlayerComparisonArgs,
             handler=build_get_player_comparison_handler(player_analytics_repository),
             widget_type="compare_widget",
+        ),
+        "query_player_stats": ToolDefinition(
+            json_schema=QUERY_PLAYER_STATS_SCHEMA,
+            args_model=QueryPlayerStatsArgs,
+            handler=build_query_player_stats_handler(player_analytics_repository),
+            widget_type="ranking_widget",
         ),
     }

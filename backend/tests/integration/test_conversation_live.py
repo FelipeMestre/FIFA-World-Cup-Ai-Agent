@@ -45,9 +45,7 @@ def _free_port() -> int:
 @pytest.fixture
 async def live_port() -> AsyncGenerator[int]:
     port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
-    )
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
     task = asyncio.create_task(server.serve())
     for _ in range(100):
         if server.started:
