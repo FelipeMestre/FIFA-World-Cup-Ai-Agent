@@ -2,14 +2,15 @@
 scoping -> identity matching -> detail pulls (delegated to
 `TransfermarktDetailSync`), updating the `IngestionJob` throughout.
 
+Every player `players.csv` carries is persisted to `real_player` regardless
+of whether it matched a WC2026 roster player -- Transfermarkt is a full data
+source in its own right, not just a lookup table for identity matching.
+Identity matching still runs over the same buffered rows to populate
+`player_identity_link`, but it no longer gates what gets ingested.
+
 Correction (verified against the live source): `players.csv` DOES carry
 `current_national_team_id` -- an earlier revision of this module assumed
-otherwise without checking the real export. This still buffers `players.csv`
-in full and matches against every candidate rather than pre-filtering by
-that column; it remains correct (only matched `player_id`s get persisted),
-just not the most efficient shape. Pre-filtering by
-`current_national_team_id` before matching is a valid follow-up
-optimization, not a correctness fix.
+otherwise without checking the real export.
 """
 
 from collections.abc import AsyncIterator
@@ -218,8 +219,8 @@ class TransfermarktSyncService:
             persisted_players = await self._ingestion_repository.fetch_columns(
                 RealPlayerSchema, ["player_id", "current_club_id"]
             )
-            matched_real_player_ids = {row["player_id"] for row in persisted_players}
-            matched_real_club_ids = {
+            all_real_player_ids = {row["player_id"] for row in persisted_players}
+            all_real_club_ids = {
                 row["current_club_id"]
                 for row in persisted_players
                 if row["current_club_id"] is not None
@@ -233,27 +234,30 @@ class TransfermarktSyncService:
                 wc2026_players, real_player_candidates, national_team_id_by_team_id
             )
 
-            # `player_identity_link.real_player_id` has a foreign key into
-            # `real_player` -- the matched real_player rows must exist
-            # before upserting identity-link candidates that reference
-            # them, or the insert fails with ForeignKeyViolationError
-            # (found live: this ordering bug surfaced immediately after
-            # fixing the same-batch real_player_id collision above).
-            matched_real_player_ids = {candidate.real_player_id for candidate in candidates}
-            matched_player_rows = [
+            # Every Transfermarkt player is persisted, not only ones a
+            # WC2026 roster player matched to -- Transfermarkt is a full
+            # data source in its own right (stats, valuations, transfers),
+            # not just a lookup table for identity matching.
+            sanitized_player_rows = [
                 _sanitize_club_reference(row, "current_club_id", known_club_ids)
                 for row in player_rows
-                if int(row["player_id"]) in matched_real_player_ids
             ]
+            # `player_identity_link.real_player_id` has a foreign key into
+            # `real_player` -- the real_player rows must exist before
+            # upserting identity-link candidates that reference them, or
+            # the insert fails with ForeignKeyViolationError (found live:
+            # this ordering bug surfaced immediately after fixing the
+            # same-batch real_player_id collision above).
             row_counts["players"] = await self._csv_ingestion_service.ingest_rows(
-                _PLAYER_DETAIL_SPEC, matched_player_rows, self._ingestion_repository
+                _PLAYER_DETAIL_SPEC, sanitized_player_rows, self._ingestion_repository
             )
+            all_real_player_ids = {int(row["player_id"]) for row in player_rows}
             # Sanitized above, so any surviving current_club_id is
             # known-valid -- this scope set is itself safe to use as a
             # filter for club_games/game_lineups/game_events below.
-            matched_real_club_ids = {
+            all_real_club_ids = {
                 int(row["current_club_id"])
-                for row in matched_player_rows
+                for row in sanitized_player_rows
                 if row.get("current_club_id")
             }
 
@@ -261,16 +265,16 @@ class TransfermarktSyncService:
 
         row_counts.update(
             await self._detail_sync.sync_player_scoped_tables(
-                matched_real_player_ids, known_club_ids, skip_populated
+                all_real_player_ids, known_club_ids, skip_populated
             )
         )
         row_counts.update(
             await self._detail_sync.sync_match_data(
-                matched_real_player_ids, matched_real_club_ids, known_club_ids, skip_populated
+                all_real_player_ids, all_real_club_ids, known_club_ids, skip_populated
             )
         )
         row_counts["real_player_season_stat"] = await self._detail_sync.sync_season_stats(
-            matched_real_player_ids, skip_populated
+            all_real_player_ids, skip_populated
         )
         return row_counts
 
