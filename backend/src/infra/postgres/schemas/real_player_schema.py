@@ -5,7 +5,7 @@ aggregated season stats.
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import Computed, DateTime, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infra.postgres.schemas.base import Base
@@ -19,6 +19,19 @@ class RealPlayerSchema(Base):
     player_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     first_name: Mapped[str] = mapped_column(nullable=False)
     last_name: Mapped[str] = mapped_column(nullable=False)
+    # Postgres-maintained (GENERATED ALWAYS AS ... STORED) rather than set by
+    # application code: every INSERT already omits it, so a real_player row
+    # written anywhere (sync pipeline, tests, manual seed) gets it for free,
+    # and it can never drift out of sync with first_name/last_name. Backs
+    # RealPlayerRepository.search's name lookup via the pg_trgm GIN index on
+    # this exact column (see migration a1a2adf5c8b4) -- indexing the raw
+    # column, not a query-time `first_name || ' ' || last_name` expression,
+    # sidesteps Postgres only matching expression indexes against
+    # byte-identical query expressions (a parameterized query's bind
+    # variable for the separator would silently defeat that match).
+    full_name: Mapped[str] = mapped_column(
+        Computed("first_name || ' ' || last_name", persisted=True), nullable=False
+    )
     date_of_birth: Mapped[date | None] = mapped_column(nullable=True)
     country_of_birth: Mapped[str | None] = mapped_column(nullable=True)
     country_of_citizenship: Mapped[str | None] = mapped_column(nullable=True)
