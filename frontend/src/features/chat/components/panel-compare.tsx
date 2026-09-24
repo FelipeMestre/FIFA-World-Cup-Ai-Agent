@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { PanelHeader } from "@/features/chat/components/panel-header";
+import { positionLabel } from "@/features/chat/components/profile-tag";
 import type { PlayerComparison } from "@/features/chat/types";
 
 type Normalization = "per90" | "totals";
@@ -77,7 +78,7 @@ export function PanelCompare({
                     {player.name}
                   </span>
                   <span className="text-body-sm text-ink-secondary">
-                    {player.teamCode} · {player.position} · {player.minutes} min
+                    {player.teamCode} · {positionLabel(player.position)} · {player.minutes} min
                   </span>
                 </div>
               </div>

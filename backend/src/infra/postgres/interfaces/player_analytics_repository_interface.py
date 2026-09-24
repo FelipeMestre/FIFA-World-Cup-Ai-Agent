@@ -13,8 +13,9 @@ class PlayerAnalyticsRepositoryInterface(Protocol):
         """Resolve `player_query` (a player name, case-insensitive, as supplied
         by the model from the user's message) against `player`, then aggregate
         that player's full tournament record -- stats, per-90s, position
-        percentiles, and classification -- from `player_stat`, `match_event`,
-        `match_lineup`, and `player`.
+        percentiles, and classification -- from `player_stat` and `player`.
+        An approved `player_identity_link` also attaches the Transfermarkt
+        club profile and transfer path; pending and rejected links do not.
 
         Returns `None` when no player matches `player_query`; never raises
         for an unmatched query.

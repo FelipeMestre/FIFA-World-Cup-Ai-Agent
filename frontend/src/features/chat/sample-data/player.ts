@@ -28,8 +28,8 @@ export const samplePlayerGoalkeeper: PlayerSummary = {
   ],
   footerCaption: "Save rate 80.8% · 30 shots on target faced",
   fullBreakdown: [
-    { stat: "Appearances", total: "7", perNinety: "—" },
-    { stat: "Minutes", total: "630", perNinety: "—" },
+    { stat: "Appearances", total: "7", perNinety: "—", percentile: null },
+    { stat: "Minutes", total: "630", perNinety: "—", percentile: null },
     { stat: "Saves", total: "21", perNinety: "3.00", percentile: 82 },
     { stat: "Clean sheets", total: "3", perNinety: "0.43", percentile: 78 },
     { stat: "Goals conceded", total: "5", perNinety: "0.71", percentile: 74 },
@@ -38,6 +38,19 @@ export const samplePlayerGoalkeeper: PlayerSummary = {
     { label: "Saves", value: 3.0, positionAverage: 2.1 },
     { label: "Conceded", value: 0.71, positionAverage: 1.15 },
   ],
+  clubProfile: {
+    preferredFoot: "right",
+    subPosition: "Goalkeeper",
+    heightCm: 195,
+    dateOfBirth: "1992-09-02",
+    citizenship: "Argentina",
+    currentClub: "Aston Villa",
+    marketValueEur: 15_000_000,
+    highestMarketValueEur: 28_000_000,
+    internationalCaps: 36,
+    internationalGoals: 0,
+  },
+  transfers: [],
 };
 
 export const samplePlayerForward: PlayerSummary = {
@@ -60,8 +73,8 @@ export const samplePlayerForward: PlayerSummary = {
   ],
   footerCaption: "1.18 goal contributions per 90",
   fullBreakdown: [
-    { stat: "Appearances", total: "7", perNinety: "—" },
-    { stat: "Minutes", total: "612", perNinety: "—" },
+    { stat: "Appearances", total: "7", perNinety: "—", percentile: null },
+    { stat: "Minutes", total: "612", perNinety: "—", percentile: null },
     { stat: "Goals", total: "6", perNinety: "0.88", percentile: 94 },
     { stat: "Assists", total: "2", perNinety: "0.29", percentile: 72 },
     { stat: "Goals + assists", total: "8", perNinety: "1.18", percentile: 91 },
@@ -69,8 +82,8 @@ export const samplePlayerForward: PlayerSummary = {
     { stat: "Shots on target", total: "14", perNinety: "2.06", percentile: 92 },
     { stat: "Fouls committed", total: "5", perNinety: "0.74", percentile: 58 },
     { stat: "Offsides", total: "4", perNinety: "0.59", percentile: 62 },
-    { stat: "Yellow cards", total: "1", perNinety: "0.15" },
-    { stat: "Red cards", total: "0", perNinety: "0.00" },
+    { stat: "Yellow cards", total: "1", perNinety: "0.15", percentile: null },
+    { stat: "Red cards", total: "0", perNinety: "0.00", percentile: null },
   ],
   perNinetyVsPositionAverage: [
     { label: "Goals", value: 0.88, positionAverage: 0.41 },
@@ -79,5 +92,35 @@ export const samplePlayerForward: PlayerSummary = {
     { label: "On target", value: 2.06, positionAverage: 1.05 },
     { label: "Fouls", value: 0.74, positionAverage: 1.1 },
     { label: "Offsides", value: 0.59, positionAverage: 0.45 },
+  ],
+  clubProfile: {
+    preferredFoot: "right",
+    subPosition: "Centre-Forward",
+    heightCm: 178,
+    dateOfBirth: "1998-12-20",
+    citizenship: "France",
+    currentClub: "Real Madrid",
+    marketValueEur: 180_000_000,
+    highestMarketValueEur: 200_000_000,
+    internationalCaps: 85,
+    internationalGoals: 48,
+  },
+  transfers: [
+    {
+      transferDate: "2017-08-31",
+      season: "17/18",
+      fromClub: "Monaco",
+      toClub: "Paris Saint-Germain",
+      feeEur: 180_000_000,
+      marketValueEur: 120_000_000,
+    },
+    {
+      transferDate: "2024-07-01",
+      season: "24/25",
+      fromClub: "Paris Saint-Germain",
+      toClub: "Real Madrid",
+      feeEur: 0,
+      marketValueEur: 180_000_000,
+    },
   ],
 };

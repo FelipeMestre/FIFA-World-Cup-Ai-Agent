@@ -29,6 +29,9 @@ from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.player_analytics_repository_interface import (
     PlayerAnalyticsRepositoryInterface,
 )
+from src.infra.postgres.interfaces.player_club_career_repository_interface import (
+    PlayerClubCareerRepositoryInterface,
+)
 from src.infra.postgres.repositories import _player_analysis_view as analysis_view
 from src.infra.postgres.repositories import _player_comparison_view as comparison_view
 from src.infra.postgres.repositories._player_stat_helpers import (
@@ -37,13 +40,21 @@ from src.infra.postgres.repositories._player_stat_helpers import (
     normalize_position,
     player_initials,
 )
+from src.infra.postgres.repositories.player_club_career_repository import (
+    build_player_club_career_repository,
+)
 from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 from src.infra.postgres.schemas.player_schema import PlayerSchema, PlayerStatSchema
 
 
 class _SqlAlchemyPlayerAnalyticsRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        club_career_repository: PlayerClubCareerRepositoryInterface | None = None,
+    ) -> None:
         self._session = session
+        self._club_career = club_career_repository or build_player_club_career_repository(session)
 
     async def get_player_analysis(self, player_query: str) -> PlayerAnalysis | None:
         player_row = await self._resolve_player(player_query)
@@ -57,6 +68,7 @@ class _SqlAlchemyPlayerAnalyticsRepository:
         position = normalize_position(stat_row.position or player_row.position)
         team_code = await self._get_team_code(player_row.team_id)
         peer_rows = await self._get_position_peers(position)
+        club_career = await self._club_career.get_approved_career(player_row.player_id)
 
         is_gk = position == "GK"
         primary_percentile = analysis_view.primary_contribution_percentile(
@@ -85,6 +97,8 @@ class _SqlAlchemyPlayerAnalyticsRepository:
             per_ninety_vs_position_average=analysis_view.build_benchmarks(
                 stat_row, peer_rows, is_gk
             ),
+            club_profile=None if club_career is None else club_career.profile,
+            transfers=[] if club_career is None else list(club_career.transfers),
         )
 
     async def get_player_comparison(

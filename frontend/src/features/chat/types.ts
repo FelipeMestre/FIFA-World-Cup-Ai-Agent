@@ -161,6 +161,29 @@ export interface PlayerBenchmarkRow {
   positionAverage: number;
 }
 
+/** Transfermarkt profile. Absent when the player has no approved identity link. */
+export interface PlayerClubProfile {
+  preferredFoot: string | null;
+  subPosition: string | null;
+  heightCm: number | null;
+  dateOfBirth: string | null;
+  citizenship: string | null;
+  currentClub: string | null;
+  marketValueEur: number | null;
+  highestMarketValueEur: number | null;
+  internationalCaps: number | null;
+  internationalGoals: number | null;
+}
+
+export interface PlayerTransfer {
+  transferDate: string;
+  season: string | null;
+  fromClub: string;
+  toClub: string;
+  feeEur: number | null;
+  marketValueEur: number | null;
+}
+
 export interface PlayerSummary {
   id: string;
   name: string;
@@ -178,6 +201,9 @@ export interface PlayerSummary {
   footerCaption: string;
   fullBreakdown: PlayerStatRow[];
   perNinetyVsPositionAverage: PlayerBenchmarkRow[];
+  /** Omitted on widgets stored before club profile was added. */
+  clubProfile?: PlayerClubProfile | null;
+  transfers?: PlayerTransfer[];
 }
 
 // ---------------------------------------------------------------------------

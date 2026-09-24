@@ -30,8 +30,14 @@ GET_PLAYER_ANALYSIS_SCHEMA: dict = {
             "minutes, goals, assists, cards, and goalkeeper stats where applicable, "
             "each broken down as totals and per-90 rates with percentiles against "
             "other players at the same position, plus a stats-derived contribution "
-            "tier and discipline read. Use this whenever the user asks about a "
-            "specific player's performance, form, role, or stats in the tournament."
+            "tier and discipline read. When an approved Transfermarkt identity link "
+            "exists, the same result includes a separate club profile (preferred foot, "
+            "sub-position, height, date of birth, citizenship, current club, market "
+            "value, career-high value, international caps and goals) and that player's "
+            "transfer path. Those fields are absent when the player is not linked, and "
+            "club numbers are not part of the World Cup percentiles. Use this whenever "
+            "the user asks about a specific player's performance, form, role, or stats "
+            "in the tournament, or about their club profile and transfer history."
         ),
         "parameters": {
             "type": "object",

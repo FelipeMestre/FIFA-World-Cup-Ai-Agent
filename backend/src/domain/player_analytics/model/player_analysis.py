@@ -7,9 +7,11 @@ by_alias=True)` produces the exact shape `WidgetPlayer.data` expects on
 the wire, with no reshaping at the tool-handler boundary.
 """
 
+from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 ResultLetter = Literal["W", "D", "L"]
@@ -38,6 +40,39 @@ class PlayerBenchmarkRow(_CamelModel):
     position_average: float
 
 
+class PlayerClubProfile(_CamelModel):
+    """Transfermarkt profile attached through an approved identity link.
+
+    Separate from the World Cup block: these values never feed percentile math.
+    """
+
+    preferred_foot: str | None
+    sub_position: str | None
+    height_cm: int | None
+    date_of_birth: date | None
+    citizenship: str | None
+    current_club: str | None
+    market_value_eur: int | None
+    highest_market_value_eur: int | None
+    international_caps: int | None
+    international_goals: int | None
+
+
+class PlayerTransfer(_CamelModel):
+    transfer_date: date
+    season: str | None
+    from_club: str
+    to_club: str
+    fee_eur: int | None
+    market_value_eur: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedClubCareer:
+    profile: PlayerClubProfile
+    transfers: tuple[PlayerTransfer, ...]
+
+
 class PlayerAnalysis(_CamelModel):
     # A string, not the raw `player.player_id` int -- matches the
     # frontend's `EntityRef.id: string` and every other entity id in its
@@ -58,3 +93,7 @@ class PlayerAnalysis(_CamelModel):
     footer_caption: str
     full_breakdown: list[PlayerStatRow]
     per_ninety_vs_position_average: list[PlayerBenchmarkRow]
+    # None when no approved `player_identity_link` exists. Transfers stay
+    # empty in that case; an approved link with no moves is a profile and [].
+    club_profile: PlayerClubProfile | None = None
+    transfers: list[PlayerTransfer] = Field(default_factory=list)
