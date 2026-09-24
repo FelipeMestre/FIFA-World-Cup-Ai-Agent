@@ -1,4 +1,4 @@
-"""Read model for the `get_player_ranking` chat tool.
+"""Read model for the `query_player_stats` chat tool.
 
 CamelCase aliases match the frontend `PlayerRanking` widget contract.
 """
@@ -15,9 +15,9 @@ WORLD_CUP_AGE_AS_OF = date(2026, 6, 1)
 Position = Literal["GK", "DEF", "MID", "FWD"]
 
 
-class RankingScope(StrEnum):
+class QueryDataset(StrEnum):
     WORLD_CUP = "world_cup"
-    TRANSFERMARKT = "transfermarkt"
+    CLUB_SEASONS = "club_seasons"
 
 
 class SeasonWindow(StrEnum):
@@ -25,21 +25,34 @@ class SeasonWindow(StrEnum):
     LAST_THREE = "last_three"
 
 
-class RankBy(StrEnum):
+class FilterOp(StrEnum):
+    EQ = "eq"
+    GTE = "gte"
+    LTE = "lte"
+
+
+class SortDir(StrEnum):
+    ASC = "asc"
+    DESC = "desc"
+
+
+class PlayerStatField(StrEnum):
+    POSITION = "position"
+    AGE = "age"
+    HEIGHT_CM = "height_cm"
+    NATIONALITY = "nationality"
+    APPEARANCES = "appearances"
+    MINUTES = "minutes"
     GOALS = "goals"
     ASSISTS = "assists"
     GOAL_CONTRIBUTIONS = "goal_contributions"
     GOALS_PER90 = "goals_per90"
     ASSISTS_PER90 = "assists_per90"
     GOAL_CONTRIBUTIONS_PER90 = "goal_contributions_per90"
-    PENALTY_GOALS = "penalty_goals"
-    MINUTES = "minutes"
-    APPEARANCES = "appearances"
-    STARTS = "starts"
     YELLOW_CARDS = "yellow_cards"
     RED_CARDS = "red_cards"
-    FEWEST_YELLOW_CARDS = "fewest_yellow_cards"
-    FEWEST_RED_CARDS = "fewest_red_cards"
+    STARTS = "starts"
+    PENALTY_GOALS = "penalty_goals"
     SAVES = "saves"
     SAVES_PER90 = "saves_per90"
     CLEAN_SHEETS = "clean_sheets"
@@ -47,88 +60,117 @@ class RankBy(StrEnum):
     GOALS_CONCEDED_PER90 = "goals_conceded_per90"
 
 
-RANK_BY_LABELS: dict[RankBy, str] = {
-    RankBy.GOALS: "Goals",
-    RankBy.ASSISTS: "Assists",
-    RankBy.GOAL_CONTRIBUTIONS: "Goals + assists",
-    RankBy.GOALS_PER90: "Goals per 90",
-    RankBy.ASSISTS_PER90: "Assists per 90",
-    RankBy.GOAL_CONTRIBUTIONS_PER90: "Goals + assists per 90",
-    RankBy.PENALTY_GOALS: "Penalty goals",
-    RankBy.MINUTES: "Minutes",
-    RankBy.APPEARANCES: "Appearances",
-    RankBy.STARTS: "Starts",
-    RankBy.YELLOW_CARDS: "Yellow cards",
-    RankBy.RED_CARDS: "Red cards",
-    RankBy.FEWEST_YELLOW_CARDS: "Fewest yellow cards",
-    RankBy.FEWEST_RED_CARDS: "Fewest red cards",
-    RankBy.SAVES: "Saves",
-    RankBy.SAVES_PER90: "Saves per 90",
-    RankBy.CLEAN_SHEETS: "Clean sheets",
-    RankBy.GOALS_CONCEDED: "Goals conceded",
-    RankBy.GOALS_CONCEDED_PER90: "Goals conceded per 90",
+FIELD_LABELS: dict[PlayerStatField, str] = {
+    PlayerStatField.POSITION: "Position",
+    PlayerStatField.AGE: "Age",
+    PlayerStatField.HEIGHT_CM: "Height",
+    PlayerStatField.NATIONALITY: "Nationality",
+    PlayerStatField.APPEARANCES: "Appearances",
+    PlayerStatField.MINUTES: "Minutes",
+    PlayerStatField.GOALS: "Goals",
+    PlayerStatField.ASSISTS: "Assists",
+    PlayerStatField.GOAL_CONTRIBUTIONS: "Goals + assists",
+    PlayerStatField.GOALS_PER90: "Goals per 90",
+    PlayerStatField.ASSISTS_PER90: "Assists per 90",
+    PlayerStatField.GOAL_CONTRIBUTIONS_PER90: "Goals + assists per 90",
+    PlayerStatField.YELLOW_CARDS: "Yellow cards",
+    PlayerStatField.RED_CARDS: "Red cards",
+    PlayerStatField.STARTS: "Starts",
+    PlayerStatField.PENALTY_GOALS: "Penalty goals",
+    PlayerStatField.SAVES: "Saves",
+    PlayerStatField.SAVES_PER90: "Saves per 90",
+    PlayerStatField.CLEAN_SHEETS: "Clean sheets",
+    PlayerStatField.GOALS_CONCEDED: "Goals conceded",
+    PlayerStatField.GOALS_CONCEDED_PER90: "Goals conceded per 90",
 }
 
-WORLD_CUP_ONLY_RANK_BY = frozenset(
+ROSTER_FIELDS = frozenset(
     {
-        RankBy.PENALTY_GOALS,
-        RankBy.STARTS,
-        RankBy.SAVES,
-        RankBy.SAVES_PER90,
-        RankBy.CLEAN_SHEETS,
-        RankBy.GOALS_CONCEDED,
-        RankBy.GOALS_CONCEDED_PER90,
+        PlayerStatField.POSITION,
+        PlayerStatField.AGE,
+        PlayerStatField.HEIGHT_CM,
+        PlayerStatField.NATIONALITY,
     }
 )
+STRING_EQ_FIELDS = frozenset({PlayerStatField.POSITION, PlayerStatField.NATIONALITY})
+PER90_FIELDS = frozenset(
+    {
+        PlayerStatField.GOALS_PER90,
+        PlayerStatField.ASSISTS_PER90,
+        PlayerStatField.GOAL_CONTRIBUTIONS_PER90,
+        PlayerStatField.SAVES_PER90,
+        PlayerStatField.GOALS_CONCEDED_PER90,
+    }
+)
+WORLD_CUP_ONLY_FIELDS = frozenset(
+    {
+        PlayerStatField.STARTS,
+        PlayerStatField.PENALTY_GOALS,
+        PlayerStatField.SAVES,
+        PlayerStatField.SAVES_PER90,
+        PlayerStatField.CLEAN_SHEETS,
+        PlayerStatField.GOALS_CONCEDED,
+        PlayerStatField.GOALS_CONCEDED_PER90,
+    }
+)
+GK_ONLY_FIELDS = frozenset(
+    {
+        PlayerStatField.SAVES,
+        PlayerStatField.SAVES_PER90,
+        PlayerStatField.CLEAN_SHEETS,
+        PlayerStatField.GOALS_CONCEDED,
+        PlayerStatField.GOALS_CONCEDED_PER90,
+    }
+)
+NULLABLE_STAT_FIELDS = frozenset(
+    {
+        PlayerStatField.SAVES,
+        PlayerStatField.SAVES_PER90,
+        PlayerStatField.CLEAN_SHEETS,
+        PlayerStatField.GOALS_CONCEDED,
+        PlayerStatField.GOALS_CONCEDED_PER90,
+    }
+)
+CLUB_FIELDS = frozenset(PlayerStatField) - WORLD_CUP_ONLY_FIELDS
+WORLD_CUP_FIELDS = frozenset(PlayerStatField)
+FIELD_VALUES = [item.value for item in PlayerStatField]
 
-GK_ONLY_RANK_BY = frozenset(
-    {
-        RankBy.SAVES,
-        RankBy.SAVES_PER90,
-        RankBy.CLEAN_SHEETS,
-        RankBy.GOALS_CONCEDED,
-        RankBy.GOALS_CONCEDED_PER90,
-    }
-)
 
-ASCENDING_RANK_BY = frozenset(
-    {
-        RankBy.FEWEST_YELLOW_CARDS,
-        RankBy.FEWEST_RED_CARDS,
-        RankBy.GOALS_CONCEDED,
-        RankBy.GOALS_CONCEDED_PER90,
-    }
-)
+def used_fields(
+    sort_by: PlayerStatField, filters: tuple["StatFilter", ...]
+) -> frozenset[PlayerStatField]:
+    return frozenset({sort_by, *(item.field for item in filters)})
 
-PER90_RANK_BY = frozenset(
-    {
-        RankBy.GOALS_PER90,
-        RankBy.ASSISTS_PER90,
-        RankBy.GOAL_CONTRIBUTIONS_PER90,
-        RankBy.SAVES_PER90,
-        RankBy.GOALS_CONCEDED_PER90,
-    }
-)
+
+def field_allowed_on_dataset(field: PlayerStatField, dataset: QueryDataset) -> bool:
+    if dataset == QueryDataset.WORLD_CUP:
+        return field in WORLD_CUP_FIELDS
+    return field in CLUB_FIELDS
+
+
+def widget_scope(dataset: QueryDataset) -> Literal["world_cup", "transfermarkt"]:
+    if dataset == QueryDataset.WORLD_CUP:
+        return "world_cup"
+    return "transfermarkt"
 
 
 @dataclass(frozen=True, slots=True)
-class PlayerRankingRequest:
-    scope: RankingScope
-    rank_by: RankBy
-    position: Position | None
-    age_min: int | None
-    age_max: int | None
-    height_min_cm: int | None
-    height_max_cm: int | None
-    nationality: str | None
+class StatFilter:
+    field: PlayerStatField
+    op: FilterOp
+    value: str | int | float
+
+
+@dataclass(frozen=True, slots=True)
+class QueryPlayerStatsRequest:
+    dataset: QueryDataset
+    sort_by: PlayerStatField
+    sort_dir: SortDir
+    filters: tuple[StatFilter, ...]
     season_window: SeasonWindow | None
     competition_id: str | None
     competition_label: str
     limit: int
-    min_appearances: int | None = None
-    min_minutes: int | None = None
-    min_goals: int | None = None
-    min_assists: int | None = None
 
 
 class PlayerRankingRow(_CamelModel):

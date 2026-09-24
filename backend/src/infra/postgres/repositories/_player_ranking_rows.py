@@ -1,18 +1,19 @@
-"""Hydrate ranking SQL rows into the `PlayerRanking` widget model."""
+"""Hydrate `query_player_stats` SQL rows into the ranking widget model."""
 
 import hashlib
 import json
 from typing import Any
 
 from src.domain.player_analytics.model.player_ranking import (
-    PER90_RANK_BY,
-    RANK_BY_LABELS,
+    FIELD_LABELS,
+    PER90_FIELDS,
     PlayerRanking,
-    PlayerRankingRequest,
     PlayerRankingRow,
-    RankBy,
-    RankingScope,
+    PlayerStatField,
+    QueryDataset,
+    QueryPlayerStatsRequest,
     SeasonWindow,
+    widget_scope,
 )
 from src.infra.postgres.repositories._player_stat_helpers import (
     normalize_position,
@@ -20,42 +21,46 @@ from src.infra.postgres.repositories._player_stat_helpers import (
 )
 
 
-def _format_value(rank_by: RankBy, sort_value: float) -> str:
-    if rank_by in PER90_RANK_BY:
+def _format_value(field: PlayerStatField, sort_value: float) -> str:
+    if field in PER90_FIELDS:
         return f"{sort_value:.2f}"
     if sort_value.is_integer():
         return str(int(sort_value))
     return f"{sort_value:.2f}"
 
 
-def _ranking_id(request: PlayerRankingRequest) -> str:
+def _ranking_id(request: QueryPlayerStatsRequest) -> str:
     payload = {
-        "scope": request.scope,
-        "rank_by": request.rank_by,
-        "position": request.position,
-        "age_min": request.age_min,
-        "age_max": request.age_max,
-        "height_min_cm": request.height_min_cm,
-        "height_max_cm": request.height_max_cm,
-        "nationality": request.nationality,
+        "dataset": request.dataset,
+        "sort_by": request.sort_by,
+        "sort_dir": request.sort_dir,
+        "filters": [
+            {"field": item.field, "op": item.op, "value": item.value} for item in request.filters
+        ],
         "season_window": request.season_window,
         "competition_id": request.competition_id,
         "limit": request.limit,
-        "min_appearances": request.min_appearances,
-        "min_minutes": request.min_minutes,
-        "min_goals": request.min_goals,
-        "min_assists": request.min_assists,
     }
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
     return digest[:16]
 
 
-def _scope_label(request: PlayerRankingRequest) -> str:
-    criterion = RANK_BY_LABELS[request.rank_by]
-    if request.scope == RankingScope.WORLD_CUP:
+def _scope_label(request: QueryPlayerStatsRequest) -> str:
+    criterion = FIELD_LABELS[request.sort_by]
+    if request.dataset == QueryDataset.WORLD_CUP:
         return f"WC 2026 · {criterion}"
     window = "latest season" if request.season_window == SeasonWindow.LATEST else "last 3 seasons"
     return f"Club · {window} · {request.competition_label}"
+
+
+def _display_value(request: QueryPlayerStatsRequest, raw: Any, sort_value: float) -> str:
+    if request.sort_by == PlayerStatField.POSITION:
+        return normalize_position(raw.position)
+    if request.sort_by == PlayerStatField.NATIONALITY:
+        return str(raw.team_code)
+    if request.sort_by == PlayerStatField.HEIGHT_CM:
+        return f"{int(sort_value)} cm"
+    return _format_value(request.sort_by, sort_value)
 
 
 def _as_int(value: Any, default: int = 0) -> int:
@@ -70,10 +75,17 @@ def _as_optional_int(value: Any) -> int | None:
     return int(value)
 
 
-def _build_ranking(request: PlayerRankingRequest, raw_rows: list[Any]) -> PlayerRanking:
+def _coerce_sort_value(raw_value: Any) -> float:
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _build_ranking(request: QueryPlayerStatsRequest, raw_rows: list[Any]) -> PlayerRanking:
     rows: list[PlayerRankingRow] = []
     for index, raw in enumerate(raw_rows, start=1):
-        sort_value = float(raw.sort_value)
+        sort_value = round(_coerce_sort_value(raw.sort_value), 2)
         rows.append(
             PlayerRankingRow(
                 rank=index,
@@ -83,8 +95,8 @@ def _build_ranking(request: PlayerRankingRequest, raw_rows: list[Any]) -> Player
                 team_code=raw.team_code,
                 club_team=raw.club_team,
                 position=normalize_position(raw.position),
-                value=_format_value(request.rank_by, sort_value),
-                sort_value=round(sort_value, 2),
+                value=_display_value(request, raw, sort_value),
+                sort_value=sort_value,
                 appearances=_as_int(raw.appearances),
                 minutes=_as_int(raw.minutes),
                 goals=_as_int(getattr(raw, "goals", None)),
@@ -102,14 +114,14 @@ def _build_ranking(request: PlayerRankingRequest, raw_rows: list[Any]) -> Player
         )
     linked_note = (
         "approved Transfermarkt links only"
-        if request.scope == RankingScope.TRANSFERMARKT
+        if request.dataset == QueryDataset.CLUB_SEASONS
         else "tournament stats"
     )
     return PlayerRanking(
         id=_ranking_id(request),
-        scope=request.scope.value,
-        rank_by=request.rank_by.value,
-        rank_by_label=RANK_BY_LABELS[request.rank_by],
+        scope=widget_scope(request.dataset),
+        rank_by=request.sort_by.value,
+        rank_by_label=FIELD_LABELS[request.sort_by],
         scope_label=_scope_label(request),
         footer_caption=f"{len(rows)} players · {linked_note}",
         rows=rows,

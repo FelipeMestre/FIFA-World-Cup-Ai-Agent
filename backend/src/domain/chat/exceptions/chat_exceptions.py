@@ -21,9 +21,9 @@ class SamePlayerComparisonError(ChatError):
 
 
 class RankingQueryError(ChatError):
-    """Raised when a `get_player_ranking` call cannot run: unknown
-    competition, a criterion that does not exist on that scope, or a
-    goalkeeper-only sort used with a non-GK position filter.
+    """Raised when a `query_player_stats` call cannot run: unknown
+    competition, a field that does not exist on that dataset, or a
+    goalkeeper-only field used with a non-GK position filter.
     """
 
 
