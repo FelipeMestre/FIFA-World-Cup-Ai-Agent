@@ -1,10 +1,10 @@
-"""Shared `ChatService` construction for the chat routers. Both the live
-WebSocket route (`live_router.py`) and the `POST /conversations/{id}/messages`
-send endpoint (`conversation_router.py`) build the exact same `ChatService` --
-same repositories, same tool registry, same cache -- so this lives once here
-instead of being duplicated per router (see AGENTS.md's application-service
-guidance for the api layer: logic reusable across controllers, not a use-case
-orchestration itself).
+"""Shared `ChatService` construction for the chat routers. Currently just the
+`POST /conversations/{id}/messages` send endpoint (`conversation_router.py`),
+but kept as its own factory rather than inlined there (see AGENTS.md's
+application-service guidance for the api layer: logic reusable across
+controllers, not a use-case orchestration itself) since it previously also
+backed the now-removed live WebSocket route and may again back another
+caller.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession

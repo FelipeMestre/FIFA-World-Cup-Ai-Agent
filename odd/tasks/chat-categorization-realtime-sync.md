@@ -90,7 +90,7 @@ that conversation.
     SSE endpoint (T4) is live and the frontend (T5/T6) has migrated.
   - Tests: 202 ack shape, turn-in-progress 409 conflict preserved.
 
-- [ ] **T4 — Merged SSE endpoint, remove WS** (route: delegated writer —
+- [x] **T4 — Merged SSE endpoint, remove WS** (route: delegated writer —
   new router + removal of old one: 2-3 files)
   - `GET /conversations/{id}/events`: `StreamingResponse`
     (`text/event-stream`), multi-key `XREAD BLOCK` over
@@ -189,3 +189,78 @@ that conversation.
   `test_conversation_endpoints.py`, `test_conversation_live.py`,
   `test_chat_service_start_turn.py`, `test_categorize_conversation_task.py`).
   `ruff check` + `ruff format` clean on every touched file.
+- 2026-09-24: T3 independently re-verified (re-ran 15 tests, read
+  `live_router.py`'s diff directly — confirmed pure import-swap refactor, WS
+  body genuinely unchanged).
+- 2026-09-24: Starting T4 (merged SSE endpoint, remove WS). Also splitting
+  `chat_tasks.py` (414 lines, over this repo's 400-line file cap) into
+  `chat_streams.py` (keys/cursors/serialization helpers) + `chat_tasks.py`
+  (the two Arq job functions only), since the SSE endpoint's new cursor
+  helpers would have pushed it further over the cap.
+- 2026-09-24: T4 done. Split verified first (moved every non-job symbol from
+  `chat_tasks.py` into new `chat_streams.py` verbatim, added two new cursor
+  helpers -- `resume_turn_cursor` (promoted from `live_router.py`'s private
+  `_resume_cursor`) and `last_user_events_cursor` (mirrors `last_stream_cursor`
+  for the per-user stream, always starting at the tail) -- then ran the full
+  set of dependent test files to confirm the split alone broke nothing before
+  adding any new behavior: 18/18 passed
+  (`test_generate_chat_reply_task.py`, `test_categorize_conversation_task.py`,
+  `test_conversation_endpoints.py`). `chat_tasks.py` 414 -> 256 lines;
+  `chat_streams.py` new at 211 lines.
+  New `GET /conversations/{id}/events` SSE endpoint added to
+  `conversation_router.py` (360 lines after -- stayed under the cap, no
+  separate router file needed). `event: turn` / `event: conversation_updated`
+  framing helpers added alongside `client_message` in `sse.py`
+  (`user_event_message`). `id:` line is always the combined
+  `{turn_cursor}|{user_cursor}` pair. Keep-alive comment every ~15 empty
+  1s-blocked polls. Disconnect checked once per loop iteration.
+  TDD: RED was genuinely instructive here, not just procedural -- the first
+  full test run (5 new SSE tests) hung indefinitely. Root-caused by reading
+  httpx's `ASGITransport` source directly: it always fully drains the ASGI
+  app (buffering the entire response body) before `handle_async_request`
+  returns *anything*, including headers/status -- incompatible with this
+  endpoint's deliberately-infinite generator, regardless of whether the test
+  used `.get()` or `.stream()`. Fixed by switching the new
+  `test_conversation_events.py` to the same real-`uvicorn.Server`-on-a-
+  free-port pattern `test_conversation_live.py` used for the WS route (a
+  real socket streams incrementally; `ASGITransport` does not) -- confirmed
+  this by reading `test_conversation_live.py`'s `live_port` fixture before
+  deleting that file. After the fix: GREEN, 5/5 new SSE tests passed
+  (pre-seeded turn-stream delivery, pre-seeded user-stream delivery, resume
+  from a captured `Last-Event-ID` not re-delivering already-seen entries on
+  either stream half independently, 404 for missing and for another user's
+  conversation).
+  `live_router.py` deleted (confirmed first, per the task's own instruction,
+  that nothing else imports `_ticket_key`/`mint_ws_ticket`/`TurnAlreadyInProgress`
+  from it and that `ws-tickets`/`ws_tickets` have no other references --
+  clean). Its import + registration removed from `main.py`.
+  `test_conversation_live.py` deleted too (not explicitly named in the task,
+  but it exclusively tested the now-deleted WS route and ticket endpoint --
+  keeping it would leave a test permanently red against removed code).
+  Docstrings/comments in five other files that referenced the now-deleted
+  `live_router.py` were updated to stop pointing at it (`chat_tasks.py`'s
+  module docstring, `conversation_router.py`'s `send_message` description,
+  `chat_service_factory.py`, `domain/chat/tools/registry.py`,
+  `domain/chat/exceptions/chat_exceptions.py`'s `TurnAlreadyInProgress`
+  docstring, `conversation_dtos.py`'s `SendMessageRequest`/`_SEND_MESSAGE_MAX_LENGTH`
+  comments) -- no functional change, just removing dangling references.
+  Also fixed (same established one-line pattern as T1/T2/T3) the pre-existing
+  seed-user-fixture systemic bug in `test_generate_chat_reply_task.py`, since
+  it was blocking every test in that file and this task's import-split
+  touches it.
+  Full relevant regression: 24/24 passed across
+  `test_conversation_events.py`, `test_conversation_endpoints.py`,
+  `test_generate_chat_reply_task.py`, `test_categorize_conversation_task.py`,
+  `test_chat_service_start_turn.py`. Broader sweep (`tests/ -k "chat or
+  conversation"`): 38 passed, 6 errors -- all 6 in
+  `tests/integration/infra/test_chat_message_repository.py`, the same
+  pre-existing systemic bug, a file this task never touches (left as-is,
+  consistent with T1-T3 precedent of only fixing it in files this task's own
+  changes touch). Full `tests/` run: 154 passed, 5 failed, 25 errored, all in
+  files this task does not touch and does not depend on (ingestion, identity
+  links, tool_call_executor, task_error_handling) -- confirmed via import
+  grep that none of them import anything from `chat_tasks`/`chat_streams`/
+  `conversation_router`/`sse`/`live_router`; same flaky-suite-independent-of-
+  this-change pattern T3 already documented.
+  `ruff check` + `ruff format` clean on every touched file (one `ruff format`
+  line-wrap in `conversation_router.py`, no logic change).

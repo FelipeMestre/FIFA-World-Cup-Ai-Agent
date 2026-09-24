@@ -17,7 +17,8 @@ from src.infra.postgres.repositories.conversation_repository import (
     _SqlAlchemyConversationRepository,
 )
 from src.infra.redis.config import redis_client
-from src.infra.task_queue.chat_tasks import categorize_conversation_task, user_events_key
+from src.infra.task_queue.chat_streams import user_events_key
+from src.infra.task_queue.chat_tasks import categorize_conversation_task
 
 _USER_ID = 990821
 _DEFAULT_TITLE = "Task test conversation"

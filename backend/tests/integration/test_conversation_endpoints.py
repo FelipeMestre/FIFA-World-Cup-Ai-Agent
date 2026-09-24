@@ -1,7 +1,8 @@
-"""Integration tests for the `/api/v1/conversations` router (T5):
+"""Integration tests for the `/api/v1/conversations` router:
 `GET /conversations` (sidebar list), `PATCH /conversations/{id}` (title
 rename), `GET /conversations/{id}/messages` (full replay), and
-`POST /conversations/{id}/messages` (T3 -- HTTP send, alongside the WS route).
+`POST /conversations/{id}/messages` (HTTP send). The merged SSE endpoint
+(`GET /conversations/{id}/events`) has its own file, `test_conversation_events.py`.
 Uses real Postgres (no mocking, per AGENTS.md's testing anti-pattern table)
 and `app.dependency_overrides` for auth, mirroring
 `test_chat_send_message.py`'s conventions.
@@ -28,7 +29,7 @@ from src.infra.postgres.repositories.conversation_repository import (
     _SqlAlchemyConversationRepository,
 )
 from src.infra.redis.config import redis_client
-from src.infra.task_queue.chat_tasks import turn_in_progress_key, turn_stream_key
+from src.infra.task_queue.chat_streams import turn_in_progress_key, turn_stream_key
 from src.main import app
 
 _USER_ID = 990701

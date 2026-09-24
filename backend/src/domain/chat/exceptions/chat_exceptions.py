@@ -38,10 +38,9 @@ TURN_ALREADY_IN_PROGRESS_DETAIL = "A reply is already being generated for this c
 class TurnAlreadyInProgress(ChatError):
     """Raised when a turn reservation (`SET NX EX` on `turn_in_progress_key`)
     fails because another turn is already in progress for the conversation.
-    Shared by both send paths -- the WS route (`live_router.py`) and the
-    `POST /conversations/{id}/messages` endpoint (`conversation_router.py`)
-    -- each turns it into its own user-facing shape (a `rejected` WS frame
-    vs. an HTTP 409).
+    Turned into an HTTP 409 by `POST /conversations/{id}/messages`
+    (`conversation_router.py`), the only send path since the live WebSocket
+    route was removed.
     """
 
     def __init__(self, message: str = TURN_ALREADY_IN_PROGRESS_DETAIL) -> None:

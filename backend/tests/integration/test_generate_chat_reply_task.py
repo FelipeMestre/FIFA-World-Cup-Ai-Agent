@@ -27,11 +27,8 @@ from src.infra.postgres.repositories.conversation_repository import (
     _SqlAlchemyConversationRepository,
 )
 from src.infra.redis.config import redis_client
-from src.infra.task_queue.chat_tasks import (
-    generate_chat_reply_task,
-    turn_in_progress_key,
-    turn_stream_key,
-)
+from src.infra.task_queue.chat_streams import turn_in_progress_key, turn_stream_key
+from src.infra.task_queue.chat_tasks import generate_chat_reply_task
 
 _USER_ID = 990801
 _REPLY_CONTENT = "Here's the answer."
@@ -58,12 +55,23 @@ class _FailingOpenRouterClient:
 @pytest.fixture(autouse=True)
 async def _seed_user_and_cleanup():
     async with SessionFactory() as session:
+        # `name` is passed as its own bound parameter rather than derived in
+        # SQL from a reused `:email` -- reusing one bound param across two
+        # different inferred types (`text` from `split_part`, then
+        # `character varying` from the column itself) trips asyncpg's
+        # `AmbiguousParameterError`. Same fix as
+        # `test_chat_service_start_turn.py`/`test_categorize_conversation_task.py`
+        # for the identical pre-existing systemic bug.
         await session.execute(
             text(
                 'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
-                "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', false, now())"
+                "VALUES (:id, :email, :name, 'hash', false, now())"
             ),
-            {"id": _USER_ID, "email": f"chat-reply-task-test-{_USER_ID}@example.test"},
+            {
+                "id": _USER_ID,
+                "email": f"chat-reply-task-test-{_USER_ID}@example.test",
+                "name": f"chat-reply-task-test-{_USER_ID}",
+            },
         )
         await session.commit()
     yield

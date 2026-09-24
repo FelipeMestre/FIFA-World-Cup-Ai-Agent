@@ -6,9 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.api.v1.chat.dtos.chat_dtos import MessagePart
 
-# No hard limit exists today on the WS `send` frame (`live_router.py`'s
-# `_receive` only checks non-blank) -- this caps the HTTP request body to a
-# sane size instead of leaving it unbounded.
+# No hard limit exists on the underlying chat turn itself -- this caps the
+# HTTP request body to a sane size instead of leaving it unbounded.
 _SEND_MESSAGE_MAX_LENGTH = 8000
 
 
@@ -53,17 +52,13 @@ class ConversationMessagesResponse(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    """Body of `POST /conversations/{id}/messages` -- the HTTP alternative
-    to the live WebSocket's `send` frame."""
+    """Body of `POST /conversations/{id}/messages`."""
 
     content: str = Field(min_length=1, max_length=_SEND_MESSAGE_MAX_LENGTH)
 
     @field_validator("content")
     @classmethod
     def _strip_and_require_non_blank(cls, value: str) -> str:
-        # Mirrors `live_router.py`'s `_receive`, which strips the WS `send`
-        # frame's `message` and silently drops it if blank after stripping --
-        # here that same case becomes a 422 instead of a silent no-op.
         stripped = value.strip()
         if not stripped:
             raise ValueError("content must not be blank")
@@ -73,7 +68,7 @@ class SendMessageRequest(BaseModel):
 class SendMessageResponse(BaseModel):
     """202 ack for `POST /conversations/{id}/messages` -- reply generation
     itself is asynchronous (enqueued, not returned here); the caller reads
-    the live stream (WS today, SSE later) for the actual reply."""
+    the SSE stream (`GET /conversations/{id}/events`) for the actual reply."""
 
     conversation_id: UUID
     message_id: int

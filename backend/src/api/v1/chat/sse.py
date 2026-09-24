@@ -1,7 +1,8 @@
-"""Redis-stream-entry -> live-socket message. Stream entries are parsed back
+"""Redis-stream-entry -> SSE-frame message. Stream entries are parsed back
 into a `ChatTurnEvent` by `parse_chat_turn_event` (the same mapping
 `chat_turn_event_payload` writes); this module converts that domain event
-into the JSON object the conversation websocket sends to every client.
+into the JSON object the merged `GET /conversations/{id}/events` SSE
+endpoint (`conversation_router.py`) sends for each frame.
 """
 
 from src.api.v1.chat.dtos.chat_dtos import (
@@ -79,10 +80,21 @@ def redis_entry_to_dto(event_type: str, payload: dict) -> ChatStreamEvent:
 
 
 def client_message(entry_id: str, event_type: str, payload: dict) -> dict:
-    """One live-socket message. `cursor` is the Redis stream id."""
+    """One `turn` SSE frame's `data:` body. `cursor` is the Redis stream id."""
     if event_type == "UserMessageEvent":
         return {"type": "user_message", "cursor": entry_id, **payload}
     dto = redis_entry_to_dto(event_type, payload)
     body = dto.model_dump()
     body["cursor"] = entry_id
     return body
+
+
+def user_event_message(entry_id: str, payload: dict) -> dict:
+    """One `conversation_updated` SSE frame's `data:` body, read from the
+    per-user stream (`user_events_key`). Same `{"type": ..., "cursor": ...,
+    **payload}` shape `client_message` already uses for `UserMessageEvent`,
+    for consistency between the two frame kinds the merged SSE endpoint
+    emits -- `payload` already carries `conversation_id`/`title`/`icon`
+    from `serialize_conversation_categorized_event`.
+    """
+    return {"type": "conversation_updated", "cursor": entry_id, **payload}
