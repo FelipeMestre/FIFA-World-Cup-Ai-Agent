@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, Copy, RotateCw, Wrench } from "lucide-react";
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
+import { AssistantMarkdown } from "@/features/chat/components/assistant-markdown";
 
 /**
  * The visitor's own message, right-aligned on the violet-tinted user surface.
@@ -41,9 +42,11 @@ export function AssistantBubble({ children }: { children: ReactNode }) {
   );
 }
 
-export function AssistantText({ children }: { children: ReactNode }) {
+export function AssistantText({ children }: { children: string }) {
   return (
-    <p className="max-w-[680px] text-body-lg leading-[26px] text-ink-secondary">{children}</p>
+    <div className="flex max-w-[680px] flex-col gap-ds-3 text-body-lg leading-[26px] text-ink-secondary">
+      <AssistantMarkdown content={children} />
+    </div>
   );
 }
 
