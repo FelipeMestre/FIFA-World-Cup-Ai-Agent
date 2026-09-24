@@ -45,9 +45,7 @@ def _free_port() -> int:
 @pytest.fixture
 async def live_port() -> AsyncGenerator[int]:
     port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
-    )
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
     task = asyncio.create_task(server.serve())
     for _ in range(100):
         if server.started:
@@ -66,12 +64,20 @@ async def live_port() -> AsyncGenerator[int]:
 async def _seed_chat_users() -> AsyncGenerator[None]:
     async with SessionFactory() as session:
         for user_id in (_USER_ID, _OTHER_USER_ID):
+            # `name` is passed as its own bound parameter rather than derived
+            # in SQL from a reused `:email` -- see the identical note in
+            # `test_chat_service_start_turn.py` for why (pre-existing
+            # asyncpg `AmbiguousParameterError`, unrelated to this task).
             await session.execute(
                 text(
                     'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
-                    "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', false, now())"
+                    "VALUES (:id, :email, :name, 'hash', false, now())"
                 ),
-                {"id": user_id, "email": f"chat-live-test-{user_id}@example.test"},
+                {
+                    "id": user_id,
+                    "email": f"chat-live-test-{user_id}@example.test",
+                    "name": f"chat-live-test-{user_id}",
+                },
             )
         await session.commit()
     yield

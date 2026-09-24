@@ -53,7 +53,8 @@ that conversation.
 ## Tasks
 
 - [x] **T1 — DB + model + repository foundation** (route: delegated writer —
-  touches migration, domain model, schema, repository, interface: 5 files)
+  touches migration, domain model, schema, repository, interface: 5 files;
+  commit 357dffa)
   - Alembic migration: add `icon: str` (nullable, enum-constrained at app
     level) and `title_is_generated: bool default true` to `conversation`.
   - `Conversation` dataclass: add both fields.
@@ -64,8 +65,8 @@ that conversation.
     created: bool)`.
   - Tests: repository test for the guard behavior, `get_or_create` created-flag.
 
-- [ ] **T2 — Categorization Arq job** (route: delegated writer — job file +
-  worker registration + new stream helpers: 3 files)
+- [x] **T2 — Categorization Arq job** (route: delegated writer — job file +
+  worker registration + new stream helpers: 3 files; commit 08881d4)
   - `categorize_conversation_task(ctx, conversation_id, user_id, first_message)`
     in `chat_tasks.py`: calls `get_openrouter_client().create_chat_completion`
     directly (no `ToolCallExecutor`), single aggregated JSON result
@@ -77,15 +78,17 @@ that conversation.
   - Enqueue call site added where conversation `created=True` is observed.
   - Tests: job persists correctly, guard respected, stream entry shape.
 
-- [ ] **T3 — POST send endpoint, replacing WS send** (route: delegated writer
-  — router + service wiring: 2-3 files)
+- [x] **T3 — POST send endpoint, added alongside WS (not replacing yet)**
+  (route: delegated writer — new router + service wiring: 2-3 files)
   - `POST /conversations/{id}/messages`: ownership check, `chat_service
-    .start_turn` (get_or_create + created flag), reserve turn (`SET NX EX`),
-    persist user message, `XADD` `UserMessageEvent`, `enqueue_chat_reply`,
-    and — on `created=True` — enqueue `categorize_conversation_task`. Returns
+    .start_turn` (categorization enqueue already happens inside it, per T2 —
+    nothing more to do here for that), reserve turn (`SET NX EX`), persist
+    user message, `XADD` `UserMessageEvent`, `enqueue_chat_reply`. Returns
     202 ack.
-  - Tests: 202 ack shape, turn-in-progress 409 conflict preserved, categorize
-    job enqueued only on first message of a new conversation.
+  - `live_router.py`'s WS route is left untouched and still functional —
+    both send paths work in parallel until T4 deletes the WS route once the
+    SSE endpoint (T4) is live and the frontend (T5/T6) has migrated.
+  - Tests: 202 ack shape, turn-in-progress 409 conflict preserved.
 
 - [ ] **T4 — Merged SSE endpoint, remove WS** (route: delegated writer —
   new router + removal of old one: 2-3 files)
@@ -141,3 +144,48 @@ that conversation.
   transfer, injury, stats, history. Per-user stream (`user:events:{user_id}`)
   uses `XADD ... MAXLEN ~ 1000` instead of the turn stream's TTL, since it's
   long-lived across the whole session rather than scoped to one turn.
+- 2026-09-24: T2 done, commit 08881d4. Spot-verified (re-ran the 6 new tests,
+  read the `categorize_conversation_task`/`chat_service.py`/`worker.py`/
+  `pool.py` diffs directly) — correct. Discovered pre-existing systemic bug
+  confirmed independently on the same broken fixture pattern; new T2 test
+  fixtures sidestep it by passing `name` as its own bound param rather than
+  reproducing the bug.
+- 2026-09-24: Starting T3 (POST send endpoint, added alongside WS).
+- 2026-09-24: T3 done. `TurnAlreadyInProgress` moved from `live_router.py` to
+  the shared `src/domain/chat/exceptions/chat_exceptions.py` (now also
+  carries `TURN_ALREADY_IN_PROGRESS_DETAIL`, the message both send paths
+  return) since a second router now needs it -- exactly the case AGENTS.md's
+  domain-exceptions guidance describes. `_chat_service` was similarly
+  promoted from a private helper in `live_router.py` to a public
+  `build_chat_service` in new `src/api/v1/chat/services/chat_service_factory.py`
+  (an api-layer application service reusable across controllers, per
+  AGENTS.md's routers/services/dtos folder convention) rather than importing
+  a leading-underscore symbol across modules. `live_router.py`'s WS route
+  body (`accept_chat_message`, `_pump`, `_receive`, `conversation_live`) was
+  not touched beyond these two import/call-site swaps -- behavior is
+  unchanged, confirmed by its own existing test suite
+  (`test_conversation_live.py`, 4/4 still green). New
+  `POST /conversations/{id}/messages` added to `conversation_router.py`,
+  mirroring `accept_chat_message` exactly: `start_turn` -> `SET NX EX`
+  reservation -> `persist_user_message` -> `XADD UserMessageEvent` ->
+  `enqueue_chat_reply`; catches `ConversationOwnershipError` -> 403
+  ("Conversation not found", matching the WS path's own detail string) and
+  `TurnAlreadyInProgress` -> 409. New `SendMessageRequest`/`SendMessageResponse`
+  DTOs in `conversation_dtos.py` (8000-char cap -- no limit existed on the WS
+  frame to match; request content is stripped and rejected if blank via a
+  `field_validator`, mirroring the WS path's `message.strip()` check).
+  TDD: RED confirmed first (3 new tests failing -- 405/AttributeError against
+  the not-yet-existing endpoint and import), then GREEN (11/11 in
+  `test_conversation_endpoints.py`). Also found and fixed (in-file only,
+  minimal) the same pre-existing seed-user-fixture systemic bug flagged in
+  T1/T2 in `test_conversation_endpoints.py` and `test_conversation_live.py`
+  themselves -- it was blocking every test in both files, including
+  pre-existing ones, not just the new ones; same established one-line fix
+  (bind `name` as its own param) already used in T1/T2's own test files. Full
+  `tests/` run is flaky independent of this change (connection/data-leak
+  issues across the whole suite, non-deterministic failure sets between two
+  runs) -- out of scope, not touched; all files this task actually changed
+  or depends on pass cleanly in isolation (21/21 across
+  `test_conversation_endpoints.py`, `test_conversation_live.py`,
+  `test_chat_service_start_turn.py`, `test_categorize_conversation_task.py`).
+  `ruff check` + `ruff format` clean on every touched file.

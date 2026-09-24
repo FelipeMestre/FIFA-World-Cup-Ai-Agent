@@ -10,7 +10,15 @@ from src.api.v1.chat.dtos.conversation_dtos import (
     ConversationMessageDto,
     ConversationMessagesResponse,
     ConversationSummaryDto,
+    SendMessageRequest,
+    SendMessageResponse,
     UpdateConversationTitleRequest,
+)
+from src.api.v1.chat.services.chat_service_factory import build_chat_service
+from src.domain.chat.exceptions.chat_exceptions import (
+    TURN_ALREADY_IN_PROGRESS_DETAIL,
+    ConversationOwnershipError,
+    TurnAlreadyInProgress,
 )
 from src.domain.chat.model.chat_message import ChatMessage
 from src.domain.chat.model.chat_message_widget import ChatMessageWidget
@@ -31,7 +39,14 @@ from src.infra.postgres.repositories.chat_turn_failure_repository import (
 )
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.redis.config import redis_client
-from src.infra.task_queue.chat_tasks import turn_in_progress_key
+from src.infra.task_queue.chat_tasks import (
+    TURN_IN_PROGRESS_TTL_SECONDS,
+    last_stream_cursor,
+    serialize_user_message_event,
+    turn_in_progress_key,
+    turn_stream_key,
+)
+from src.infra.task_queue.pool import enqueue_chat_reply
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -124,6 +139,63 @@ async def update_conversation_title(
     await session.commit()
     is_generating = await redis_client.exists(turn_in_progress_key(str(updated.id)))
     return _to_summary_dto(updated, is_generating=bool(is_generating))
+
+
+@router.post(
+    "/{conversation_id}/messages",
+    response_model=SendMessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Send a message in a conversation",
+    description="HTTP alternative to the live WebSocket's `send` frame (`live_router.py`) -- "
+    "does exactly the same thing: persists the user message, publishes it on the "
+    "conversation's turn stream, and enqueues reply generation. Both send paths run in "
+    "parallel until the WS route is removed. Returns 409 while a reply is already being "
+    "generated for this conversation, and 403 for a conversation owned by another user.",
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "Conversation owned by another user"},
+        status.HTTP_409_CONFLICT: {"description": "A reply is already being generated"},
+    },
+)
+async def send_message(
+    conversation_id: UUID,
+    payload: SendMessageRequest,
+    session: SessionDep,
+    jwt_data: JwtDataDep,
+) -> SendMessageResponse:
+    user_id = int(jwt_data["sub"])
+    chat_service = build_chat_service(session)
+    try:
+        conversation = await chat_service.start_turn(
+            conversation_id=conversation_id, user_id=user_id, first_message=payload.content
+        )
+        cursor = await last_stream_cursor(str(conversation_id))
+        reserved = await redis_client.set(
+            turn_in_progress_key(str(conversation_id)),
+            cursor,
+            nx=True,
+            ex=TURN_IN_PROGRESS_TTL_SECONDS,
+        )
+        if not reserved:
+            raise TurnAlreadyInProgress()
+    except ConversationOwnershipError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Conversation not found"
+        ) from exc
+    except TurnAlreadyInProgress as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=TURN_ALREADY_IN_PROGRESS_DETAIL
+        ) from exc
+
+    user_message = await chat_service.persist_user_message(conversation_id, payload.content)
+    await redis_client.xadd(
+        turn_stream_key(str(conversation_id)),
+        serialize_user_message_event(
+            str(conversation.id), user_message.id, payload.content, conversation.title
+        ),
+    )
+    await enqueue_chat_reply(str(conversation_id), user_id, payload.content, user_message.id)
+
+    return SendMessageResponse(conversation_id=conversation.id, message_id=user_message.id)
 
 
 @router.get(

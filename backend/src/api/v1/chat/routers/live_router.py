@@ -9,28 +9,18 @@ import secrets
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.v1.auth.services.dependencies import JwtDataDep
+from src.api.v1.chat.services.chat_service_factory import build_chat_service
 from src.api.v1.chat.sse import client_message
-from src.domain.chat.exceptions.chat_exceptions import ConversationOwnershipError
-from src.domain.chat.services.chat_service import ChatService
-from src.domain.chat.tools.registry import build_tool_registry
-from src.infra.openrouter.client import get_openrouter_client
+from src.domain.chat.exceptions.chat_exceptions import (
+    TURN_ALREADY_IN_PROGRESS_DETAIL,
+    ConversationOwnershipError,
+    TurnAlreadyInProgress,
+)
 from src.infra.postgres.config import SessionFactory
-from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
-from src.infra.postgres.repositories.match_analytics_repository import (
-    get_match_analytics_repository,
-)
-from src.infra.postgres.repositories.player_analytics_repository import (
-    get_player_analytics_repository,
-)
-from src.infra.postgres.repositories.team_analytics_repository import get_team_analytics_repository
 from src.infra.redis.config import redis_client
-from src.infra.redis.repositories.conversation_cache_repository import (
-    get_conversation_cache_repository,
-)
 from src.infra.task_queue.chat_tasks import (
     TURN_IN_PROGRESS_TTL_SECONDS,
     is_stream_cursor,
@@ -44,31 +34,11 @@ from src.infra.task_queue.pool import enqueue_chat_reply
 router = APIRouter(tags=["chat"])
 
 _TICKET_TTL_SECONDS = 30
-_TURN_ALREADY_IN_PROGRESS = "A reply is already being generated for this conversation"
 _READ_BLOCK_MS = 1_000
-
-
-class TurnAlreadyInProgress(Exception):
-    pass
 
 
 def _ticket_key(ticket: str) -> str:
     return f"chat:ws-ticket:{ticket}"
-
-
-def _chat_service(session: AsyncSession) -> ChatService:
-    return ChatService(
-        conversation_cache=get_conversation_cache_repository(redis_client),
-        openrouter_client=get_openrouter_client(),
-        tool_registry=build_tool_registry(
-            get_team_analytics_repository(session),
-            get_player_analytics_repository(session),
-            get_match_analytics_repository(session),
-        ),
-        conversation_repo=get_conversation_repository(session),
-        chat_message_repo=get_chat_message_repository(session),
-        session=session,
-    )
 
 
 @router.post("/chat/ws-tickets", summary="Mint a one-time ticket for the live socket")
@@ -84,7 +54,7 @@ async def accept_chat_message(conversation_id: UUID, user_id: int, message: str)
     including this one -- receives the same `user_message` entry.
     """
     async with SessionFactory() as session:
-        chat_service = _chat_service(session)
+        chat_service = build_chat_service(session)
         conversation = await chat_service.start_turn(
             conversation_id=conversation_id, user_id=user_id, first_message=message
         )
@@ -153,7 +123,9 @@ async def _receive(
             await accept_chat_message(conversation_id, user_id, message.strip())
         except TurnAlreadyInProgress:
             async with send_lock:
-                await websocket.send_json({"type": "rejected", "detail": _TURN_ALREADY_IN_PROGRESS})
+                await websocket.send_json(
+                    {"type": "rejected", "detail": TURN_ALREADY_IN_PROGRESS_DETAIL}
+                )
         except ConversationOwnershipError:
             async with send_lock:
                 await websocket.send_json({"type": "rejected", "detail": "Conversation not found"})
@@ -179,9 +151,7 @@ async def conversation_live(websocket: WebSocket, conversation_id: UUID) -> None
     await websocket.accept()
     send_lock = asyncio.Lock()
     pump_task = asyncio.create_task(_pump(websocket, str(conversation_id), send_lock))
-    receive_task = asyncio.create_task(
-        _receive(websocket, conversation_id, user_id, send_lock)
-    )
+    receive_task = asyncio.create_task(_receive(websocket, conversation_id, user_id, send_lock))
     try:
         done, pending = await asyncio.wait(
             {pump_task, receive_task}, return_when=asyncio.FIRST_COMPLETED
