@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { MessagePartView } from "@/features/chat/components/message-part-renderer";
-import { sampleTeam } from "@/features/chat/sample-data";
+import { sampleRanking, sampleTeam } from "@/features/chat/sample-data";
 import type { EntityRef, MessagePart } from "@/features/chat/types";
 
 describe("MessagePartView", () => {
@@ -44,14 +44,14 @@ describe("MessagePartView", () => {
     expect(screen.queryByRole("button", { name: /view full details/i })).not.toBeInTheDocument();
   });
 
-  it("calls onOpenEntity with the widget's type and id when 'View full details' is clicked", async () => {
+  it("renders a ranking_widget part and opens the ranking entity", async () => {
     const user = userEvent.setup();
     const onOpenEntity = vi.fn();
-    const part: MessagePart = { type: "team_widget", data: sampleTeam };
+    const part: MessagePart = { type: "ranking_widget", data: sampleRanking };
     render(<MessagePartView part={part} openEntity={null} onOpenEntity={onOpenEntity} />);
 
+    expect(screen.getByLabelText(/player ranking: goals/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /view full details/i }));
-
-    expect(onOpenEntity).toHaveBeenCalledWith({ type: "team", id: sampleTeam.id });
+    expect(onOpenEntity).toHaveBeenCalledWith({ type: "ranking", id: sampleRanking.id });
   });
 });

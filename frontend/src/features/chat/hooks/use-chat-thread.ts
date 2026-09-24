@@ -42,6 +42,8 @@ function widgetPartRefAndData(part: MessagePart): [EntityRef, unknown] | null {
       return [{ type: "player", id: part.data.id }, part.data];
     case "compare_widget":
       return [{ type: "compare", id: part.data.id }, part.data];
+    case "ranking_widget":
+      return [{ type: "ranking", id: part.data.id }, part.data];
     default:
       return null;
   }
