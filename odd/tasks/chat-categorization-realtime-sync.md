@@ -312,7 +312,7 @@ plus one small fix commit (icon exposed on `ConversationSummaryDto`) on
 `claude/chat-categorization-realtime-sync-b5bee9`. No WebSocket code remains
 anywhere in the app.
 
-- [ ] **T6 — Dedicated per-user SSE endpoint: fix cross-window sync**
+- [x] **T6 — Dedicated per-user SSE endpoint: fix cross-window sync**
   (route: split into a backend writer then a frontend writer, same reasoning
   as T1-T4/T5 — the backend event contract needs to be final before the
   frontend consumer is written)
@@ -376,3 +376,34 @@ anywhere in the app.
   confirmed untouched by this task, left alone).
 - 2026-09-24: Starting T6 frontend (dedicated user-events connection,
   sidebar prepend-on-create).
+- 2026-09-24: T6 frontend done. New `user-events.ts`/`connectUserEvents` +
+  `/api/users/events` proxy route, `useConversationList` owns the connection
+  (opened on mount, independent of conversation selection) with a
+  dedupe-by-id prepend for `conversation_created` and the existing
+  `applyConversationUpdate` for `conversation_updated`. Removed the now-dead
+  `onConversationUpdated` prop/branch from `use-chat-thread.ts`/
+  `home-shell.tsx` and `ConversationUpdatedEvent` from
+  `conversation-events.ts` (that connection is turn-only now, matching the
+  backend contract change). Verified independently: re-ran 31 tests (both
+  touched files) plus the full suite (66/67, same pre-existing unrelated
+  `login-form.test.tsx` failure already documented for T5), read every diff
+  directly (`use-conversation-list.ts`'s dedupe logic, `user-events.ts`, the
+  new proxy route, and the three clean-removal diffs), and traced all 6
+  `eslint` findings to exact pre-existing lines this task never touched —
+  none belong to the new code. **Manually verified the actual reported bug
+  is fixed**: two real browser tabs, tab B sitting on the empty `/home`
+  screen with nothing selected, conversation created in tab A appeared live
+  in tab B's sidebar with no reload, first as the new row and then with its
+  categorized title once the job resolved. One process note: the writer's
+  own `git stash` (to check a TypeScript baseline) briefly touched the
+  shared stash stack; recovered via the documented safe procedure (unique
+  tag, `apply <sha>` not `pop`, verified, dropped) — confirmed the stash
+  list is empty and the final diff matches exactly what was intended, no
+  other session's work was disturbed.
+
+## Status: feature complete, including the cross-window fix
+All of T1-T6 done, verified, and committed as 8 work-unit commits on
+`claude/chat-categorization-realtime-sync-b5bee9`. The originally reported
+bug (a new conversation not appearing in a second window) is fixed and
+manually confirmed via a real two-tab test, not just unit tests. PR opens
+when the user asks.

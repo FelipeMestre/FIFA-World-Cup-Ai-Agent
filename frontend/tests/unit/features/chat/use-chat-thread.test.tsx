@@ -837,35 +837,4 @@ describe("useChatThread", () => {
     expect(result.current.messages).toHaveLength(2);
   });
 
-  it("routes a conversation_updated SSE event to onConversationUpdated instead of the message thread", async () => {
-    const urlId = "550e8400-e29b-41d4-a716-446655440000";
-    const onConversationUpdated = vi.fn();
-
-    const { result } = renderHook(() =>
-      useChatThread({ urlConversationId: urlId, onConversationUpdated }),
-    );
-
-    await waitFor(() => {
-      expect(harness.openedHandlers).toHaveLength(1);
-    });
-
-    act(() => {
-      harness.openedHandlers[0]?.({
-        type: "conversation_updated",
-        conversation_id: urlId,
-        title: "Argentina's defensive record",
-        icon: "team",
-        cursor: "12-0",
-      });
-    });
-
-    expect(onConversationUpdated).toHaveBeenCalledExactlyOnceWith({
-      conversationId: urlId,
-      title: "Argentina's defensive record",
-      icon: "team",
-    });
-    // Not a thread event -- the message list is untouched.
-    expect(result.current.messages).toHaveLength(0);
-    expect(result.current.isSending).toBe(false);
-  });
 });

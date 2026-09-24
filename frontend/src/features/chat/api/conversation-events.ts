@@ -3,11 +3,11 @@ import type { RawMessagePart } from "@/features/chat/schemas/message-part.schema
 /**
  * Wire events for the conversation SSE stream (`GET /conversations/{id}/events`,
  * proxied through `app/api/conversations/[conversationId]/events/route.ts`).
- * The reply vocabulary matches the Redis stream entries `generate_chat_reply_task`
- * publishes on `event: turn` frames; `conversation_updated` frames carry the
- * background categorization job's result on `event: conversation_updated`
- * frames -- both share one connection per `_conversation_events` in the
- * backend's `conversation_router.py`.
+ * This connection is turn-stream-only: it carries the reply vocabulary that
+ * matches the Redis stream entries `generate_chat_reply_task` publishes on
+ * `event: turn` frames. Account-wide events (`conversation_created`,
+ * `conversation_updated`) travel over the separate per-user connection --
+ * see `@/features/chat/api/user-events`.
  */
 
 export interface ReasoningDeltaEvent {
@@ -66,26 +66,7 @@ export interface UserMessageEvent {
   cursor: string;
 }
 
-/**
- * Emitted on the `conversation_updated` SSE event once
- * `categorize_conversation_task` resolves a title + icon for a conversation
- * -- delivered to every device with this conversation's SSE connection
- * open, regardless of which conversation is on screen there (the backend
- * reads it off the requesting user's own per-user stream, not this one's
- * turn stream).
- */
-export interface ConversationUpdatedEvent {
-  type: "conversation_updated";
-  conversation_id: string;
-  title: string;
-  icon: string;
-  cursor: string;
-}
-
-export type ConversationEvent =
-  | (ChatStreamEvent & { cursor?: string })
-  | UserMessageEvent
-  | ConversationUpdatedEvent;
+export type ConversationEvent = (ChatStreamEvent & { cursor?: string }) | UserMessageEvent;
 
 export interface EventsConnection {
   conversationId: string;
@@ -119,7 +100,6 @@ export function connectConversationEvents(
   };
 
   source.addEventListener("turn", handleFrame);
-  source.addEventListener("conversation_updated", handleFrame);
 
   return {
     conversationId,

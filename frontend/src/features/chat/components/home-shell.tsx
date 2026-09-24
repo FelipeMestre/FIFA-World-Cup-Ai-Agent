@@ -61,12 +61,6 @@ export function HomeShell({
       // Native history so Next does not remount the home layout on first send.
       window.history.replaceState(window.history.state, "", `/home/${id}`);
     },
-    onConversationUpdated: (event) => {
-      conversationList.applyConversationUpdate(event.conversationId, {
-        title: event.title,
-        icon: event.icon,
-      });
-    },
   });
   const panel = useChatPanel();
   const conversationList = useConversationList();

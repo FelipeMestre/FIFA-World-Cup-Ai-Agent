@@ -60,11 +60,6 @@ function mergeHistory(previous: ChatMessage[], replay: ChatMessage[]): ChatMessa
 export type UseChatThreadArgs = {
   urlConversationId?: string | null;
   onConversationCreated?: (id: string) => void;
-  /** Fired for a `conversation_updated` SSE event -- a background
-   * categorization result for this conversation, on this or another device.
-   * Wired to `useConversationList.applyConversationUpdate` by the caller;
-   * this hook only owns the message thread, not the sidebar list. */
-  onConversationUpdated?: (event: { conversationId: string; title: string; icon: string }) => void;
 };
 
 /**
@@ -81,7 +76,6 @@ export type UseChatThreadArgs = {
 export function useChatThread({
   urlConversationId = null,
   onConversationCreated,
-  onConversationUpdated,
 }: UseChatThreadArgs = {}) {
   const restored = urlConversationId ? readInFlightTurn(urlConversationId) : undefined;
   const [messages, setMessagesState] = useState<ChatMessage[]>(() => restored ?? []);
@@ -94,8 +88,6 @@ export function useChatThread({
   conversationIdRef.current = conversationId;
   const onConversationCreatedRef = useRef(onConversationCreated);
   onConversationCreatedRef.current = onConversationCreated;
-  const onConversationUpdatedRef = useRef(onConversationUpdated);
-  onConversationUpdatedRef.current = onConversationUpdated;
   const previousUrlIdRef = useRef(urlConversationId);
   const skipHistoryLoadRef = useRef(Boolean(restored?.length));
   const historyRequestIdRef = useRef(0);
@@ -116,14 +108,6 @@ export function useChatThread({
   );
 
   onLiveEventRef.current = (event) => {
-    if (event.type === "conversation_updated") {
-      onConversationUpdatedRef.current?.({
-        conversationId: event.conversation_id,
-        title: event.title,
-        icon: event.icon,
-      });
-      return;
-    }
     setMessages((prev) => applyLiveEvent(prev, event));
     if (isTerminalLiveEvent(event)) setIsSending(false);
     else if (event.type === "user_message") setIsSending(true);
