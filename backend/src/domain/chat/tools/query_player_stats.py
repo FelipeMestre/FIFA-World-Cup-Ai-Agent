@@ -1,10 +1,9 @@
 """`query_player_stats` -- allowlisted filter/sort over player stats.
 
-The model must not call this tool until the user has picked a dataset and a
-sort field. For club_seasons it must also have competition. Seasons are a
-tool argument the model fills in from the request (one label or several to
-sum). Missing dataset, sort_by, or competition are asked in assistant text.
-World Cup numbers and club season numbers are never mixed into one score.
+Infer dataset, competition, seasons, and filters from the request when they
+are clear. A named club league means club_seasons — never ask World Cup vs
+club. Ask in assistant text only for what is still missing. World Cup numbers
+and club season numbers are never mixed into one score.
 """
 
 import json
@@ -65,18 +64,19 @@ QUERY_PLAYER_STATS_SCHEMA: dict = {
     "function": {
         "name": "query_player_stats",
         "description": (
-            "Return a sorted, filtered list of FIFA World Cup 2026 squad players. "
+            "Return a sorted, filtered list of Football Players. "
             "Two datasets that must never be mixed: world_cup uses tournament "
-            "player_stat only; club_seasons sums club season stats for players with "
-            "an approved identity link (unlinked players are omitted). "
-            "Do not call until the user has chosen dataset and sort_by. For "
-            "club_seasons also wait for competition (all, or a named competition). "
-            "Pass seasons yourself — do not ask the user to pick from a menu. "
-            "Map their wording to labels (current season, last two seasons, "
-            "or an explicit 24/25). If they did not name a season, pass the "
-            "current club season. If dataset, sort_by, or competition is missing, "
-            "reply in chat text listing: (1) datasets; (2) sort fields; "
-            "(3) optional filters as field+op+value; (4) club competition. "
+            "player_stat only; club_seasons sums club season stats for players"
+            "Infer arguments from the request and call. A named club league "
+            "or competition (Spanish league, La Liga, Premier League, "
+            "Champions League, …) means dataset=club_seasons and that "
+            "competition — never ask whether they meant World Cup. Use "
+            "world_cup only when they ask about the tournament. Ask in chat "
+            "only for what is still genuinely missing. "
+            "Pass seasons yourself (current season if unnamed). "
+            "Top 5 → limit 5. Goalkeepers → position eq GK. "
+            "Club seasons have no saves, clean sheets, or goals conceded "
+            "(World Cup only). For club keepers, do not offer those fields; "
             "Shared fields: position, age, height_cm, nationality, appearances, "
             "minutes, goals, assists, goal_contributions, goals_per90, assists_per90, "
             "goal_contributions_per90, yellow_cards, red_cards. "
@@ -84,8 +84,7 @@ QUERY_PLAYER_STATS_SCHEMA: dict = {
             "clean_sheets, goals_conceded, goals_conceded_per90. "
             "Do not offer shots, shots on target, average rating, or a blended "
             "World Cup + club score. Put extra constraints in filters "
-            "(e.g. appearances gte 10, yellow_cards lte 3). Inclusive: gte 10 keeps "
-            "10 or more. Do not claim a filter was applied unless you passed it."
+            "Do not claim a filter was applied unless you passed it."
         ),
         "parameters": {
             "type": "object",
@@ -94,8 +93,9 @@ QUERY_PLAYER_STATS_SCHEMA: dict = {
                     "type": "string",
                     "enum": ["world_cup", "club_seasons"],
                     "description": (
-                        "world_cup = tournament stats. club_seasons = summed club "
-                        "season stats for approved identity links only."
+                        "Infer from the request. Named club league/competition "
+                        "= club_seasons. Tournament/World Cup = world_cup. "
+                        "Never mix the two."
                     ),
                 },
                 "sort_by": {
@@ -129,8 +129,9 @@ QUERY_PLAYER_STATS_SCHEMA: dict = {
                 "competition": {
                     "type": "string",
                     "description": (
-                        "Required for club_seasons: 'all' or a competition name/code "
-                        "(Premier League, GB1, Champions League, CL, …)."
+                        "Required for club_seasons. Infer from the request: "
+                        "'all' or a name/code/alias (Spanish league, La Liga, "
+                        "ES1, Premier League, GB1, Champions League, CL, …)."
                     ),
                 },
                 "limit": {

@@ -21,6 +21,9 @@ def test_resolve_competition_id_accepts_code_and_unique_name() -> None:
     assert resolve_competition_id("GB1") == "GB1"
     assert resolve_competition_id("premier league") == "GB1"
     assert resolve_competition_id("Champions League") == "CL"
+    assert resolve_competition_id("La Liga") == "ES1"
+    assert resolve_competition_id("spanish league") == "ES1"
+    assert resolve_competition_id("ES1") == "ES1"
 
 
 def test_resolve_competition_id_rejects_unknown_or_ambiguous() -> None:

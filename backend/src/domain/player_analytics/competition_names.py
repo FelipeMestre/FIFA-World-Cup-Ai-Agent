@@ -56,6 +56,17 @@ _COMPETITION_NAMES: dict[str, str] = {
 }
 
 
+_COMPETITION_ALIASES: dict[str, str] = {
+    "la liga": "ES1",
+    "spanish league": "ES1",
+    "spanish liga": "ES1",
+    "primera division": "ES1",
+    "primera división": "ES1",
+    "epl": "GB1",
+    "english premier league": "GB1",
+}
+
+
 def competition_name(competition_id: str) -> str:
     return _COMPETITION_NAMES.get(competition_id, competition_id)
 
@@ -63,7 +74,8 @@ def competition_name(competition_id: str) -> str:
 def resolve_competition_id(query: str) -> str | None:
     """Map a user/model competition string to a Transfermarkt code.
 
-    Accepts an exact code (`GB1`) or a unique display name (`Premier League`).
+    Accepts an exact code (`GB1`), a unique display name (`Premier League`),
+    or a common alias (`Spanish league`, `La Liga`).
     Ambiguous or empty input returns `None` so the ranking tool can fail
     fast instead of ranking the whole table.
     """
@@ -74,6 +86,9 @@ def resolve_competition_id(query: str) -> str | None:
     if upper in _COMPETITION_NAMES:
         return upper
     lowered = stripped.casefold()
+    alias = _COMPETITION_ALIASES.get(lowered)
+    if alias is not None:
+        return alias
     exact_names = [
         competition_id
         for competition_id, name in _COMPETITION_NAMES.items()
