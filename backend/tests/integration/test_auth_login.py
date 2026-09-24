@@ -35,6 +35,7 @@ def _override_user_repository() -> AsyncGenerator[None]:
     user = User(
         id=1,
         email=_EMAIL,
+        name="Scout",
         password_hash=password_service.hash_password(_PASSWORD),
         is_admin=False,
         created_at=datetime.now(UTC),

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { useParams, useRouter } from "next/navigation";
 
 import { AppHeader } from "@/components/layout/app-header";
+import { logout } from "@/features/auth/api/logout";
 import { HomePromptCard } from "@/features/chat/components/home-prompt-card";
 import { HomeSidebar } from "@/features/chat/components/home-sidebar";
 import { HomeThread } from "@/features/chat/components/home-thread";
@@ -31,7 +32,13 @@ const MOBILE_BREAKPOINT = "(max-width: 767px)";
  * Desktop: sidebar + hero + composer + 2x2 prompt grid
  * Mobile: no sidebar, stacked full-width prompt buttons, bottom composer
  */
-export function HomeShell({ children }: { children?: ReactNode }) {
+export function HomeShell({
+  children,
+  userName,
+}: {
+  children?: ReactNode;
+  userName: string;
+}) {
   const router = useRouter();
   const params = useParams();
   const urlConversationId = conversationIdFromParams(
@@ -130,6 +137,12 @@ export function HomeShell({ children }: { children?: ReactNode }) {
     }
   };
 
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
+    router.refresh();
+  };
+
   const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -152,8 +165,10 @@ export function HomeShell({ children }: { children?: ReactNode }) {
             activeId={conversationId}
             isLoading={conversationList.isLoading}
             loadError={conversationList.loadError}
+            userName={userName}
             onNewChat={startNewChat}
             onRename={setRenameTarget}
+            onLogout={handleLogout}
           />
 
           {/* ThreadHeader spans this column (main + side panel) so the panel
@@ -292,10 +307,10 @@ export function HomeShell({ children }: { children?: ReactNode }) {
                             className="h-[72px] w-full rounded-t-2xl px-5.5 pt-5 pb-0 resize-none bg-transparent border-0 text-body-lg text-ink-primary placeholder:text-ink-muted focus:outline-none font-sans"
                           />
                           <div className="flex items-center gap-2 px-3 py-2.5 pl-4">
-                            <button type="button" className="focus-ring flex h-8 items-center gap-1.5 rounded-full border border-border-strong bg-surface-700 px-2.5 text-label-md text-ink-secondary hover:bg-surface-600">
+                            <button type="button" className="focus-ring flex h-8 items-center gap-1.5 rounded-full border border-border-strong bg-surface-700 px-2.5 text-label-md text-ink-secondary hover:bg-surface-600 hover:cursor-pointer">
                               <span className="font-mono text-ink-primary">@</span> Team or player
                             </button>
-                            <button type="button" className="focus-ring flex h-8 items-center gap-1.5 rounded-full border border-border-strong bg-surface-700 px-2.5 text-label-md text-ink-secondary hover:bg-surface-600">
+                            <button type="button" className="focus-ring flex h-8 items-center gap-1.5 rounded-full border border-border-strong bg-surface-700 px-2.5 text-label-md text-ink-secondary hover:bg-surface-600 hover:cursor-pointer">
                               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" aria-hidden="true">
                                 <rect x="3" y="4" width="14" height="13" />
                                 <path d="M3 8h14M7 2v4M13 2v4" />
@@ -303,7 +318,7 @@ export function HomeShell({ children }: { children?: ReactNode }) {
                             </button>
                             <div className="flex-1" />
                             <span className="text-body-sm text-ink-muted"><kbd className="font-mono border border-border-strong px-1.5 rounded">⏎</kbd> to send</span>
-                            <button type="button" aria-label="Send" onClick={() => startChat(draft)} disabled={draft.trim().length === 0} className="focus-ring shrink-0 size-10 flex items-center justify-center rounded-xl bg-brand text-on-brand shadow-[0_6px_18px_rgba(126,111,238,0.45),_inset_0_1px_0_rgba(255,255,255,0.25)] hover:shadow-[0_8px_24px_rgba(126,111,238,0.55),_inset_0_1px_0_rgba(255,255,255,0.3)] transition-shadow disabled:opacity-40">
+                            <button type="button" aria-label="Send" onClick={() => startChat(draft)} disabled={draft.trim().length === 0} className="focus-ring shrink-0 size-10 flex items-center justify-center rounded-xl bg-brand text-on-brand shadow-[0_6px_18px_rgba(126,111,238,0.45),_inset_0_1px_0_rgba(255,255,255,0.25)] hover:shadow-[0_8px_24px_rgba(126,111,238,0.55),_inset_0_1px_0_rgba(255,255,255,0.3)] transition-shadow enabled:hover:cursor-pointer disabled:opacity-40">
                               <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" /></svg>
                             </button>
                           </div>

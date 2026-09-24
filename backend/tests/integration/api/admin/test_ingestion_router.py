@@ -30,8 +30,8 @@ async def _seed_users() -> AsyncGenerator[None]:
     async with SessionFactory() as session:
         await session.execute(
             text(
-                'INSERT INTO "user" (id, email, password_hash, is_admin, created_at) '
-                "VALUES (:id, :email, 'hash', :is_admin, now())"
+                'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
+                "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', :is_admin, now())"
             ),
             [
                 {

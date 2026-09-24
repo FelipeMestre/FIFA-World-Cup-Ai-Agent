@@ -14,6 +14,7 @@ def _to_domain(row: UserSchema) -> User:
     return User(
         id=row.id,
         email=row.email,
+        name=row.name,
         password_hash=row.password_hash,
         is_admin=row.is_admin,
         created_at=row.created_at,
@@ -26,6 +27,11 @@ class _SqlAlchemyUserRepository:
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self._session.execute(select(UserSchema).where(UserSchema.email == email))
+        row = result.scalar_one_or_none()
+        return _to_domain(row) if row else None
+
+    async def get_by_id(self, user_id: int) -> User | None:
+        result = await self._session.execute(select(UserSchema).where(UserSchema.id == user_id))
         row = result.scalar_one_or_none()
         return _to_domain(row) if row else None
 

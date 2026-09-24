@@ -98,7 +98,7 @@ export function LoginForm() {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="mt-1 h-12 rounded-lg bg-brand text-[15px] font-semibold text-on-brand shadow-[0_10px_28px_rgba(126,111,238,0.45),inset_0_1px_0_rgba(255,255,255,0.25)] hover:bg-brand-strong"
+          className="mt-1 h-12 rounded-lg bg-brand text-[15px] font-semibold text-on-brand shadow-[0_10px_28px_rgba(126,111,238,0.45),inset_0_1px_0_rgba(255,255,255,0.25)] hover:bg-brand-strong hover:cursor-pointer"
         >
           {isSubmitting ? "Signing in…" : "Sign in"}
         </Button>

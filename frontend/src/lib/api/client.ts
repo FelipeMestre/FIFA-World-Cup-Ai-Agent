@@ -43,6 +43,13 @@ export async function login(payload: LoginPayload): Promise<void> {
   }
 }
 
+export async function logout(): Promise<void> {
+  const response = await fetch("/api/auth/logout", { method: "POST" });
+  if (!response.ok) {
+    throw new ApiError(await parseErrorDetail(response), response.status);
+  }
+}
+
 /**
  * JSON fetch against our own Route Handlers. Throws `ApiError` on a
  * non-2xx so feature clients don't each reimplement status parsing.

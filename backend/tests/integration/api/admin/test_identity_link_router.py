@@ -25,8 +25,8 @@ async def pending_link() -> AsyncGenerator[dict]:
     async with SessionFactory() as session:
         await session.execute(
             text(
-                'INSERT INTO "user" (id, email, password_hash, is_admin, created_at) '
-                "VALUES (:id, :email, 'hash', true, now())"
+                'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
+                "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', true, now())"
             ),
             {"id": _ADMIN_USER_ID, "email": "admin-identity-link-test@example.test"},
         )
