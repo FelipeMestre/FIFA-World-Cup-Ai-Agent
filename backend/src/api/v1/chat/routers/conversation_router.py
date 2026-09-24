@@ -74,6 +74,7 @@ def _to_summary_dto(conversation: Conversation, is_generating: bool) -> Conversa
     return ConversationSummaryDto(
         id=conversation.id,
         title=conversation.title,
+        icon=conversation.icon,
         updated_at=conversation.updated_at,
         created_at=conversation.created_at,
         is_generating=is_generating,

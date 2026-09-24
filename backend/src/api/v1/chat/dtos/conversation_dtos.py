@@ -20,6 +20,7 @@ class ConversationSummaryDto(BaseModel):
 
     id: UUID
     title: str
+    icon: str | None = None
     updated_at: datetime
     created_at: datetime
     is_generating: bool = False
