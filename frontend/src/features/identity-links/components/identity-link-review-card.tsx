@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { CorrectMatchDialog } from "@/features/identity-links/components/correct-match-dialog";
+import { formatEur } from "@/features/identity-links/format-eur";
 import type { IdentityLinkReview, MatchMethod } from "@/features/identity-links/types";
 import { ApiError } from "@/lib/api/client";
 
@@ -15,15 +16,6 @@ const MATCH_METHOD_LABEL: Record<MatchMethod, string> = {
   fuzzy_name: "Fuzzy name match",
   manual: "Manually corrected",
 };
-
-function formatEur(value: number | null): string {
-  if (value === null) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(value);
-}
 
 function formatConfidence(value: number | null): string {
   return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
@@ -88,6 +80,8 @@ export function IdentityLinkReviewCard({
           <dl className="grid grid-cols-2 gap-x-ds-3 gap-y-1 text-body-sm text-ink-secondary">
             <dt className="text-ink-muted">Position</dt>
             <dd>{syntheticPlayer.position}</dd>
+            <dt className="text-ink-muted">Nationality</dt>
+            <dd>{syntheticPlayer.nationality}</dd>
             <dt className="text-ink-muted">Club</dt>
             <dd>{syntheticPlayer.clubTeam}</dd>
             <dt className="text-ink-muted">Date of birth</dt>
@@ -173,7 +167,7 @@ export function IdentityLinkReviewCard({
       <CorrectMatchDialog
         open={isCorrectMatchOpen}
         onOpenChange={setIsCorrectMatchOpen}
-        initialQuery={syntheticPlayer.name}
+        syntheticPlayer={syntheticPlayer}
         onSelect={(realPlayerId) => onReassign(review.id, realPlayerId)}
       />
     </Card>

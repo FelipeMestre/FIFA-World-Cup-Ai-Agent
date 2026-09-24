@@ -16,4 +16,8 @@ from src.domain.players.model.player import Player
 class PlayerIdentityLinkReview:
     link: PlayerIdentityLink
     synthetic_player: Player
+    # Player.team_id is a WC2026 national_team id, not a country name --
+    # resolved by the repository's join since Player itself (used broadly
+    # outside this review context) doesn't carry it.
+    synthetic_player_nationality: str
     real_player: RealPlayer

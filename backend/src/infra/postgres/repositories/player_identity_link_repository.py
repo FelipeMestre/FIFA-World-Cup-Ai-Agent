@@ -30,6 +30,7 @@ from src.infra.postgres.interfaces.player_identity_link_repository_interface imp
     PlayerIdentityLinkRepositoryInterface,
 )
 from src.infra.postgres.repositories.ingestion_repository import _SqlAlchemyIngestionRepository
+from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 from src.infra.postgres.schemas.player_identity_link_schema import (
     LinkReviewStatus as SchemaLinkReviewStatus,
 )
@@ -134,16 +135,24 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
         self, limit: int = 100, offset: int = 0
     ) -> list[PlayerIdentityLinkReview]:
         # Joins in both sides of the proposed match (the synthetic roster
-        # player and the Transfermarkt real_player) so the admin review list
-        # carries every comparison field in one call -- no per-row follow-up
-        # lookup for either side.
+        # player and the Transfermarkt real_player), plus the roster
+        # player's national_team for its country name (Player.team_id
+        # alone isn't a nationality an admin can read), so the admin review
+        # list carries every comparison field in one call -- no per-row
+        # follow-up lookup for any side.
         result = await self._session.execute(
-            select(PlayerIdentityLinkSchema, PlayerSchema, RealPlayerSchema)
+            select(
+                PlayerIdentityLinkSchema,
+                PlayerSchema,
+                RealPlayerSchema,
+                NationalTeamSchema.team_name,
+            )
             .join(PlayerSchema, PlayerSchema.player_id == PlayerIdentityLinkSchema.player_id)
             .join(
                 RealPlayerSchema,
                 RealPlayerSchema.player_id == PlayerIdentityLinkSchema.real_player_id,
             )
+            .join(NationalTeamSchema, NationalTeamSchema.team_id == PlayerSchema.team_id)
             .where(PlayerIdentityLinkSchema.status == SchemaLinkReviewStatus.PENDING)
             .order_by(PlayerIdentityLinkSchema.id)
             .limit(limit)
@@ -153,9 +162,10 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
             PlayerIdentityLinkReview(
                 link=_to_domain(link_row),
                 synthetic_player=_synthetic_player_to_domain(player_row),
+                synthetic_player_nationality=team_name,
                 real_player=_real_player_to_domain(real_player_row),
             )
-            for link_row, player_row, real_player_row in result.all()
+            for link_row, player_row, real_player_row, team_name in result.all()
         ]
 
     async def get(self, link_id: int) -> PlayerIdentityLink | None:

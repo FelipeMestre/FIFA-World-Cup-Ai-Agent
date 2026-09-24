@@ -16,6 +16,7 @@ function baseWireRow() {
       id: 500,
       team_id: 1,
       name: "Test Player",
+      nationality: "Testland",
       position: "FW",
       club_team: "Test Club",
       market_value_eur: 1000000,
@@ -71,6 +72,7 @@ describe("identityLinkReviewSchema / toIdentityLinkReview", () => {
     expect(review.syntheticPlayer).toMatchObject({
       id: 500,
       teamId: 1,
+      nationality: "Testland",
       clubTeam: "Test Club",
       marketValueEur: 1000000,
       dateOfBirth: "2000-01-01",

@@ -36,6 +36,7 @@ function review(id: number) {
       id: 500 + id,
       teamId: 1,
       name: `Player ${id}`,
+      nationality: "Testland",
       position: "FW",
       clubTeam: "Test Club",
       marketValueEur: 1000000,

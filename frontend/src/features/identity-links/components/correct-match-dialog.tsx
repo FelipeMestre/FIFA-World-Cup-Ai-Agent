@@ -14,7 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { searchRealPlayers } from "@/features/identity-links/api/search-real-players";
-import type { RealPlayerSummary } from "@/features/identity-links/types";
+import { formatEur } from "@/features/identity-links/format-eur";
+import type { RealPlayerSummary, SyntheticPlayerSummary } from "@/features/identity-links/types";
 import { ApiError } from "@/lib/api/client";
 
 /** Matches the backend's `q: Query(min_length=2)` -- below this, a query
@@ -38,14 +39,15 @@ const RESULT_LIMIT = 20;
 export function CorrectMatchDialog({
   open,
   onOpenChange,
-  initialQuery,
+  syntheticPlayer,
   onSelect,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  initialQuery: string;
+  syntheticPlayer: SyntheticPlayerSummary;
   onSelect: (realPlayerId: number) => Promise<void>;
 }) {
+  const initialQuery = syntheticPlayer.name;
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<RealPlayerSummary[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -124,6 +126,29 @@ export function CorrectMatchDialog({
             Type the player&apos;s Transfermarkt name -- results load automatically.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex flex-col gap-ds-2 rounded-lg border border-border-subtle bg-surface-900 p-ds-3">
+          <span className="text-label-sm text-ink-muted">WC2026 roster</span>
+          <span className="text-heading-sm">{syntheticPlayer.name}</span>
+          <dl className="grid grid-cols-2 gap-x-ds-3 gap-y-1 text-body-sm text-ink-secondary sm:grid-cols-4">
+            <dt className="text-ink-muted">Position</dt>
+            <dd>{syntheticPlayer.position}</dd>
+            <dt className="text-ink-muted">Nationality</dt>
+            <dd>{syntheticPlayer.nationality}</dd>
+            <dt className="text-ink-muted">Club</dt>
+            <dd>{syntheticPlayer.clubTeam}</dd>
+            <dt className="text-ink-muted">Date of birth</dt>
+            <dd>{syntheticPlayer.dateOfBirth}</dd>
+            <dt className="text-ink-muted">Height</dt>
+            <dd>{syntheticPlayer.heightCm} cm</dd>
+            <dt className="text-ink-muted">Caps / Goals</dt>
+            <dd>
+              {syntheticPlayer.caps} / {syntheticPlayer.goals}
+            </dd>
+            <dt className="text-ink-muted">Market value</dt>
+            <dd>{formatEur(syntheticPlayer.marketValueEur)}</dd>
+          </dl>
+        </div>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="real-player-query" className="text-label-md text-ink-secondary">
