@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Pencil,
   Route,
+  ShieldCheck,
   UserRound,
   Users,
   Volleyball,
@@ -150,6 +151,7 @@ export function HomeSidebar({
   isLoading,
   loadError,
   userName,
+  isAdmin,
   onNewChat,
   onRename,
   onLogout,
@@ -159,6 +161,7 @@ export function HomeSidebar({
   isLoading: boolean;
   loadError: string | null;
   userName: string;
+  isAdmin: boolean;
   onNewChat?: () => void;
   onRename: (conversation: ConversationSummary) => void;
   onLogout: () => void;
@@ -245,6 +248,15 @@ export function HomeSidebar({
                   {initials}
                 </div>
                 <span className="flex-1 truncate text-body-md text-ink-secondary">{userName}</span>
+                {isAdmin ? (
+                  <Link
+                    href="/identity-links"
+                    aria-label="Identity link review"
+                    className="focus-ring flex size-10 items-center justify-center rounded-lg border border-border-strong bg-surface-800 text-ink-secondary hover:bg-surface-700"
+                  >
+                    <ShieldCheck className="size-[18px]" aria-hidden="true" />
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   aria-label="Log out"

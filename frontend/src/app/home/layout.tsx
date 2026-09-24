@@ -26,5 +26,9 @@ async function AuthedHomeShell({ children }: { children: ReactNode }) {
     redirect("/login");
   }
   const user = await getCurrentUser();
-  return <HomeShell userName={user?.name ?? "Your name"}>{children}</HomeShell>;
+  return (
+    <HomeShell userName={user?.name ?? "Your name"} isAdmin={user?.is_admin ?? false}>
+      {children}
+    </HomeShell>
+  );
 }
