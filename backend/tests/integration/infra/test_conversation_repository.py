@@ -29,12 +29,21 @@ _OTHER_USER_ID = 990302
 async def db_session() -> AsyncGenerator[AsyncSession]:
     async with SessionFactory() as session:
         for user_id in (_USER_ID, _OTHER_USER_ID):
+            email = f"conversation-repo-test-{user_id}@example.test"
             await session.execute(
                 text(
                     'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
-                    "VALUES (:id, :email, split_part(:email, '@', 1), 'hash', false, now())"
+                    "VALUES (:id, :email, :name, 'hash', false, now())"
                 ),
-                {"id": user_id, "email": f"conversation-repo-test-{user_id}@example.test"},
+                # `name` computed in Python rather than `split_part(:email, ...)`
+                # in SQL -- binding the same parameter twice in two different
+                # type contexts (the `email` column's `character varying` vs.
+                # `split_part`'s `text` argument) makes asyncpg's extended
+                # protocol raise `AmbiguousParameterError` on every call
+                # (reproduced with raw asyncpg, independent of SQLAlchemy --
+                # a pre-existing fixture bug, not part of this task's feature
+                # work).
+                {"id": user_id, "email": email, "name": email.split("@")[0]},
             )
         await session.commit()
         yield session
@@ -54,24 +63,32 @@ async def test_get_or_create_creates_a_new_conversation(db_session: AsyncSession
     repository = _SqlAlchemyConversationRepository(db_session)
     conversation_id = uuid4()
 
-    created = await repository.get_or_create(conversation_id, _USER_ID, "First message")
+    conversation, created = await repository.get_or_create(
+        conversation_id, _USER_ID, "First message"
+    )
     await db_session.commit()
 
-    assert created.id == conversation_id
-    assert created.user_id == _USER_ID
-    assert created.title == "First message"
+    assert conversation.id == conversation_id
+    assert conversation.user_id == _USER_ID
+    assert conversation.title == "First message"
+    assert created is True
 
 
 async def test_get_or_create_is_idempotent_for_the_same_owner(db_session: AsyncSession) -> None:
     repository = _SqlAlchemyConversationRepository(db_session)
     conversation_id = uuid4()
-    first = await repository.get_or_create(conversation_id, _USER_ID, "First message")
+    first, _first_created = await repository.get_or_create(
+        conversation_id, _USER_ID, "First message"
+    )
     await db_session.commit()
 
-    second = await repository.get_or_create(conversation_id, _USER_ID, "Ignored default title")
+    second, second_created = await repository.get_or_create(
+        conversation_id, _USER_ID, "Ignored default title"
+    )
 
     assert second.id == first.id
     assert second.title == "First message"
+    assert second_created is False
 
 
 async def test_get_or_create_raises_when_id_owned_by_a_different_user(
@@ -161,10 +178,71 @@ async def test_update_title_returns_none_when_not_owned(db_session: AsyncSession
     assert result is None
 
 
+async def test_update_title_marks_title_as_no_longer_generated(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyConversationRepository(db_session)
+    conversation_id = uuid4()
+    await repository.get_or_create(conversation_id, _USER_ID, "Original title")
+    await db_session.commit()
+
+    updated = await repository.update_title(conversation_id, _USER_ID, "Renamed title")
+    await db_session.commit()
+
+    assert updated is not None
+    assert updated.title_is_generated is False
+
+
+async def test_update_category_writes_title_and_icon_when_title_is_generated(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyConversationRepository(db_session)
+    conversation_id = uuid4()
+    await repository.get_or_create(conversation_id, _USER_ID, "Original title")
+    await db_session.commit()
+
+    updated = await repository.update_category(conversation_id, "Generated title", "trophy")
+    await db_session.commit()
+
+    assert updated is not None
+    assert updated.title == "Generated title"
+    assert updated.icon == "trophy"
+
+
+async def test_update_category_leaves_title_untouched_when_title_is_not_generated(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyConversationRepository(db_session)
+    conversation_id = uuid4()
+    await repository.get_or_create(conversation_id, _USER_ID, "Original title")
+    await db_session.commit()
+    await repository.update_title(conversation_id, _USER_ID, "Manually renamed title")
+    await db_session.commit()
+
+    updated = await repository.update_category(conversation_id, "Generated title", "trophy")
+    await db_session.commit()
+
+    assert updated is not None
+    assert updated.title == "Manually renamed title"
+    assert updated.icon == "trophy"
+
+
+async def test_update_category_returns_none_for_nonexistent_conversation(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyConversationRepository(db_session)
+
+    result = await repository.update_category(uuid4(), "Generated title", "trophy")
+
+    assert result is None
+
+
 async def test_touch_advances_updated_at(db_session: AsyncSession) -> None:
     repository = _SqlAlchemyConversationRepository(db_session)
     conversation_id = uuid4()
-    created = await repository.get_or_create(conversation_id, _USER_ID, "First message")
+    conversation, _created = await repository.get_or_create(
+        conversation_id, _USER_ID, "First message"
+    )
     await db_session.commit()
 
     await repository.touch(conversation_id)
@@ -172,4 +250,4 @@ async def test_touch_advances_updated_at(db_session: AsyncSession) -> None:
 
     touched = await repository.get_owned(conversation_id, _USER_ID)
     assert touched is not None
-    assert touched.updated_at >= created.updated_at
+    assert touched.updated_at >= conversation.updated_at

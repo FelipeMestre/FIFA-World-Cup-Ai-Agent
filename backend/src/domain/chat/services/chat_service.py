@@ -244,7 +244,9 @@ class ChatService:
         default_title = first_message[:_TITLE_MAX_LENGTH].strip()
         if len(first_message) > _TITLE_MAX_LENGTH:
             default_title += "…"
-        conversation = await self._conversation_repo.get_or_create(
+        # `created` (True only for a brand-new conversation row) is unused
+        # here -- a later task uses it to enqueue the categorization job.
+        conversation, _created = await self._conversation_repo.get_or_create(
             conversation_id, user_id, default_title=default_title
         )
         # Commit *here*, before returning to the router -- not deferred to

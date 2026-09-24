@@ -92,7 +92,7 @@ def _override_auth() -> AsyncGenerator[None]:
 async def _create_conversation(user_id: int, title: str) -> Any:
     async with SessionFactory() as session:
         repo = _SqlAlchemyConversationRepository(session)
-        conversation = await repo.get_or_create(uuid4(), user_id, title)
+        conversation, _created = await repo.get_or_create(uuid4(), user_id, title)
         await session.commit()
         return conversation
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID as PyUUID
 
-from sqlalchemy import DateTime, ForeignKey, func
+from sqlalchemy import DateTime, ForeignKey, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,3 +25,11 @@ class ConversationSchema(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+    # LLM-assigned icon from a fixed enum (constrained at the app level, not
+    # a DB check constraint -- see `categorize_conversation_task`). Nullable
+    # until the categorization job resolves it.
+    icon: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # True until a user manually renames the conversation (`update_title`),
+    # or forever if it's never renamed. Guards `update_category` against
+    # clobbering a manual rename with a stale LLM-generated title.
+    title_is_generated: Mapped[bool] = mapped_column(nullable=False, server_default="true")

@@ -100,7 +100,9 @@ async def _seed_user_and_cleanup():
 async def _create_conversation() -> str:
     async with SessionFactory() as session:
         repo = _SqlAlchemyConversationRepository(session)
-        conversation = await repo.get_or_create(uuid4(), _USER_ID, "Task test conversation")
+        conversation, _created = await repo.get_or_create(
+            uuid4(), _USER_ID, "Task test conversation"
+        )
         await session.commit()
         return str(conversation.id)
 
