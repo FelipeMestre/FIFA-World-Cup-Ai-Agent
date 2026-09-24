@@ -43,6 +43,8 @@ class IngestionJobSchema(Base):
     source_label: Mapped[str] = mapped_column(nullable=False)
     row_counts: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     error_message: Mapped[str | None] = mapped_column(nullable=True)
+    current_stage: Mapped[str | None] = mapped_column(nullable=True)
+    stage_checkpoints: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

@@ -7,6 +7,7 @@ from src.domain.ingestion.model.ingestion_job import (
     IngestionJobStatus,
     IngestionJobType,
 )
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
@@ -182,8 +183,12 @@ class _FakeDetailSync:
         real_player_ids: set[int],
         known_club_ids: set[str],
         skip_populated: bool = False,
+        progress=None,
     ) -> dict[str, int]:
         self.player_scoped_calls.append(real_player_ids)
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.PLAYER_VALUATIONS)
+            await progress.checkpoint(TransfermarktSyncStage.TRANSFERS)
         return {"player_valuations": 0, "transfers": 0}
 
     async def sync_match_data(
@@ -192,12 +197,19 @@ class _FakeDetailSync:
         real_club_ids,
         known_club_ids,
         skip_populated: bool = False,
+        progress=None,
     ) -> dict[str, int]:
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.GAME_LINEUPS)
+            await progress.checkpoint(TransfermarktSyncStage.GAME_EVENTS)
+            await progress.checkpoint(TransfermarktSyncStage.CLUB_GAMES)
         return {"game_lineups": 0, "game_events": 0, "club_games": 0}
 
     async def sync_season_stats(
-        self, real_player_ids: set[int], skip_populated: bool = False
+        self, real_player_ids: set[int], skip_populated: bool = False, progress=None
     ) -> int:
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.SEASON_STATS)
         return 0
 
 
@@ -342,6 +354,55 @@ async def test_run_sync_persists_real_player_before_identity_link():
     await service.run_sync(_job())
 
     assert call_order == ["national_team", "real_player", "player_identity_link"]
+
+
+@pytest.mark.asyncio
+async def test_run_sync_records_a_stage_checkpoint_for_every_pipeline_phase_in_order():
+    client = _FakeTransfermarktClient(
+        {
+            "national_teams": [_NATIONAL_TEAM_ROW],
+            "clubs": [],
+            "players": [],
+        }
+    )
+    job_repository = _FakeJobRepository(_job())
+    national_team_repository = _FakeNationalTeamRepository(
+        [
+            NationalTeam(
+                id=1,
+                name="Testland",
+                confederation="UEFA",
+                fifa_code="TST",
+                group_letter="A",
+                fifa_ranking_pre_tournament=10,
+                elo_rating=1800,
+                manager_name="Coach",
+            )
+        ]
+    )
+    service = _build_service(
+        client,
+        job_repository,
+        national_team_repository,
+        _FakePlayerRepository([]),
+        _FakeDetailSync(),
+    )
+
+    result = await service.run_sync(_job())
+
+    assert result.status == IngestionJobStatus.SUCCEEDED
+    assert [c["stage"] for c in result.stage_checkpoints] == [
+        "national_teams",
+        "clubs",
+        "players",
+        "player_valuations",
+        "transfers",
+        "game_lineups",
+        "game_events",
+        "club_games",
+        "real_player_season_stat",
+    ]
+    assert result.current_stage == "real_player_season_stat"
 
 
 @pytest.mark.asyncio

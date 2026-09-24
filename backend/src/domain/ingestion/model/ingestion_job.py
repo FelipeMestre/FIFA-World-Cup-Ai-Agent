@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import InvalidJobTransitionError
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 
 
 class IngestionJobType(StrEnum):
@@ -35,6 +36,8 @@ class IngestionJob:
     requested_by_user_id: int
     row_counts: dict[str, int] = field(default_factory=dict)
     error_message: str | None = None
+    current_stage: str | None = None
+    stage_checkpoints: list[dict[str, str]] = field(default_factory=list)
     created_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -58,6 +61,24 @@ class IngestionJob:
             status=IngestionJobStatus.SUCCEEDED,
             row_counts=row_counts,
             finished_at=datetime.now(UTC),
+        )
+
+    def record_stage_checkpoint(self, stage: TransfermarktSyncStage) -> IngestionJob:
+        """Records that `stage` just completed, for a job still `running`.
+        Append-only: `stage_checkpoints` is the full history a job-status
+        response can render as a progress timeline, while `current_stage`
+        alone answers "where is it right now".
+        """
+        if self.status != IngestionJobStatus.RUNNING:
+            raise InvalidJobTransitionError(
+                f"cannot record a stage checkpoint for job {self.id} from status "
+                f"'{self.status}' (expected '{IngestionJobStatus.RUNNING}')"
+            )
+        checkpoint = {"stage": stage.value, "completed_at": datetime.now(UTC).isoformat()}
+        return replace(
+            self,
+            current_stage=stage.value,
+            stage_checkpoints=[*self.stage_checkpoints, checkpoint],
         )
 
     def mark_failed(self, error: str) -> IngestionJob:

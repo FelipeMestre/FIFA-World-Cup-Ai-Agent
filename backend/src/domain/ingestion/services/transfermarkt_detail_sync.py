@@ -10,7 +10,9 @@ foreign key.
 from collections.abc import AsyncIterator
 from typing import Any
 
+from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
+from src.domain.ingestion.services.job_progress_tracker import JobProgressTracker
 from src.domain.ingestion.services.season_stat_aggregation_service import (
     SeasonStatAggregationService,
 )
@@ -100,6 +102,7 @@ class TransfermarktDetailSync:
         real_player_ids: set[int],
         known_club_ids: set[str],
         skip_populated: bool = False,
+        progress: JobProgressTracker | None = None,
     ) -> dict[str, int]:
         """Valuations and transfers: scoped by `player_id` membership."""
         counts: dict[str, int] = {}
@@ -108,24 +111,27 @@ class TransfermarktDetailSync:
                 _SCHEMA_BY_SOURCE_NAME[source_name]
             ):
                 counts[source_name] = 0
-                continue
-            spec = _DETAIL_SPECS_BY_NAME[source_name]
-            rows = await _buffer(self._client.stream_csv_rows(source_name))
-            scoped = [row for row in rows if int(row["player_id"]) in real_player_ids]
-            if source_name == "transfers":
-                # from_club_id/to_club_id are nullable -- null out any that
-                # don't resolve rather than dropping the transfer row.
-                scoped = [
-                    _sanitize_club_reference(
-                        _sanitize_club_reference(row, "from_club_id", known_club_ids),
-                        "to_club_id",
-                        known_club_ids,
-                    )
-                    for row in scoped
-                ]
-            counts[source_name] = await self._csv_ingestion_service.ingest_rows(
-                spec, scoped, self._ingestion_repository
-            )
+            else:
+                spec = _DETAIL_SPECS_BY_NAME[source_name]
+                rows = await _buffer(self._client.stream_csv_rows(source_name))
+                scoped = [row for row in rows if int(row["player_id"]) in real_player_ids]
+                if source_name == "transfers":
+                    # from_club_id/to_club_id are nullable -- null out any
+                    # that don't resolve rather than dropping the transfer
+                    # row.
+                    scoped = [
+                        _sanitize_club_reference(
+                            _sanitize_club_reference(row, "from_club_id", known_club_ids),
+                            "to_club_id",
+                            known_club_ids,
+                        )
+                        for row in scoped
+                    ]
+                counts[source_name] = await self._csv_ingestion_service.ingest_rows(
+                    spec, scoped, self._ingestion_repository
+                )
+            if progress is not None:
+                await progress.checkpoint(TransfermarktSyncStage(source_name))
         return counts
 
     async def sync_match_data(
@@ -134,6 +140,7 @@ class TransfermarktDetailSync:
         real_club_ids: set[int],
         known_club_ids: set[str],
         skip_populated: bool = False,
+        progress: JobProgressTracker | None = None,
     ) -> dict[str, int]:
         """Lineups, events, and club-games: scoped by persisted player or
         club involvement (a row with no player reference, e.g. a club-level
@@ -155,6 +162,8 @@ class TransfermarktDetailSync:
             counts["game_lineups"] = await self._csv_ingestion_service.ingest_rows(
                 _DETAIL_SPECS_BY_NAME["game_lineups"], scoped_lineups, self._ingestion_repository
             )
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.GAME_LINEUPS)
 
         if skip_populated and await self._ingestion_repository.has_rows(RealMatchEventSchema):
             counts["game_events"] = 0
@@ -179,6 +188,8 @@ class TransfermarktDetailSync:
             counts["game_events"] = await self._csv_ingestion_service.ingest_rows(
                 _DETAIL_SPECS_BY_NAME["game_events"], scoped_events, self._ingestion_repository
             )
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.GAME_EVENTS)
 
         if skip_populated and await self._ingestion_repository.has_rows(RealClubGameSchema):
             counts["club_games"] = 0
@@ -196,10 +207,15 @@ class TransfermarktDetailSync:
             counts["club_games"] = await self._csv_ingestion_service.ingest_rows(
                 _DETAIL_SPECS_BY_NAME["club_games"], scoped_club_games, self._ingestion_repository
             )
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.CLUB_GAMES)
         return counts
 
     async def sync_season_stats(
-        self, real_player_ids: set[int], skip_populated: bool = False
+        self,
+        real_player_ids: set[int],
+        skip_populated: bool = False,
+        progress: JobProgressTracker | None = None,
     ) -> int:
         """`appearances.csv` has no `season` column directly -- join against
         `games.csv` by `game_id` first (games.csv itself has no target
@@ -207,6 +223,8 @@ class TransfermarktDetailSync:
         aggregate via `SeasonStatAggregationService` before upserting.
         """
         if skip_populated and await self._ingestion_repository.has_rows(RealPlayerSeasonStatSchema):
+            if progress is not None:
+                await progress.checkpoint(TransfermarktSyncStage.SEASON_STATS)
             return 0
 
         game_rows = await _buffer(self._client.stream_csv_rows("games"))
@@ -240,4 +258,6 @@ class TransfermarktDetailSync:
                 RealPlayerSeasonStatSchema, chunk, _SEASON_STAT_CONFLICT_COLUMNS
             )
             total += result.row_count
+        if progress is not None:
+            await progress.checkpoint(TransfermarktSyncStage.SEASON_STATS)
         return total
