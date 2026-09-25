@@ -17,6 +17,23 @@ class ReassignLinkRequest(BaseModel):
     real_player_id: int
 
 
+class RematchIdentityLinksRequest(BaseModel):
+    """Body for the destructive clean-rematch trigger. `confirm` defaults to
+    `False` (rather than being a required field) so a missing field and an
+    explicit `false` both reach the router's own check and get the same
+    handled 400 -- a required-field validation failure would otherwise
+    surface as FastAPI's generic 422, not this endpoint's explicit
+    "confirm this destructive action" error.
+    """
+
+    confirm: bool = False
+
+
+class RematchTriggerResponse(BaseModel):
+    job_id: int
+    status: str
+
+
 class IdentityLinkResponse(BaseModel):
     id: int
     player_id: int

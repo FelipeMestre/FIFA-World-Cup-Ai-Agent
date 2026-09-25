@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.ingestion.model.ingestion_job import IngestionJobStatus
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
+from src.domain.ingestion.services.identity_link_rematch_service import IdentityLinkRematchService
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
 )
@@ -61,6 +62,7 @@ from src.infra.postgres.repositories.player_identity_link_repository import (
     _SqlAlchemyPlayerIdentityLinkRepository,
 )
 from src.infra.postgres.repositories.player_repository import _SqlAlchemyPlayerRepository
+from src.infra.postgres.repositories.real_player_repository import _SqlAlchemyRealPlayerRepository
 from src.infra.task_queue.session_scope import session_scope
 from src.infra.transfermarkt.client import get_transfermarkt_client
 
@@ -139,6 +141,28 @@ async def transfermarkt_sync_task(ctx: dict, job_id: int, skip_populated: bool =
         )
         try:
             await service.run_sync(job, skip_populated)
+        except BaseException as exc:
+            await _fail_job(session, job_repository, job_id, exc)
+            raise
+
+
+async def identity_link_rematch_task(ctx: dict, job_id: int) -> None:
+    async with session_scope() as session:
+        job_repository = _SqlAlchemyIngestionJobRepository(session)
+        job = await job_repository.get(job_id)
+        if job is None:
+            raise ValueError(f"ingestion_job {job_id} not found")
+
+        service = IdentityLinkRematchService(
+            identity_link_repository=_SqlAlchemyPlayerIdentityLinkRepository(session),
+            player_repository=_SqlAlchemyPlayerRepository(session),
+            real_player_repository=_SqlAlchemyRealPlayerRepository(session),
+            ingestion_repository=_SqlAlchemyIngestionRepository(session),
+            ingestion_job_repository=job_repository,
+            matching_service=PlayerIdentityMatchingService(),
+        )
+        try:
+            await service.rematch(job)
         except BaseException as exc:
             await _fail_job(session, job_repository, job_id, exc)
             raise

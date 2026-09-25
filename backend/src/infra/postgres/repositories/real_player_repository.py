@@ -3,7 +3,7 @@
 looks up the actual intended Transfermarkt player by name.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
 from sqlalchemy import select
@@ -64,6 +64,36 @@ class _SqlAlchemyRealPlayerRepository:
             .offset(offset)
         )
         return [_to_domain(row) for row in result.scalars().all()]
+
+    async def list_match_candidates(self) -> list[dict[str, Any]]:
+        # Column-projected select, not a full-row fetch: the identity-link
+        # rematch feature loads every real_player row (Transfermarkt-scale,
+        # tens of thousands), and PlayerIdentityMatchingService.match() only
+        # ever reads these five keys.
+        result = await self._session.execute(
+            select(
+                RealPlayerSchema.player_id,
+                RealPlayerSchema.first_name,
+                RealPlayerSchema.last_name,
+                RealPlayerSchema.date_of_birth,
+                RealPlayerSchema.height_cm,
+                RealPlayerSchema.current_national_team_id,
+            )
+        )
+        return [
+            {
+                "player_id": row.player_id,
+                "first_name": row.first_name,
+                "last_name": row.last_name,
+                "date_of_birth": row.date_of_birth,
+                # Renamed from the persisted `height_cm` column -- the
+                # matching service reads `height_in_cm` exactly (see its own
+                # docstring on this exact class of bug).
+                "height_in_cm": row.height_cm,
+                "current_national_team_id": row.current_national_team_id,
+            }
+            for row in result.all()
+        ]
 
 
 def get_real_player_repository(

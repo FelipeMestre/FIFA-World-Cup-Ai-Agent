@@ -11,6 +11,8 @@ from src.api.v1.admin.dtos.identity_link_dtos import (
     IdentityLinkReviewResponse,
     PaginatedIdentityLinkReviewResponse,
     ReassignLinkRequest,
+    RematchIdentityLinksRequest,
+    RematchTriggerResponse,
 )
 from src.api.v1.auth.services.dependencies import require_admin
 from src.domain.ingestion.exceptions.ingestion_exceptions import (
@@ -19,20 +21,33 @@ from src.domain.ingestion.exceptions.ingestion_exceptions import (
     RealPlayerAlreadyLinkedError,
     RealPlayerNotFoundError,
 )
+from src.domain.ingestion.model.ingestion_job import (
+    IngestionJob,
+    IngestionJobStatus,
+    IngestionJobType,
+)
 from src.domain.ingestion.model.player_identity_link import LinkReviewStatus
 from src.domain.ingestion.services.identity_link_review_service import (
     PlayerIdentityLinkReviewService,
 )
+from src.infra.postgres.interfaces.ingestion_job_repository_interface import (
+    IngestionJobRepositoryInterface,
+)
 from src.infra.postgres.interfaces.player_identity_link_repository_interface import (
     PlayerIdentityLinkRepositoryInterface,
 )
+from src.infra.postgres.repositories.ingestion_job_repository import get_ingestion_job_repository
 from src.infra.postgres.repositories.player_identity_link_repository import (
     get_player_identity_link_repository,
 )
+from src.infra.task_queue.pool import enqueue_identity_link_rematch
 
 router = APIRouter(prefix="/admin/identity-links", tags=["admin-identity-links"])
 
 AdminDep = Annotated[dict, Depends(require_admin)]
+IngestionJobRepositoryDep = Annotated[
+    IngestionJobRepositoryInterface, Depends(get_ingestion_job_repository)
+]
 
 
 def get_identity_link_review_service(
@@ -70,6 +85,42 @@ async def list_links(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/rematch",
+    response_model=RematchTriggerResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Wipe and regenerate every player_identity_link from scratch",
+    description="Admin-only. Deletes every player_identity_link row (including "
+    "admin-reviewed ones) and queues a from-scratch rematch against the "
+    "already-persisted player/real_player tables -- no Transfermarkt HTTP calls, "
+    "no CSV re-parsing. Destructive: requires confirm=true.",
+    responses={status.HTTP_400_BAD_REQUEST: {"description": "confirm was not explicitly true"}},
+)
+async def rematch_identity_links(
+    admin: AdminDep,
+    job_repository: IngestionJobRepositoryDep,
+    request: RematchIdentityLinksRequest | None = None,
+) -> RematchTriggerResponse:
+    request = request or RematchIdentityLinksRequest()
+    if not request.confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="confirm must be explicitly true -- this deletes every "
+            "player_identity_link row, including admin-reviewed ones",
+        )
+
+    job = IngestionJob(
+        id=None,
+        job_type=IngestionJobType.IDENTITY_LINK_REMATCH,
+        status=IngestionJobStatus.QUEUED,
+        source_label="admin-triggered-rematch",
+        requested_by_user_id=int(admin["sub"]),
+    )
+    created_job = await job_repository.create(job)
+    await enqueue_identity_link_rematch(created_job.id)
+    return RematchTriggerResponse(job_id=created_job.id, status=created_job.status.value)
 
 
 @router.post(

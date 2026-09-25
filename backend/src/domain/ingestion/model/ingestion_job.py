@@ -18,6 +18,7 @@ from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyn
 class IngestionJobType(StrEnum):
     SYNTHETIC_UPLOAD = "synthetic_upload"
     TRANSFERMARKT_SYNC = "transfermarkt_sync"
+    IDENTITY_LINK_REMATCH = "identity_link_rematch"
 
 
 class IngestionJobStatus(StrEnum):

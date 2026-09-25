@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import (
@@ -256,6 +256,11 @@ class _SqlAlchemyPlayerIdentityLinkRepository:
         return await self._ingestion_repository.upsert_many(
             PlayerIdentityLinkSchema, rows, conflict_columns=("player_id",)
         )
+
+    async def delete_all(self) -> int:
+        result = await self._session.execute(delete(PlayerIdentityLinkSchema))
+        await self._session.commit()
+        return result.rowcount
 
 
 def get_player_identity_link_repository(
