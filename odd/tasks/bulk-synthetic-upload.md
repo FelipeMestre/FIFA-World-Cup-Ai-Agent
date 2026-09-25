@@ -504,3 +504,37 @@ Files modified: `frontend/src/features/ingestion/types.ts`,
 
 `sync-jobs-panel.tsx`, `stage-progress.tsx`, and every other Transfermarkt
 sync UI file were not touched at all.
+
+## Post-completion: environment incident, repaired, then re-verified cleanly
+
+After T9, discovered the running `docker-compose` containers
+(`world-cup-ai-scout-backend`/`-worker`/`-frontend`) were bind-mounted from
+`.claude/worktrees/team-comparison` (branch `feature/team-comparison`), not
+this checkout — a known class of issue (see memory `docker compose
+containers shared across git worktrees by project name`, not re-discovered
+via search until after the fact). Every `docker exec`/`docker cp` used for
+T1-T9 "live" verification against these containers actually read/wrote
+that other worktree's real files. Confirmed via `git status` +
+file-mtime comparison in that worktree, then repaired precisely: restored
+24 clobbered tracked files with `git checkout -- <exact list>` and deleted
+16 polluted untracked files by exact path (never a blanket `git clean`),
+leaving team-comparison's own genuine uncommitted work (8 files, all with
+an untouched 2026-09-24 mtime) exactly as it was. Verified fully repaired
+via `git status --short backend/` afterward.
+
+Re-verified this feature's actual state via the local venv/npm (not the
+misattributed containers), against the same real shared Postgres/Redis
+(only those two are genuinely shared safely across worktrees):
+- Backend: `python -m pytest tests/unit/domain/ingestion/
+  tests/integration/api/admin/test_bulk_synthetic_upload_router.py` → 88
+  passed; `ruff check` clean.
+- Frontend: `npx vitest run tests/unit/features/ingestion` → 19/19 passed.
+- `npm run build` fails on pre-existing, unrelated TypeScript errors in
+  `src/features/chat/**` — confirmed via `git diff main...feat/bulk-synthetic-upload
+  --stat -- frontend/src/features/chat` returning empty (this branch never
+  touched any file in that path), so the failure is not attributable to
+  this feature.
+
+All 9 tasks (T1-T9) are complete and independently re-verified through a
+trustworthy path. Feature branch `feat/bulk-synthetic-upload` remains
+local-only, not pushed, no PR — the user's call.
