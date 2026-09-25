@@ -8,7 +8,7 @@ import {
   formatMarketValue,
   formatRecord,
 } from "@/features/chat/format-team-comparison";
-import type { ComparedTeam, SquadLeader } from "@/features/chat/team-comparison";
+import type { SquadLeader, TeamIdentityFacts } from "@/features/chat/team-comparison";
 
 const PIE_RADIUS = 16;
 const PIE_CIRCUMFERENCE = 2 * Math.PI * PIE_RADIUS;
@@ -94,7 +94,7 @@ function LeaderRow({
   );
 }
 
-export function TeamCompareIdentity({ team }: { team: ComparedTeam }) {
+export function TeamCompareIdentity({ team }: { team: TeamIdentityFacts }) {
   const { squad } = team;
 
   return (

@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import NamedTuple
 
 from src.domain.player_analytics.model.player_ranking import WORLD_CUP_AGE_AS_OF
+from src.domain.team_analytics.model.team_analysis import StatWithFieldAverage
 from src.domain.team_analytics.model.team_comparison import (
     ComparedStat,
     ComparedTeam,
@@ -20,6 +21,7 @@ from src.domain.team_analytics.model.team_comparison import (
     Position,
     PositionGroup,
     PositionRollup,
+    PositionSquad,
     SideNote,
     TeamComparison,
 )
@@ -130,6 +132,55 @@ def assemble_team_comparison(
         meetings=_meetings(team_a.team_id, team_b.team_id, matches),
         positions=_position_groups(team_a.team_id, team_b.team_id, players),
     )
+
+
+_TILES_ALREADY_ON_ANALYSIS = {
+    "possession_pct",
+    "shots_per_game",
+    "shots_on_target_per_game",
+    "corners_per_game",
+    "fouls_per_game",
+    "offsides_per_game",
+    "yellow_per_match",
+}
+
+
+def extra_field_average_rows(
+    side: ComparedTeam, field: FieldBenchmarks, played: int
+) -> list[StatWithFieldAverage]:
+    """Comparison rates vs the tournament mean, skipping tiles analysis already has."""
+    values = _metric_values(side, played)
+    field_values = _field_values(field)
+    rows = []
+    for key, metric in _METRICS.items():
+        if key in _TILES_ALREADY_ON_ANALYSIS:
+            continue
+        team_value = values[key]
+        field_value = field_values[key]
+        delta = team_value - field_value
+        better = delta >= 0 if metric.higher_is_better else delta <= 0
+        glyph = "▲" if better else "▼"
+        rows.append(
+            StatWithFieldAverage(
+                label=metric.label,
+                value=metric.format_value(team_value),
+                field_value=metric.format_value(field_value),
+                delta=f"{glyph} {abs(delta):.2f}",
+            )
+        )
+    return rows
+
+
+def position_squads_for_team(team_id: int, players: list[PlayerFact]) -> list[PositionSquad]:
+    groups = _position_groups(team_id, -1, players)
+    return [
+        PositionSquad(
+            position=group.position,
+            players=group.team_a_players,
+            rollup=group.team_a_rollup,
+        )
+        for group in groups
+    ]
 
 
 def _metric_values(side: ComparedTeam, played: int) -> dict[str, float]:

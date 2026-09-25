@@ -9,8 +9,9 @@ class TeamAnalyticsRepositoryInterface(Protocol):
         """Resolve `team_query` (a team name or FIFA code, case-insensitive,
         as supplied by the model from the user's message) against
         `national_team`, then aggregate that team's full tournament record
-        -- results, goals, tournament-wide stat comparisons, and discipline
-        -- from `match`, `match_team_stat`, and `match_event`.
+        -- results, goals, tournament-wide stat comparisons, World Cup squad
+        identity and position groups, and discipline
+        -- from `match`, `match_team_stat`, `match_event`, and `player`.
 
         Returns `None` when no team matches `team_query`; never raises for
         an unmatched query.

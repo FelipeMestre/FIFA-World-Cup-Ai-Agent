@@ -7,24 +7,19 @@ by_alias=True)` produces the exact shape `TeamWidgetPart.data` expects on
 the wire, with no reshaping at the tool-handler boundary.
 """
 
-from typing import Literal
+from src.domain.team_analytics.model.base import (
+    CamelModel,
+    TeamMatchResult,
+    TeamRecord,
+)
+from src.domain.team_analytics.model.team_comparison import (
+    GroupOutcome,
+    PositionSquad,
+    SquadLeader,
+    SquadProfile,
+)
 
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
-
-ResultLetter = Literal["W", "D", "L"]
-
-
-class _CamelModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-
-
-class TeamRecord(_CamelModel):
-    won: int
-    drawn: int
-    lost: int
-    goals_for: int
-    goals_against: int
+_CamelModel = CamelModel
 
 
 class TeamGoalsByMatch(_CamelModel):
@@ -39,14 +34,6 @@ class StatWithFieldAverage(_CamelModel):
     field_value: str
     # e.g. "▲ 8.4" or "▼ 1.2" -- always carries the glyph, never color alone.
     delta: str
-
-
-class TeamMatchResult(_CamelModel):
-    stage: str
-    opponent_code: str
-    opponent_name: str
-    score: str
-    result: ResultLetter
 
 
 class TeamDiscipline(_CamelModel):
@@ -76,3 +63,13 @@ class TeamAnalysis(_CamelModel):
     match_results: list[TeamMatchResult]
     discipline: TeamDiscipline
     stage_caption: str
+    confederation: str
+    group_letter: str | None
+    manager_name: str | None
+    fifa_ranking_pre_tournament: int | None
+    squad: SquadProfile
+    group: GroupOutcome
+    top_scorer: SquadLeader | None
+    top_assister: SquadLeader | None
+    most_minutes: SquadLeader | None
+    positions: list[PositionSquad]

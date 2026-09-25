@@ -1,4 +1,10 @@
-import type { TeamComparison } from "@/features/chat/team-comparison";
+import type {
+  GroupOutcome,
+  PositionSquad,
+  SquadLeader,
+  SquadProfile,
+  TeamComparison,
+} from "@/features/chat/team-comparison";
 
 /**
  * Widget contract from design/README.md. The backend sends structured
@@ -74,6 +80,16 @@ export interface TeamSummary {
     fieldYellowPerMatch: number;
   };
   stageCaption: string;
+  confederation: string;
+  groupLetter: string | null;
+  managerName: string | null;
+  fifaRankingPreTournament: number | null;
+  squad: SquadProfile;
+  group: GroupOutcome;
+  topScorer: SquadLeader | null;
+  topAssister: SquadLeader | null;
+  mostMinutes: SquadLeader | null;
+  positions: PositionSquad[];
 }
 
 // ---------------------------------------------------------------------------

@@ -2,10 +2,18 @@
 view module turns the rows into the read model.
 """
 
+from collections.abc import Sequence
+from typing import NamedTuple
+
 from sqlalchemy import and_, case, distinct, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.team_analytics.model.team_comparison import TeamComparison
+from src.domain.team_analytics.model.team_analysis import StatWithFieldAverage
+from src.domain.team_analytics.model.team_comparison import (
+    ComparedTeam,
+    PositionSquad,
+    TeamComparison,
+)
 from src.infra.postgres.repositories._team_comparison_facts import (
     DepthFact,
     FieldBenchmarks,
@@ -15,7 +23,12 @@ from src.infra.postgres.repositories._team_comparison_facts import (
     TeamProfile,
     TeamStatFact,
 )
-from src.infra.postgres.repositories._team_comparison_view import assemble_team_comparison
+from src.infra.postgres.repositories._team_comparison_side import build_compared_team, team_matches
+from src.infra.postgres.repositories._team_comparison_view import (
+    assemble_team_comparison,
+    extra_field_average_rows,
+    position_squads_for_team,
+)
 from src.infra.postgres.schemas.match_schema import (
     MatchEventSchema,
     MatchLineupSchema,
@@ -50,6 +63,37 @@ async def load_team_comparison(
     )
 
 
+class TeamSideRead(NamedTuple):
+    identity: ComparedTeam
+    positions: list[PositionSquad]
+    extra_averages: list[StatWithFieldAverage]
+
+
+async def load_team_side(session: AsyncSession, team: NationalTeamSchema) -> TeamSideRead:
+    team_ids = (team.team_id,)
+    matches = await _matches(session, team_ids)
+    groups, field_group_points = await _group_table(session)
+    players = await _players(session, team_ids)
+    identity = build_compared_team(
+        _profile(team),
+        matches,
+        await _opponents(session, matches),
+        await _team_stats(session, team_ids),
+        await _cards(session, team_ids),
+        players,
+        await _depth(session, team_ids),
+        groups,
+    )
+    field = await _field(session, field_group_points)
+    return TeamSideRead(
+        identity=identity,
+        positions=position_squads_for_team(team.team_id, players),
+        extra_averages=extra_field_average_rows(
+            identity, field, len(team_matches(team.team_id, matches))
+        ),
+    )
+
+
 def _profile(team: NationalTeamSchema) -> TeamProfile:
     return TeamProfile(
         team_id=team.team_id,
@@ -66,7 +110,7 @@ def _profile(team: NationalTeamSchema) -> TeamProfile:
     )
 
 
-async def _matches(session: AsyncSession, team_ids: tuple[int, int]) -> list[MatchFact]:
+async def _matches(session: AsyncSession, team_ids: Sequence[int]) -> list[MatchFact]:
     stmt = (
         select(MatchSchema, TournamentStageSchema.stage_name, TournamentStageSchema.is_knockout)
         .join(TournamentStageSchema, TournamentStageSchema.stage_id == MatchSchema.stage_id)
@@ -109,7 +153,7 @@ async def _opponents(session: AsyncSession, matches: list[MatchFact]) -> dict[in
     }
 
 
-async def _team_stats(session: AsyncSession, team_ids: tuple[int, int]) -> list[TeamStatFact]:
+async def _team_stats(session: AsyncSession, team_ids: Sequence[int]) -> list[TeamStatFact]:
     stmt = select(MatchTeamStatSchema).where(MatchTeamStatSchema.team_id.in_(team_ids))
     return [
         TeamStatFact(
@@ -126,7 +170,7 @@ async def _team_stats(session: AsyncSession, team_ids: tuple[int, int]) -> list[
     ]
 
 
-async def _cards(session: AsyncSession, team_ids: tuple[int, int]) -> dict[int, tuple[int, int]]:
+async def _cards(session: AsyncSession, team_ids: Sequence[int]) -> dict[int, tuple[int, int]]:
     stmt = (
         select(MatchEventSchema.team_id, MatchEventSchema.event_type, func.count())
         .where(
@@ -144,7 +188,7 @@ async def _cards(session: AsyncSession, team_ids: tuple[int, int]) -> dict[int, 
     }
 
 
-async def _players(session: AsyncSession, team_ids: tuple[int, int]) -> list[PlayerFact]:
+async def _players(session: AsyncSession, team_ids: Sequence[int]) -> list[PlayerFact]:
     stmt = (
         select(PlayerSchema, PlayerStatSchema)
         .outerjoin(PlayerStatSchema, PlayerStatSchema.player_id == PlayerSchema.player_id)
@@ -180,7 +224,7 @@ async def _players(session: AsyncSession, team_ids: tuple[int, int]) -> list[Pla
     return facts
 
 
-async def _depth(session: AsyncSession, team_ids: tuple[int, int]) -> dict[int, DepthFact]:
+async def _depth(session: AsyncSession, team_ids: Sequence[int]) -> dict[int, DepthFact]:
     starter = MatchLineupSchema.is_starting_xi.is_(True)
     stmt = (
         select(

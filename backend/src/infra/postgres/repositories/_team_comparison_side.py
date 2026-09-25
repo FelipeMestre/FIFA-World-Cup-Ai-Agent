@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import date
 
 from src.domain.player_analytics.model.player_ranking import WORLD_CUP_AGE_AS_OF
-from src.domain.team_analytics.model.team_analysis import ResultLetter, TeamMatchResult, TeamRecord
+from src.domain.team_analytics.model.base import ResultLetter, TeamMatchResult, TeamRecord
 from src.domain.team_analytics.model.team_comparison import (
     ComparedTeam,
     GroupOutcome,

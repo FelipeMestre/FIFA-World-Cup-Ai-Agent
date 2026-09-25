@@ -181,3 +181,26 @@ export const teamComparisonSchema = z.object({
     }),
   ),
 });
+
+export const positionSquadSchema = z.object({
+  position: positionSchema,
+  players: z.array(comparisonPlayerSchema),
+  rollup: rollupSchema,
+});
+
+export const teamIdentityFieldsSchema = {
+  confederation: z.string(),
+  groupLetter: z.string().nullable(),
+  managerName: z.string().nullable(),
+  fifaRankingPreTournament: z.number().nullable(),
+  squad: squadSchema,
+  group: z.object({
+    played: z.number(),
+    points: z.number(),
+    goalDifference: z.number(),
+  }),
+  topScorer: leaderSchema.nullable(),
+  topAssister: leaderSchema.nullable(),
+  mostMinutes: leaderSchema.nullable(),
+  positions: z.array(positionSquadSchema),
+};

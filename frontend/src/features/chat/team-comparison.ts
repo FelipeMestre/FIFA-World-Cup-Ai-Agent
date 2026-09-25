@@ -89,6 +89,23 @@ export interface ComparedTeam {
   mostMinutes: SquadLeader | null;
 }
 
+export type TeamIdentityFacts = Pick<
+  ComparedTeam,
+  | "code"
+  | "name"
+  | "standingLabel"
+  | "record"
+  | "squad"
+  | "group"
+  | "groupLetter"
+  | "managerName"
+  | "fifaRankingPreTournament"
+  | "confederation"
+  | "topScorer"
+  | "topAssister"
+  | "mostMinutes"
+>;
+
 export interface ComparedStat {
   label: string;
   teamADisplay: string;
@@ -152,6 +169,12 @@ export interface PositionRollup {
   marketValueEur: number;
   goals: number;
   assists: number;
+}
+
+export interface PositionSquad {
+  position: Position;
+  players: ComparisonPlayer[];
+  rollup: PositionRollup;
 }
 
 export interface PositionGroup {

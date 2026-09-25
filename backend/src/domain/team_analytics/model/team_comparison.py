@@ -8,12 +8,8 @@ the chat widget reads the two team summaries, `compared_stats`,
 
 from typing import Literal
 
-from src.domain.team_analytics.model.team_analysis import (
-    ResultLetter,
-    TeamMatchResult,
-    TeamRecord,
-    _CamelModel,
-)
+from src.domain.team_analytics.model.base import CamelModel as _CamelModel
+from src.domain.team_analytics.model.base import ResultLetter, TeamMatchResult, TeamRecord
 
 Position = Literal["GK", "DEF", "MID", "FWD"]
 ComparisonSide = Literal["a", "b"]
@@ -175,6 +171,12 @@ class PositionRollup(_CamelModel):
     market_value_eur: int
     goals: int
     assists: int
+
+
+class PositionSquad(_CamelModel):
+    position: Position
+    players: list[ComparisonPlayer]
+    rollup: PositionRollup
 
 
 class PositionGroup(_CamelModel):

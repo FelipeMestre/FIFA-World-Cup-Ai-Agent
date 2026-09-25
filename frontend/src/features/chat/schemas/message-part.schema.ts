@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { teamComparisonSchema } from "@/features/chat/schemas/team-comparison.schema";
+import { teamComparisonSchema, teamIdentityFieldsSchema } from "@/features/chat/schemas/team-comparison.schema";
 
 /**
  * Runtime validation for the backend's `MessagePart` discriminated union
@@ -59,6 +59,7 @@ const teamSummarySchema = z.object({
     fieldYellowPerMatch: z.number(),
   }),
   stageCaption: z.string(),
+  ...teamIdentityFieldsSchema,
 });
 
 const matchEventSchema = z.object({

@@ -6,6 +6,7 @@ import type {
   ComparisonPlayer,
   PositionGroup,
   PositionRollup,
+  PositionSquad,
 } from "@/features/chat/team-comparison";
 
 function PlayerColumn({
@@ -50,6 +51,27 @@ function PlayerColumn({
         {rollup.minutes} min · {formatMarketValue(rollup.marketValueEur)} · {rollup.goals} goals · {rollup.assists} assists
       </span>
     </div>
+  );
+}
+
+/** One team's World Cup roster, grouped GK / DEF / MID / FWD. */
+export function TeamPositionSquads({
+  code,
+  positions,
+}: {
+  code: string;
+  positions: PositionSquad[];
+}) {
+  return (
+    <section className="flex flex-col gap-ds-5 p-ds-5">
+      <h3 className="text-heading-sm">Squad by position</h3>
+      {positions.map((group) => (
+        <div key={group.position} className="flex flex-col gap-ds-3">
+          <h4 className="text-label-sm text-ink-muted">{positionLabel(group.position)}</h4>
+          <PlayerColumn code={code} players={group.players} rollup={group.rollup} align="start" />
+        </div>
+      ))}
+    </section>
   );
 }
 

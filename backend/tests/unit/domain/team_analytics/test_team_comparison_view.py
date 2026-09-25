@@ -20,7 +20,10 @@ from src.infra.postgres.repositories._team_comparison_facts import (
     TeamProfile,
     TeamStatFact,
 )
-from src.infra.postgres.repositories._team_comparison_view import assemble_team_comparison
+from src.infra.postgres.repositories._team_comparison_view import (
+    assemble_team_comparison,
+    extra_field_average_rows,
+)
 
 
 def _profile(team_id: int, name: str, code: str) -> TeamProfile:
@@ -250,6 +253,18 @@ def test_empty_squad_leaves_age_unset() -> None:
     assert comparison.team_a.squad.roster_size == 0
     assert comparison.team_a.squad.average_age is None
     assert comparison.team_a.top_scorer is None
+
+
+def test_analysis_extra_tiles_reuse_comparison_rates_without_possession() -> None:
+    comparison = _comparison()
+    rows = extra_field_average_rows(comparison.team_a, _field(), played=1)
+    labels = [row.label for row in rows]
+    assert "Possession" not in labels
+    assert "Shots per game" not in labels
+    assert "xG per game" in labels
+    assert "Goals per game" in labels
+    assert "Group points" in labels
+    assert all(row.delta[0] in "▲▼" for row in rows)
 
 
 def test_widget_payload_is_camel_case() -> None:

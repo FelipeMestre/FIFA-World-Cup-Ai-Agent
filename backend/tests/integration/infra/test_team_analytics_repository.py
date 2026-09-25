@@ -161,6 +161,10 @@ async def test_get_team_analysis_resolves_by_exact_name(db_session: AsyncSession
     assert analysis.id == str(_TEAM_ID)
     assert analysis.code == "TTA"
     assert analysis.name == "Test Team A"
+    assert analysis.confederation == "UEFA"
+    assert analysis.squad.roster_size == 1
+    assert [group.position for group in analysis.positions] == ["GK", "DEF", "MID", "FWD"]
+    assert any(row.label == "xG per game" for row in analysis.tournament_averages)
 
 
 async def test_get_team_analysis_resolves_by_fifa_code(db_session: AsyncSession) -> None:

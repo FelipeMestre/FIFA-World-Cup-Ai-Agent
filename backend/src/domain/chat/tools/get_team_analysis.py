@@ -32,11 +32,11 @@ GET_TEAM_ANALYSIS_SCHEMA: dict = {
     "function": {
         "name": "get_team_analysis",
         "description": (
-            "Return a national team's full FIFA World Cup 2026 tournament record: "
-            "match-by-match results, goals for/against, possession and other match "
-            "stats compared against the tournament-wide average, and disciplinary "
-            "totals. Use this whenever the user asks about a specific team's "
-            "performance, form, or stats in the tournament."
+            "Return a national team's FIFA World Cup 2026 record: match-by-match "
+            "results, goals, possession and other match stats versus the tournament "
+            "average, squad identity (age, value, group, leaders), and the World Cup "
+            "roster by position. Use this whenever the user asks about a specific "
+            "team's performance, form, squad, or stats in the tournament."
         ),
         "parameters": {
             "type": "object",
