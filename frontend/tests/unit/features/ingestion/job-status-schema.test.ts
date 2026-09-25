@@ -75,8 +75,23 @@ describe("jobStatusSchema / toJobStatus", () => {
     });
 
     const status = toJobStatus(row);
-
     expect(status.jobType).toBe("identity_link_rematch");
     expect(status.rowCounts).toEqual({ player_identity_link: 1248 });
+
+  });
+
+  it("parses a bulk_synthetic_upload job with its own table-name stage list", () => {
+    const row = jobStatusSchema.parse({
+      ...baseWireRow(),
+      job_type: "bulk_synthetic_upload",
+      current_stage: "team",
+      stage_checkpoints: [{ stage: "team", completed_at: "2026-09-25T12:00:00+00:00" }],
+      all_stages: ["team", "player", "match"],
+    });
+
+    const status = toJobStatus(row);
+    expect(status.jobType).toBe("bulk_synthetic_upload");
+    expect(status.currentStage).toBe("team");
+    expect(status.allStages).toEqual(["team", "player", "match"]);
   });
 });

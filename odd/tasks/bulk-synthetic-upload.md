@@ -64,7 +64,9 @@ endpoint must not reintroduce that failure mode.
 - [x] T6: Live smoke test (in-process, real DB/Redis, real dataset -- see Progress for why not literal curl); `ruff check`/`ruff format`; full pytest suite
 - [x] T7: Rebase onto `main` after user confirmed `origin/claude/player-linking-approval-7qi9fu` (the admin panel branch) was merged; fix migration `down_revision` conflict this surfaced (two heads: `0f67254f34fc` from the merged chat-categorization migration chain, `d23ea2153231` from this branch) -- re-pointed to `0f67254f34fc`, single head restored
 - [x] T8 (NEW, scope added after rebase): populate `current_stage`/`stage_checkpoints` on the bulk-upload job (one checkpoint per table ingested), mirroring `TransfermarktSyncService`'s use of `IngestionJob.record_stage_checkpoint` -- added because the merged admin panel's `stage-progress.tsx` component renders exactly these fields, and the user wants CSV job status to look "just like transfermarkt". `record_stage_checkpoint(stage: TransfermarktSyncStage)` is currently typed to a Transfermarkt-specific enum; needs generalizing (or a parallel enum) without breaking the existing caller.
-- [ ] T9 (NEW): frontend admin UI -- a bulk-CSV-upload trigger + job status view in `frontend/src/features/ingestion/`, mirroring the existing Transfermarkt `sync-jobs-panel.tsx` exactly: same manual-refresh-only pattern (no polling), same Route-Handler-proxy API client pattern, same `StageProgress` rendering, same UI primitives/design tokens. Wire into the existing `(admin)/sync-jobs` page (or a clearly-placed addition to it) alongside the existing Transfermarkt trigger.
+- [x] T9 (NEW): frontend admin UI -- a bulk-CSV-upload trigger + job status view in `frontend/src/features/ingestion/`, mirroring the existing Transfermarkt `sync-jobs-panel.tsx` exactly: same manual-refresh-only pattern (no polling), same Route-Handler-proxy API client pattern, same `StageProgress` rendering, same UI primitives/design tokens. Wire into the existing `(admin)/sync-jobs` page (or a clearly-placed addition to it) alongside the existing Transfermarkt trigger.
+
+**This was the last task on this feature -- T1-T9 all done, nothing left planned.**
 
 ## Verification
 - `ruff check backend/src backend/tests && ruff format --check backend/src backend/tests`
@@ -313,3 +315,192 @@ No router/Arq task/schema changes needed -- `GET /jobs/{id}` already returns
 `JobStatusResponse.from_domain(job)` generically, and `IngestionJobRepository.
 update()` already persisted `current_stage`/`stage_checkpoints` for any job
 type (verified, not assumed, per the brief).
+
+### T9 -- frontend admin UI (last task on this feature)
+
+Read the mirror-target files first, as instructed, rather than approximating
+from memory: `use-transfermarkt-sync-job.ts`, `trigger-transfermarkt-sync.ts`,
+`get-job-status.ts`, the two existing Route Handlers, `sync-jobs-panel.tsx`,
+`stage-progress.tsx`, `types.ts`, `job-status.schema.ts`,
+`correct-match-dialog.tsx`, `proxy-backend-json.ts`, and the backend's actual
+`ingestion_router.py`/`ingestion_dtos.py` for the bulk-upload contract
+(confirmed field name `files`, repeated `UploadFile`; 201 body
+`{job_id, status, files}`; 400 body `{detail: {message, files}}`) rather than
+trusting the brief's paraphrase of it.
+
+**Confirmed generically reusable as-is, no changes needed**: `StageProgress`
+(keys off `job.allStages`/`currentStage`/`stageCheckpoints`, all already
+job-type-agnostic strings) and `get-job-status.ts`/`JobStatusResponse`
+parsing (already generic per T8). Only `job_type`'s zod enum and the
+frontend's `IngestionJobType` union needed a new `"bulk_synthetic_upload"`
+member -- added to both `types.ts` and `job-status.schema.ts`.
+
+**The multipart-proxy gap flagged in the brief**: no existing Route Handler
+in this codebase proxies a `multipart/form-data` request (the single-file
+`synthetic-upload` endpoint was never wired to the frontend either). Read
+`proxy-backend-json.ts` to find exactly how it attaches auth
+(`getSessionToken()` from the httpOnly `fai_session` cookie, forwarded as
+`Authorization: Bearer <token>`) and replicated that same mechanism in a new
+`proxy-backend-multipart.ts`, differing from `proxyBackendJson` in two
+ways this endpoint specifically needs:
+1. The request body is the caller's `FormData` forwarded as-is, with no
+   `Content-Type` header set manually -- `fetch` derives the multipart
+   boundary from the `FormData` instance itself, and a hand-set header would
+   omit it and break the backend's multipart parser.
+2. The backend's JSON response body is forwarded **verbatim** on every
+   status, instead of `proxyBackendJson`'s own normalization to a plain
+   `{ detail: string }` on error. The bulk-upload endpoint's 400 body carries
+   a structured `detail.files` per-file rejection list the UI renders as a
+   real result (not just an error message), so collapsing it would lose
+   information no other ingestion endpoint's error shape needs to carry.
+The new Route Handler (`app/api/admin/ingestion/bulk-synthetic-upload/
+route.ts`) reads `request.formData()` and forwards it through
+`proxyBackendMultipart` unchanged -- the field name (`files`) already matches
+what the backend expects, so no reconstruction was needed. Auth is never
+skipped: an unauthenticated request never reaches the backend at all
+(`proxyBackendMultipart` returns 401 immediately per its own
+`getSessionToken()` check, mirroring `proxyBackendJson`).
+
+Deviation found and fixed (via live testing, not assumption): the first cut
+of the route handler let `request.formData()`'s exception propagate on a
+missing/non-multipart body, surfacing as an unhandled 500 instead of a clean
+error. Fixed by wrapping it in try/catch returning 400
+`{"detail": "Expected a multipart/form-data body"}}`, mirroring the existing
+JSON routes' own try/catch-and-default-gracefully handling of a malformed
+body (`transfermarkt-sync/route.ts` does the same for `request.json()`).
+
+**API client** (`upload-bulk-synthetic-csvs.ts`): not built on the shared
+`fetchJson` helper like the feature's other clients, because a 400 here is
+not a bare error to throw -- it is a structured per-file rejection result the
+UI displays. Parses both the 201 success body and the 400
+`detail.{message,files}` body itself via two zod schemas in
+`bulk-upload-response.schema.ts`, returning a `BulkUploadResult` with
+`jobId: null` for the zero-accepted case; only a genuinely unexpected error
+shape still throws `ApiError`.
+
+**Hook** (`use-bulk-synthetic-upload-job.ts`): mirrors
+`useTransfermarktSyncJob` exactly for job-tracking (trigger once, fetch
+status once when a job id appears, fetch once on mount from a cached
+`localStorage` id, manual-refresh-only otherwise -- no polling, no terminal-
+status stop condition, confirmed this is still correct for this job type
+too: nothing about a bulk upload needs different refresh semantics). One
+addition beyond the mirror: `uploadResult` state holds the per-file
+accept/reject breakdown from the upload response, kept separately from `job`
+so a later `refresh()` call (which only touches `job`) never overwrites or
+loses it -- this is the one place that information exists, per the brief.
+Deviated from the mirrored file on one cosmetic point only: used a fresh
+`ingestion:last-bulk-synthetic-upload-job-id` localStorage key instead of
+copying the mirrored file's `identity-links:last-transfermarkt-sync-job-id`
+prefix, which is itself a pre-existing copy-paste artifact from a different
+feature (`identity-links`) that happens to live in the `ingestion` feature
+folder -- not worth propagating into a second key.
+
+**Component** (`bulk-synthetic-upload-panel.tsx`): Card-based layout
+matching `SyncJobsPanel`'s structure and design tokens exactly (same
+`border-border-subtle`/`bg-surface-800`/`text-ink-*`/`bg-brand` classes, same
+literal-text loading states, no spinner). Renders, in order: the file picker
++ submit card; the per-file upload-results card (Badge per file,
+accepted/rejected, table name or rejection reason) whenever `uploadResult` is
+non-null, regardless of whether any file was accepted; and the job status
+card (reusing `StageProgress` as-is) only when `jobId !== null`. The job
+status card's JSX duplicates `SyncJobsPanel`'s own card block rather than
+extracting a shared component -- a deliberate choice, not an oversight: the
+brief explicitly asked not to touch `sync-jobs-panel.tsx` beyond what's
+strictly needed, and extracting a shared card would have required changing
+that file's own render output for a second consumer that didn't exist before
+this task.
+
+**Wiring**: `features/ingestion/index.ts` exports the new panel;
+`app/(admin)/sync-jobs/page.tsx` renders `<SyncJobsPanel />` and
+`<BulkSyntheticUploadPanel />` as siblings in a `flex-col gap-ds-8` wrapper --
+still a thin routing shell, no new route/page.
+
+TDD: schema tests
+(`tests/unit/features/ingestion/bulk-upload-response-schema.test.ts`) and a
+new case in the existing `job-status-schema.test.ts` for the
+`bulk_synthetic_upload` job type, plus a hook test
+(`use-bulk-synthetic-upload-job.test.tsx`) mirroring
+`use-transfermarkt-sync-job.test.tsx`'s structure and mocking style
+(`vi.mock` on the API-client module, not `fetch`) exactly, including a case
+specifically asserting `uploadResult` survives a later `refresh()`. No
+component-level RTL test was added for the new panel, matching this
+codebase's existing depth (no panel/component tests exist for
+`sync-jobs-panel.tsx` either).
+
+Verification:
+- `npx vitest run tests/unit/features/ingestion`: 4 files, 19 passed (includes
+  the 2 new test files plus the extended `job-status-schema.test.ts`).
+- `npx vitest run` (full suite): 17/20 files, 96/97 tests passed excluding 3
+  pre-existing unrelated failures -- confirmed pre-existing via `git status`
+  showing none of those 3 files (`login-form.test.tsx`,
+  `assistant-markdown.test.tsx`, `message-part-renderer.test.tsx`) touched by
+  this branch, and via a `git stash`/build re-run on the pre-T9 tree (below)
+  reproducing the identical `react-markdown`/`remark-gfm` module-not-found
+  errors that also underlie the two chat test file failures.
+- `npm run build` (`next build`, which runs the TypeScript check as part of
+  the build): initially failed on a **pre-existing, unrelated** environment
+  gap -- `node_modules` was stale relative to `package.json` (missing
+  `react-markdown`/`remark-gfm`, added in a commit from Sep 24 that predates
+  this branch; `node_modules` itself dated Sep 17). Ran `npm install` to
+  bring the environment in line with the committed `package.json`/
+  `package-lock.json` (no source or lockfile changes) -- not a modification
+  this feature required, purely an environment fix so the build could
+  actually run. After that, the build compiled and typechecked with zero
+  errors in any file this task touches; the remaining typecheck failures are
+  all in `src/features/chat/**` and its tests (a `MessagePart`/`venueLabel`
+  null-vs-undefined mismatch, an unrelated `ConversationSummary`/`void`
+  mismatch, a stray `className` prop) -- confirmed pre-existing and
+  unrelated by `git stash`-ing every file this task touched and re-running
+  `npm run build`: byte-for-byte the same error list, same file, same line
+  numbers, before this task's files existed.
+- `npx eslint` on every new/touched file: clean except
+  `use-bulk-synthetic-upload-job.ts`, which reproduces the exact same
+  `react-hooks/set-state-in-effect` (2x) finding as the untouched, mirrored
+  `use-transfermarkt-sync-job.ts` -- confirmed by running eslint on that
+  original file too; not a regression, inherent to the pattern this task was
+  explicitly told to mirror exactly.
+- Live: the shared docker-compose stack's `world-cup-ai-scout-frontend`
+  container turned out to be bind-mounted from a **different** worktree
+  (`.claude/worktrees/team-comparison/frontend`, confirmed via `docker
+  inspect`'s `Mounts`), not this checkout -- consistent with T4/T6's already-
+  documented observation that this docker-compose stack is shared across
+  concurrent worktrees. Left that container untouched (restarting/repointing
+  shared infra for another in-progress session would be disruptive and out
+  of scope) and instead ran `next dev` locally from this checkout on port
+  3001 with `BACKEND_API_URL` pointed at the already-running backend
+  container's published port (`localhost:8000`), then `curl`'d the new route
+  directly:
+  - No cookie + valid multipart body -> `401 {"detail":"Not authenticated"}`
+    (rejected by the Route Handler itself, before ever reaching the backend).
+  - Garbage/expired cookie (`fai_session=totally.fake.jwt`) + valid multipart
+    body -> `401 {"detail":"Invalid or expired token"}`, the backend's own
+    JWT-validation error, forwarded verbatim -- proves the multipart body
+    and the bearer token both actually reached the real FastAPI backend
+    through the new proxy, not just that the Next.js route existed.
+  - No body at all -> reproduced the 500 documented above as a real bug, then
+    re-tested after the fix -> clean `400
+    {"detail":"Expected a multipart/form-data body"}`.
+  Did **not** verify the success path (valid admin session -> 201 -> job
+  card renders with live stage progress) end-to-end through a browser --
+  same blocker T6/T8 already hit and documented: the live admin's real
+  password is unknown and guessing credentials was not attempted. This is a
+  real, disclosed gap, not claimed as done.
+- `ruff`/`pytest` not re-run -- T9 touched no backend files.
+
+Files created: `frontend/src/lib/api/proxy-backend-multipart.ts`,
+`frontend/src/app/api/admin/ingestion/bulk-synthetic-upload/route.ts`,
+`frontend/src/features/ingestion/api/upload-bulk-synthetic-csvs.ts`,
+`frontend/src/features/ingestion/schemas/bulk-upload-response.schema.ts`,
+`frontend/src/features/ingestion/hooks/use-bulk-synthetic-upload-job.ts`,
+`frontend/src/features/ingestion/components/bulk-synthetic-upload-panel.tsx`,
+`frontend/tests/unit/features/ingestion/bulk-upload-response-schema.test.ts`,
+`frontend/tests/unit/features/ingestion/use-bulk-synthetic-upload-job.test.tsx`.
+
+Files modified: `frontend/src/features/ingestion/types.ts`,
+`frontend/src/features/ingestion/schemas/job-status.schema.ts`,
+`frontend/src/features/ingestion/index.ts`,
+`frontend/src/app/(admin)/sync-jobs/page.tsx`,
+`frontend/tests/unit/features/ingestion/job-status-schema.test.ts`.
+
+`sync-jobs-panel.tsx`, `stage-progress.tsx`, and every other Transfermarkt
+sync UI file were not touched at all.
