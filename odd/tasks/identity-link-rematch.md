@@ -283,5 +283,6 @@ never touched the other worktree/branch).
   for ground truth once this was noticed.)
 
 ### Commit
-Committed locally (Conventional Commit), not pushed, no PR opened. See
-`git log` on `feat/identity-link-rematch` for the exact hash.
+Committed locally (Conventional Commit), not pushed, no PR opened:
+`bc06732d1d8c642a8e7a79af246398beab0d537c` -- "feat(ingestion): add admin
+identity-link clean rematch endpoint" on `feat/identity-link-rematch`.
