@@ -9,6 +9,19 @@ class SyntheticUploadResponse(BaseModel):
     status: str
 
 
+class BulkFileResult(BaseModel):
+    filename: str
+    table_name: str | None
+    accepted: bool
+    reason: str | None = None
+
+
+class BulkSyntheticUploadResponse(BaseModel):
+    job_id: int
+    status: str
+    files: list[BulkFileResult]
+
+
 class TransfermarktSyncRequest(BaseModel):
     skip_populated: bool = False
     """Resume mode: a step whose target table already has rows is skipped
