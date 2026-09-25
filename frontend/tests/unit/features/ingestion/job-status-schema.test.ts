@@ -80,6 +80,7 @@ describe("jobStatusSchema / toJobStatus", () => {
 
   });
 
+
   it("parses a bulk_synthetic_upload job with its own table-name stage list", () => {
     const row = jobStatusSchema.parse({
       ...baseWireRow(),
@@ -90,6 +91,7 @@ describe("jobStatusSchema / toJobStatus", () => {
     });
 
     const status = toJobStatus(row);
+
     expect(status.jobType).toBe("bulk_synthetic_upload");
     expect(status.currentStage).toBe("team");
     expect(status.allStages).toEqual(["team", "player", "match"]);

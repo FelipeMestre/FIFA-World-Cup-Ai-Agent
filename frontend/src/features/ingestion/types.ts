@@ -2,7 +2,9 @@ export type IngestionJobType =
   | "synthetic_upload"
   | "transfermarkt_sync"
   | "bulk_synthetic_upload"
-  | "identity_link_rematch";
+  | "identity_link_rematch"
+  | "bulk_synthetic_upload";
+
 
 export type IngestionJobStatus = "queued" | "running" | "succeeded" | "failed";
 
