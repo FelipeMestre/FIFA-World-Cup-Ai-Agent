@@ -76,9 +76,7 @@ def resolve_and_order_files(files: Sequence[tuple[str, bytes]]) -> BatchResoluti
                 )
             )
             continue
-        accepted.append(
-            ResolvedFile(filename=filename, table_name=table_name, csv_bytes=csv_bytes)
-        )
+        accepted.append(ResolvedFile(filename=filename, table_name=table_name, csv_bytes=csv_bytes))
     accepted.sort(key=lambda resolved: ingestion_order_index(resolved.table_name))
     return BatchResolution(accepted=accepted, rejected=rejected)
 
