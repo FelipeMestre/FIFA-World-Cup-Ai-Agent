@@ -1,7 +1,7 @@
 """add bulk_synthetic_upload job type
 
 Revision ID: d23ea2153231
-Revises: a4c8e2b91f03
+Revises: 0f67254f34fc
 Create Date: 2026-09-25 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'd23ea2153231'
-down_revision: Union[str, Sequence[str], None] = 'a4c8e2b91f03'
+down_revision: Union[str, Sequence[str], None] = '0f67254f34fc'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
