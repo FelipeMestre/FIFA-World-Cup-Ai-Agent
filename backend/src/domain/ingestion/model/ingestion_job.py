@@ -19,6 +19,7 @@ class IngestionJobType(StrEnum):
     SYNTHETIC_UPLOAD = "synthetic_upload"
     TRANSFERMARKT_SYNC = "transfermarkt_sync"
     IDENTITY_LINK_REMATCH = "identity_link_rematch"
+    BULK_SYNTHETIC_UPLOAD = "bulk_synthetic_upload"
 
 
 class IngestionJobStatus(StrEnum):
