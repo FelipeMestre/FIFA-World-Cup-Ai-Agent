@@ -15,10 +15,53 @@ from src.main import app
 _ADMIN_USER_ID = 990301
 _REAL_PLAYER_ID = 990301
 _OTHER_REAL_PLAYER_ID = 990302
+_REMATCH_ADMIN_USER_ID = 990310
+_NON_ADMIN_USER_ID = 990311
 
 
 async def _admin_token_data() -> dict:
     return {"sub": str(_ADMIN_USER_ID), "is_admin": True}
+
+
+async def _rematch_admin_token_data() -> dict:
+    return {"sub": str(_REMATCH_ADMIN_USER_ID), "is_admin": True}
+
+
+async def _non_admin_token_data() -> dict:
+    return {"sub": str(_NON_ADMIN_USER_ID), "is_admin": False}
+
+
+@pytest.fixture
+async def rematch_admin_user() -> AsyncGenerator[None]:
+    async with SessionFactory() as session:
+        # A separate :name param, not split_part(:email, ...) -- reusing the
+        # same bind parameter both as a plain value and as a function
+        # argument makes asyncpg's extended-protocol type inference raise
+        # AmbiguousParameterError ("text versus character varying") on a
+        # cold prepare. Verified live and independent of this feature (see
+        # this file's own git history for other fixtures using that pattern).
+        await session.execute(
+            text(
+                'INSERT INTO "user" (id, email, name, password_hash, is_admin, created_at) '
+                "VALUES (:id, :email, :name, 'hash', true, now())"
+            ),
+            {
+                "id": _REMATCH_ADMIN_USER_ID,
+                "email": "admin-rematch-test@example.test",
+                "name": "admin-rematch-test",
+            },
+        )
+        await session.commit()
+    yield
+    async with SessionFactory() as session:
+        await session.execute(
+            text("DELETE FROM ingestion_job WHERE requested_by_user_id = :id"),
+            {"id": _REMATCH_ADMIN_USER_ID},
+        )
+        await session.execute(
+            text('DELETE FROM "user" WHERE id = :id'), {"id": _REMATCH_ADMIN_USER_ID}
+        )
+        await session.commit()
 
 
 @pytest.fixture
@@ -326,3 +369,64 @@ async def test_reassign_to_already_linked_real_player_returns_409(
         )
         await cleanup_session.commit()
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_rematch_missing_confirm_returns_400_and_creates_no_job(
+    client: AsyncClient, rematch_admin_user: None
+) -> None:
+    app.dependency_overrides[parse_jwt_data] = _rematch_admin_token_data
+
+    response = await client.post("/api/v1/admin/identity-links/rematch")
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 400
+    async with SessionFactory() as session:
+        job_count = (
+            await session.execute(
+                text("SELECT count(*) FROM ingestion_job WHERE requested_by_user_id = :id"),
+                {"id": _REMATCH_ADMIN_USER_ID},
+            )
+        ).scalar_one()
+    assert job_count == 0
+
+
+@pytest.mark.asyncio
+async def test_rematch_confirm_false_returns_400_and_creates_no_job(
+    client: AsyncClient, rematch_admin_user: None
+) -> None:
+    app.dependency_overrides[parse_jwt_data] = _rematch_admin_token_data
+
+    response = await client.post("/api/v1/admin/identity-links/rematch", json={"confirm": False})
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_rematch_by_non_admin_returns_403(client: AsyncClient) -> None:
+    app.dependency_overrides[parse_jwt_data] = _non_admin_token_data
+
+    response = await client.post("/api/v1/admin/identity-links/rematch", json={"confirm": True})
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_rematch_with_confirm_true_creates_queued_job(
+    client: AsyncClient, rematch_admin_user: None
+) -> None:
+    # The actual delete+regenerate work runs in the enqueued Arq task, not
+    # inline in the request -- this only proves the job is created and
+    # queued. The task's own delete-then-regenerate behavior is covered by
+    # tests/integration/infra/test_identity_link_rematch_service.py.
+    app.dependency_overrides[parse_jwt_data] = _rematch_admin_token_data
+
+    response = await client.post("/api/v1/admin/identity-links/rematch", json={"confirm": True})
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "queued"
+    assert isinstance(body["job_id"], int)

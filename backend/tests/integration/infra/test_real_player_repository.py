@@ -1,10 +1,13 @@
 """Integration tests against a real Postgres instance (no mocking, per
 AGENTS.md's testing anti-pattern table): verifies `RealPlayerRepository`'s
 `search` -- the lookup the admin "correct match" flow uses to find the
-intended Transfermarkt player by name.
+intended Transfermarkt player by name -- and `list_match_candidates`, which
+feeds `PlayerIdentityMatchingService.match()` for the identity-link rematch
+feature.
 """
 
 from collections.abc import AsyncGenerator
+from datetime import date
 
 import pytest
 from sqlalchemy import text
@@ -24,9 +27,10 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
     async with SessionFactory() as session:
         await session.execute(
             text(
-                "INSERT INTO real_player (player_id, first_name, last_name, position, "
-                "profile_url, last_synced_at) "
-                "VALUES (:id, 'Kylian', 'Mbappe', 'Forward', 'https://example.test/mbappe', now())"
+                "INSERT INTO real_player (player_id, first_name, last_name, "
+                "date_of_birth, height_cm, position, profile_url, last_synced_at) "
+                "VALUES (:id, 'Kylian', 'Mbappe', '1998-12-20', 178, 'Forward', "
+                "'https://example.test/mbappe', now())"
             ),
             {"id": _PLAYER_ID},
         )
@@ -83,3 +87,27 @@ async def test_get_returns_none_for_unknown_id(db_session: AsyncSession) -> None
     result = await repository.get(-1)
 
     assert result is None
+
+
+async def test_list_match_candidates_shapes_rows_for_the_matching_service(
+    db_session: AsyncSession,
+) -> None:
+    # PlayerIdentityMatchingService.match() reads these exact dict keys --
+    # in particular `height_in_cm`, which does NOT match the persisted
+    # `height_cm` column name, and a `date`-typed `date_of_birth`, not a
+    # string. Getting either wrong makes matching silently return wrong/no
+    # results (see that service's own docstring on this exact class of bug).
+    repository = _SqlAlchemyRealPlayerRepository(db_session)
+
+    candidates = await repository.list_match_candidates()
+
+    mbappe = next(c for c in candidates if c["player_id"] == _PLAYER_ID)
+    assert mbappe["first_name"] == "Kylian"
+    assert mbappe["last_name"] == "Mbappe"
+    assert mbappe["date_of_birth"] == date(1998, 12, 20)
+    assert mbappe["height_in_cm"] == 178
+    assert mbappe["current_national_team_id"] is None
+
+    other = next(c for c in candidates if c["player_id"] == _OTHER_PLAYER_ID)
+    assert other["date_of_birth"] is None
+    assert other["height_in_cm"] is None

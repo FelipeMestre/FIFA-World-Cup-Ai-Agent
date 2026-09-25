@@ -53,6 +53,11 @@ async def enqueue_transfermarkt_sync(job_id: int, skip_populated: bool = False) 
     await pool.enqueue_job("transfermarkt_sync_task", job_id, skip_populated)
 
 
+async def enqueue_identity_link_rematch(job_id: int) -> None:
+    pool = await get_arq_pool()
+    await pool.enqueue_job("identity_link_rematch_task", job_id)
+
+
 async def enqueue_chat_reply(
     conversation_id: str, user_id: int, user_message: str, user_message_id: int
 ) -> None:

@@ -1,1 +1,1 @@
-export { IdentityLinksReviewList } from "@/features/identity-links/components/identity-links-review-list";
+export { IdentityLinksAdminPanel } from "@/features/identity-links/components/identity-links-admin-panel";

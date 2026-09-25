@@ -21,3 +21,11 @@ class PlayerIdentityLinkRepositoryInterface(Protocol):
     async def upsert_candidates(
         self, candidates: list[PlayerIdentityCandidate]
     ) -> UpsertResult: ...
+    async def delete_all(self) -> int:
+        """Deletes every row of `player_identity_link`. Returns the number of
+        rows deleted. Used by the identity-link rematch feature to wipe the
+        table clean before regenerating it from scratch -- `upsert_candidates`
+        alone cannot produce a clean result, since its `ON CONFLICT DO UPDATE`
+        leaves a stale row untouched for any player no longer matched.
+        """
+        ...

@@ -195,3 +195,28 @@ async def test_update_status_on_unknown_id_raises(db_session: AsyncSession) -> N
 
     with pytest.raises(IdentityLinkNotFoundError):
         await repository.update_status(-1, LinkReviewStatus.APPROVED, _USER_ID)
+
+
+async def test_delete_all_wipes_every_row_including_admin_reviewed_ones(
+    db_session: AsyncSession,
+) -> None:
+    # The identity-link rematch feature's whole reason to exist: a manually
+    # approved/rejected row must NOT survive a clean rematch, unlike
+    # upsert_candidates' ON CONFLICT DO UPDATE, which would leave it alone
+    # for any player no longer matched.
+    repository = _SqlAlchemyPlayerIdentityLinkRepository(db_session)
+    candidate = PlayerIdentityCandidate(
+        player_id=_PLAYER_ID,
+        real_player_id=_REAL_PLAYER_ID,
+        match_method=PlayerMatchMethod.EXACT_NAME_DOB,
+        match_confidence=Decimal("1.000"),
+    )
+    await repository.upsert_candidates([candidate])
+    link_id = await _link_id_for_player(db_session, _PLAYER_ID)
+    await repository.update_status(link_id, LinkReviewStatus.APPROVED, _USER_ID)
+
+    deleted_count = await repository.delete_all()
+
+    assert deleted_count >= 1
+    assert await repository.count_by_status(None) == 0
+    assert await repository.get(link_id) is None

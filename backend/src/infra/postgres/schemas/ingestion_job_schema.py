@@ -21,6 +21,7 @@ from src.infra.postgres.schemas.base import Base
 class IngestionJobType(StrEnum):
     SYNTHETIC_UPLOAD = "synthetic_upload"
     TRANSFERMARKT_SYNC = "transfermarkt_sync"
+    IDENTITY_LINK_REMATCH = "identity_link_rematch"
     BULK_SYNTHETIC_UPLOAD = "bulk_synthetic_upload"
 
 

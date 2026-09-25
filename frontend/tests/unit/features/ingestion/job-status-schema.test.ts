@@ -63,6 +63,24 @@ describe("jobStatusSchema / toJobStatus", () => {
     expect(toJobStatus(row).allStages).toEqual([]);
   });
 
+  it("accepts an identity_link_rematch job type with a player_identity_link row count", () => {
+    const row = jobStatusSchema.parse({
+      ...baseWireRow(),
+      job_type: "identity_link_rematch",
+      status: "succeeded",
+      row_counts: { player_identity_link: 1248 },
+      current_stage: null,
+      stage_checkpoints: [],
+      all_stages: [],
+    });
+
+    const status = toJobStatus(row);
+    expect(status.jobType).toBe("identity_link_rematch");
+    expect(status.rowCounts).toEqual({ player_identity_link: 1248 });
+
+  });
+
+
   it("parses a bulk_synthetic_upload job with its own table-name stage list", () => {
     const row = jobStatusSchema.parse({
       ...baseWireRow(),
