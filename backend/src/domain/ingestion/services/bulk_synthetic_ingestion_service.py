@@ -11,6 +11,14 @@ per-file accept/reject response, while `BulkSyntheticIngestionService.
 ingest_batch` does the actual (async, DB-backed) ingestion inside the Arq
 task -- both paths share the exact same resolution/ordering rule instead of
 duplicating it.
+
+Each ingested table is also recorded as a `JobProgressTracker` stage
+checkpoint (one per table, in ingestion order) -- the same
+`IngestionJob.record_stage_checkpoint` mechanism and the same
+`JobProgressTracker` wrapper `TransfermarktSyncService` uses, just with
+`BulkSyntheticUploadStage` in place of `TransfermarktSyncStage`, so both job
+types get live progress through one shared, tested code path instead of two
+divergent implementations.
 """
 
 import csv
@@ -20,12 +28,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import IngestionValidationError
+from src.domain.ingestion.model.bulk_synthetic_upload_stage import BulkSyntheticUploadStage
 from src.domain.ingestion.model.ingestion_job import IngestionJob
 from src.domain.ingestion.services.bulk_synthetic_upload_specs import (
+    BULK_SYNTHETIC_INGESTION_ORDER,
     ingestion_order_index,
     resolve_table_name,
 )
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
+from src.domain.ingestion.services.job_progress_tracker import JobProgressTracker
 from src.domain.ingestion.services.synthetic_table_specs import SYNTHETIC_TABLE_SPECS
 from src.domain.ingestion.services.table_ingestion_spec import TableIngestionSpec
 from src.infra.postgres.interfaces.ingestion_job_repository_interface import (
@@ -34,6 +45,15 @@ from src.infra.postgres.interfaces.ingestion_job_repository_interface import (
 from src.infra.postgres.interfaces.ingestion_repository_interface import (
     IngestionRepositoryInterface,
 )
+
+# `BulkSyntheticUploadStage` must stay in exact sync with
+# `BULK_SYNTHETIC_INGESTION_ORDER` -- a table with no matching stage would
+# silently stop reporting progress instead of failing fast.
+if {stage.value for stage in BulkSyntheticUploadStage} != set(BULK_SYNTHETIC_INGESTION_ORDER):
+    raise AssertionError(
+        "BulkSyntheticUploadStage must contain exactly the table names in "
+        "BULK_SYNTHETIC_INGESTION_ORDER, no more, no less"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +124,7 @@ class BulkSyntheticIngestionService:
     ) -> IngestionJob:
         running_job = job.mark_running()
         running_job = await self._ingestion_job_repository.update(running_job)
+        progress = JobProgressTracker(running_job, self._ingestion_job_repository)
 
         row_counts: dict[str, int] = {}
         try:
@@ -114,9 +135,13 @@ class BulkSyntheticIngestionService:
                     spec, rows, self._ingestion_repository
                 )
                 row_counts[resolved.table_name] = row_counts.get(resolved.table_name, 0) + count
+                await progress.checkpoint(BulkSyntheticUploadStage(resolved.table_name))
         except IngestionValidationError as exc:
-            failed_job = running_job.mark_failed(str(exc))
+            # `progress.job`, not the stale `running_job` -- any table
+            # already ingested and checkpointed before this failure must
+            # stay on the failed job's history instead of being discarded.
+            failed_job = progress.job.mark_failed(str(exc))
             return await self._ingestion_job_repository.update(failed_job)
 
-        succeeded_job = running_job.mark_succeeded(row_counts)
+        succeeded_job = progress.job.mark_succeeded(row_counts)
         return await self._ingestion_job_repository.update(succeeded_job)

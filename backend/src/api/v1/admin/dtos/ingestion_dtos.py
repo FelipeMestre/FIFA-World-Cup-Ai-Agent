@@ -1,7 +1,13 @@
 from pydantic import BaseModel
 
+from src.domain.ingestion.model.bulk_synthetic_upload_stage import BulkSyntheticUploadStage
 from src.domain.ingestion.model.ingestion_job import IngestionJob, IngestionJobType
 from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
+
+_ALL_STAGES_BY_JOB_TYPE: dict[IngestionJobType, list[str]] = {
+    IngestionJobType.TRANSFERMARKT_SYNC: [stage.value for stage in TransfermarktSyncStage],
+    IngestionJobType.BULK_SYNTHETIC_UPLOAD: [stage.value for stage in BulkSyntheticUploadStage],
+}
 
 
 class SyntheticUploadResponse(BaseModel):
@@ -49,10 +55,11 @@ class JobStatusResponse(BaseModel):
     error_message: str | None
     current_stage: str | None
     stage_checkpoints: list[StageCheckpoint]
-    """Every stage a `transfermarkt_sync` job's pipeline goes through, in
-    order -- lets a client render "stage N of len(all_stages)" without
-    duplicating this list. Always empty for a `synthetic_upload` job, which
-    has no sub-stages.
+    """Every stage this job's pipeline goes through, in order -- lets a
+    client render "stage N of len(all_stages)" without duplicating this
+    list. Populated for every job type that tracks stages
+    (`transfermarkt_sync`, `bulk_synthetic_upload`); always empty for a
+    plain `synthetic_upload` job, which has no sub-stages.
     """
     all_stages: list[str]
 
@@ -68,9 +75,5 @@ class JobStatusResponse(BaseModel):
             stage_checkpoints=[
                 StageCheckpoint(**checkpoint) for checkpoint in job.stage_checkpoints
             ],
-            all_stages=(
-                [stage.value for stage in TransfermarktSyncStage]
-                if job.job_type == IngestionJobType.TRANSFERMARKT_SYNC
-                else []
-            ),
+            all_stages=_ALL_STAGES_BY_JOB_TYPE.get(job.job_type, []),
         )
