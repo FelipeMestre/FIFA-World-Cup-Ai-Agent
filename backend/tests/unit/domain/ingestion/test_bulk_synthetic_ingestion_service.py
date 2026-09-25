@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.domain.ingestion.model.bulk_synthetic_upload_stage import BulkSyntheticUploadStage
 from src.domain.ingestion.model.ingestion_job import (
     IngestionJob,
     IngestionJobStatus,
@@ -124,10 +125,44 @@ async def test_ingest_batch_marks_job_succeeded_with_accumulated_row_counts() ->
 
     assert result.status == IngestionJobStatus.SUCCEEDED
     assert result.row_counts == {"team": 1, "player": 2}
+    # One stage checkpoint per ingested table, in the fixed FK-safe order
+    # (team before player), regardless of upload order -- mirrors
+    # TransfermarktSyncService's use of the same IngestionJob mechanism.
+    assert [checkpoint["stage"] for checkpoint in result.stage_checkpoints] == ["team", "player"]
+    assert result.current_stage == "player"
     assert [job.status for job in job_repository.updates] == [
+        IngestionJobStatus.RUNNING,
+        IngestionJobStatus.RUNNING,
         IngestionJobStatus.RUNNING,
         IngestionJobStatus.SUCCEEDED,
     ]
+
+
+async def test_ingest_batch_records_one_stage_checkpoint_per_table_in_ingestion_order() -> None:
+    job_repository = _FakeIngestionJobRepository()
+    service = BulkSyntheticIngestionService(
+        csv_ingestion_service=CsvIngestionService(),
+        ingestion_repository=_FakeIngestionRepository(),
+        ingestion_job_repository=job_repository,
+        table_specs=[_team_spec(), _player_spec()],
+    )
+    # Uploaded child-before-parent -- checkpoints must still land in the
+    # fixed ingestion order the resolver already sorted the files into.
+    resolution = resolve_and_order_files(
+        [
+            ("squads_and_players.csv", b"player_id,player_name\n1,Player A\n"),
+            ("teams.csv", b"team_id,team_name\n1,Team A\n"),
+        ]
+    )
+
+    result = await service.ingest_batch(resolution.accepted, _queued_job())
+
+    stages_recorded = [checkpoint["stage"] for checkpoint in result.stage_checkpoints]
+    assert stages_recorded == [
+        BulkSyntheticUploadStage.TEAM.value,
+        BulkSyntheticUploadStage.PLAYER.value,
+    ]
+    assert all("completed_at" in checkpoint for checkpoint in result.stage_checkpoints)
 
 
 async def test_ingest_batch_marks_job_failed_on_validation_error() -> None:
@@ -150,3 +185,27 @@ async def test_ingest_batch_marks_job_failed_on_validation_error() -> None:
         IngestionJobStatus.RUNNING,
         IngestionJobStatus.FAILED,
     ]
+
+
+async def test_ingest_batch_preserves_checkpoints_from_tables_ingested_before_a_failure() -> None:
+    job_repository = _FakeIngestionJobRepository()
+    service = BulkSyntheticIngestionService(
+        csv_ingestion_service=CsvIngestionService(),
+        ingestion_repository=_FakeIngestionRepository(),
+        ingestion_job_repository=job_repository,
+        table_specs=[_team_spec(), _player_spec()],
+    )
+    resolution = resolve_and_order_files(
+        [
+            ("teams.csv", b"team_id,team_name\n1,Team A\n"),
+            ("squads_and_players.csv", b"player_id,player_name\nnot-a-number,Player A\n"),
+        ]
+    )
+
+    result = await service.ingest_batch(resolution.accepted, _queued_job())
+
+    assert result.status == IngestionJobStatus.FAILED
+    # `team` ingested and checkpointed successfully before `player` failed --
+    # that history must survive onto the failed job, not be discarded.
+    assert [checkpoint["stage"] for checkpoint in result.stage_checkpoints] == ["team"]
+    assert result.current_stage == "team"

@@ -121,6 +121,24 @@ async def test_bulk_upload_scrambled_order_ingests_all_files_with_correct_row_co
     assert status_body["job_type"] == "bulk_synthetic_upload"
     assert status_body["status"] == "succeeded"
     assert status_body["row_counts"] == {"team": 1, "player": 1}
+    # One stage checkpoint per ingested table, in the fixed FK-safe order
+    # (team before player) regardless of upload order -- same
+    # current_stage/stage_checkpoints fields the admin panel's
+    # stage-progress.tsx already renders for transfermarkt_sync jobs.
+    assert [c["stage"] for c in status_body["stage_checkpoints"]] == ["team", "player"]
+    assert status_body["current_stage"] == "player"
+    assert status_body["all_stages"] == [
+        "team",
+        "venue",
+        "tournament_stage",
+        "referee",
+        "player",
+        "match",
+        "match_event",
+        "match_team_stat",
+        "match_lineup",
+        "player_stat",
+    ]
 
 
 @pytest.mark.asyncio

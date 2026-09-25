@@ -12,7 +12,6 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from src.domain.ingestion.exceptions.ingestion_exceptions import InvalidJobTransitionError
-from src.domain.ingestion.model.transfermarkt_sync_stage import TransfermarktSyncStage
 
 
 class IngestionJobType(StrEnum):
@@ -64,11 +63,20 @@ class IngestionJob:
             finished_at=datetime.now(UTC),
         )
 
-    def record_stage_checkpoint(self, stage: TransfermarktSyncStage) -> IngestionJob:
+    def record_stage_checkpoint(self, stage: StrEnum) -> IngestionJob:
         """Records that `stage` just completed, for a job still `running`.
         Append-only: `stage_checkpoints` is the full history a job-status
         response can render as a progress timeline, while `current_stage`
         alone answers "where is it right now".
+
+        `stage` is typed as `StrEnum` rather than a specific pipeline's stage
+        enum (e.g. `TransfermarktSyncStage`, `BulkSyntheticUploadStage`) so
+        every job type that wants stage tracking shares this one method
+        instead of each getting its own copy -- `current_stage`/
+        `stage_checkpoints` are themselves job-type-agnostic (`str | None`
+        and `list[dict[str, str]]`). Any real `StrEnum` member is
+        type-checked at its call site by its own concrete enum; only a bare
+        unchecked string would lose that.
         """
         if self.status != IngestionJobStatus.RUNNING:
             raise InvalidJobTransitionError(
