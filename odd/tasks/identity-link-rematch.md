@@ -80,12 +80,7 @@ this exact class of bug has already bitten this codebase once (see
 ## Out of scope
 - Any change to the full Transfermarkt sync pipeline or the bulk synthetic
   upload feature (separate, unrelated branch).
-- A frontend UI for this trigger — user asked for the backend endpoint only
-  this time. The existing admin panel's generic job-status card (built for
-  bulk-synthetic-upload, already renders any `IngestionJobType` generically per
-  its `row_counts`/`current_stage` fields) would work for this with zero
-  frontend changes if a trigger button is added later — not this task's job to
-  add that button.
+- (Originally deferred, now added as T9 below) A frontend UI for this trigger.
 
 ## Constraints
 - Follow `backend/AGENTS.md`: layer-first, repository interface+concrete+provider
@@ -117,6 +112,78 @@ this exact class of bug has already bitten this codebase once (see
 - [x] T6: Router endpoint + DTO, `confirm: true` guard, wired to `require_admin`
 - [x] T7: Integration tests (rematch clears+regenerates, missing confirm -> 400, non-admin -> 403)
 - [x] T8: Verification (ruff, full relevant test run via local venv per the hazard note above) + live check
+- [x] T9 (NEW, scope added after backend completion): frontend UI in the `(admin)/identity-links` tab —
+  a trigger control + confirmation + job-status display, wired to `POST
+  /admin/identity-links/rematch`. Detail below under "T9 — frontend".
+
+## T9 — frontend (identity-links admin tab)
+
+**Where**: `frontend/src/app/(admin)/identity-links/page.tsx` currently just
+renders `<IdentityLinksReviewList />` (a client component using
+`usePendingIdentityLinks()`, which already exposes a `refresh` function).
+Confirmed on THIS branch (`feat/identity-link-rematch`, off `main`) that
+`features/ingestion/types.ts`'s `IngestionJobType` union is currently
+`"synthetic_upload" | "transfermarkt_sync"` — it does NOT yet have
+`"bulk_synthetic_upload"` because that addition lives on the still-separate,
+still-unmerged `feat/bulk-synthetic-upload` branch. Add
+`"identity_link_rematch"` to this union independently on this branch — do not
+try to pull in or depend on the sibling branch's `"bulk_synthetic_upload"`
+addition, these two branches are meant to merge independently and a trivial
+union-type conflict between them later is expected and fine.
+
+**What to build**:
+- A new component (e.g. `identity-link-rematch-trigger.tsx`) + hook (e.g.
+  `use-identity-link-rematch.ts`) under `features/identity-links/`, mirroring
+  the manual-refresh-only job-trigger pattern already established in
+  `features/ingestion/hooks/use-transfermarkt-sync-job.ts` (trigger once,
+  fetch status once on trigger success or on mount if a cached job id exists,
+  otherwise only on an explicit "Refresh" click — no polling). Reuse
+  `features/ingestion/api/get-job-status.ts` for polling status (it should
+  already work generically once the `job_type` union above is extended) rather
+  than writing a new status-fetch function.
+- A NEW api-client function + Route Handler proxy for the trigger call itself
+  (`POST /admin/identity-links/rematch`, JSON body `{"confirm": true}` — this
+  one is plain JSON, not multipart, so it can use the existing
+  `proxyBackendJson` pattern directly, no need for the multipart proxy helper
+  built for bulk upload).
+- Because this operation deletes admin review history, require an explicit
+  confirmation step in the UI before sending `confirm: true` to the
+  backend — use a `Dialog` (shadcn, already in `components/ui/dialog.tsx`; see
+  `features/identity-links/components/correct-match-dialog.tsx` for this
+  codebase's existing dialog-usage pattern) with clear copy that this deletes
+  every current identity link (including manually reviewed ones) and
+  regenerates them from scratch. Do not fire the request on a single click
+  with no confirmation step.
+- After the rematch job's status becomes `succeeded`, call
+  `usePendingIdentityLinks()`'s existing `refresh()` so the review list
+  doesn't keep showing now-deleted rows — this means the new trigger component
+  needs a way to reach that refresh function; the simplest correct approach is
+  probably lifting both hooks up into `page.tsx` (making it a client
+  component that owns both `usePendingIdentityLinks()` and the new rematch
+  hook, passing `refresh` down or passing the list's own refresh as a callback
+  into the trigger component) rather than each component fetching
+  independently — but this is your call on the cleanest wiring; the
+  requirement is just that a successful rematch results in the visible list
+  reflecting the new data without a full page reload.
+- Place the trigger control above `<IdentityLinksReviewList />` on the same
+  page — do not create a new route/tab, the existing `(admin)/identity-links`
+  page IS the target the user asked for.
+- Match the existing "Owl Analytics" design tokens/shadcn primitives already
+  used throughout this admin area (`bg-surface-800/900`, `border-border-*`,
+  `text-ink-*`, `text-data-negative` for errors, `bg-brand`/`hover:bg-brand-strong`
+  for the primary destructive-ish action) — no new design-system layer.
+
+**Tests**: schema/hook-level tests matching this codebase's established depth
+(`frontend/tests/unit/features/identity-links/`, Vitest, `vi.mock` on the
+API-client module directly) — no component-level RTL tests exist for this
+admin area, don't introduce that pattern for just this feature.
+
+**Verify**: `npx vitest run tests/unit/features/identity-links` and the
+existing `tests/unit/features/ingestion` (confirm the `job_type` union
+extension didn't break anything there), `npm run build` (typecheck) — if it
+fails on files this task never touched, confirm via `git diff main...feat/identity-link-rematch
+--stat -- <failing path>` that this branch didn't touch them before assuming
+"pre-existing," don't just assert it.
 
 ## Verification
 - `ruff check` / `ruff format --check` on touched files
@@ -286,3 +353,124 @@ never touched the other worktree/branch).
 Committed locally (Conventional Commit), not pushed, no PR opened:
 `bc06732d1d8c642a8e7a79af246398beab0d537c` -- "feat(ingestion): add admin
 identity-link clean rematch endpoint" on `feat/identity-link-rematch`.
+
+### T9 progress (frontend)
+
+Verified `git branch --show-current` was `feat/identity-link-rematch` before
+touching anything; never switched branches.
+
+#### What was built
+- `IngestionJobType` extended with `"identity_link_rematch"` in
+  `frontend/src/features/ingestion/types.ts`, and the matching wire-format
+  enum in `frontend/src/features/ingestion/schemas/job-status.schema.ts`'s
+  `jobTypeSchema` -- confirmed against the backend's
+  `IngestionJobType.IDENTITY_LINK_REMATCH.value` (`identity_link_rematch`,
+  lowercase, read directly from `backend/src/domain/ingestion/model/ingestion_job.py`
+  and the router's `RematchTriggerResponse`/job-status DTO, which both
+  serialize `.value`, not the enum member name -- unlike the Postgres column
+  type this task's backend half had to special-case).
+- `frontend/src/features/identity-links/api/trigger-identity-link-rematch.ts`:
+  new api-client function, `POST /api/admin/identity-links/rematch`, no body
+  from the client (see wiring decision below).
+- `frontend/src/app/api/admin/identity-links/rematch/route.ts`: new Route
+  Handler, `proxyBackendJson` pattern (mirrors the transfermarkt-sync route
+  exactly), always sends `{"confirm": true}` to the backend.
+- `frontend/src/features/identity-links/hooks/use-identity-link-rematch.ts`:
+  new hook mirroring `useTransfermarktSyncJob`'s trigger-once/manual-refresh
+  pattern (own `localStorage` key `identity-links:last-rematch-job-id`,
+  reuses the existing generic `getJobStatus`). Takes an optional
+  `onRematchSucceeded` callback, fired exactly once per job the first time
+  its status is observed as `succeeded` (guarded by a ref keyed on `job.jobId`
+  so a later manual refresh landing on the same already-succeeded job does
+  not re-fire it).
+- `frontend/src/features/identity-links/components/identity-link-rematch-trigger.tsx`:
+  presentational trigger card + confirmation `Dialog` (mirrors
+  `correct-match-dialog.tsx`'s dialog conventions) + inline job-status
+  display (badge, error message, row counts), styled with the same
+  `bg-surface-800`/`border-border-*`/`text-ink-*`/`bg-brand`/
+  `hover:bg-brand-strong` tokens used throughout this admin area. The
+  destructive action only fires from the dialog's own confirm button --
+  the card's own button only opens the dialog.
+- `frontend/src/features/identity-links/components/identity-links-admin-panel.tsx`:
+  new container component (see wiring decision below).
+- `frontend/src/features/identity-links/components/identity-links-review-list.tsx`:
+  converted from an owner of `usePendingIdentityLinks()` to a purely
+  presentational component driven by props (same JSX, same behavior --
+  the hook call moved out).
+- `frontend/src/features/identity-links/index.ts`: now exports
+  `IdentityLinksAdminPanel` instead of `IdentityLinksReviewList` (the latter
+  is no longer used outside its own directory).
+- `frontend/src/app/(admin)/identity-links/page.tsx`: still a thin routing
+  shell, now rendering `<IdentityLinksAdminPanel />`.
+
+#### Wiring decision: list-refresh after a successful rematch
+The brief flagged this as the one open design call and offered two options:
+lift both hooks into `page.tsx`, or lift only the list's `refresh` up via a
+callback into the trigger. Went with a third variant of the first option:
+kept `page.tsx` a thin server-renderable shell (matching this codebase's
+existing "app is routing only" convention from `AGENTS.md`) and put the
+hook-composition logic in a new client component,
+`IdentityLinksAdminPanel`, inside the feature itself instead of in `app/`.
+That component calls `usePendingIdentityLinks()` and
+`useIdentityLinkRematch(pendingLinks.refresh)`, then passes each hook's
+returned state down as props to two now-presentational components
+(`IdentityLinkRematchTrigger`, `IdentityLinksReviewList`). This means
+`usePendingIdentityLinks()` is called exactly once (no duplicate/out-of-sync
+fetch state between a page-level instance and a component-level instance),
+and `IdentityLinksReviewList` needed no new refresh-signal prop or ref --
+it already exposed `refresh` from its hook, so wiring it to
+`onRematchSucceeded` was a one-line pass-through once the hook call moved up
+a level. Chose this over lifting into `page.tsx` directly because it keeps
+`page.tsx` a one-line composition (unchanged in spirit from before this
+task) and keeps the "own both hooks" decision inside `features/identity-links`
+where the container/presentational split this user's own architecture notes
+call for actually belongs.
+
+#### Tests
+- `frontend/tests/unit/features/identity-links/use-identity-link-rematch.test.tsx`
+  (new): mirrors `use-transfermarkt-sync-job.test.tsx`'s depth -- localStorage
+  restore, trigger + status fetch, manual refresh, trigger/refresh error
+  surfacing, and two rematch-specific cases: `onRematchSucceeded` fires
+  exactly once when status transitions to `succeeded` (not again on a later
+  refresh of the same job), and it does not fire while `queued`/`running`.
+- `frontend/tests/unit/features/ingestion/job-status-schema.test.ts`: added
+  one case parsing an `identity_link_rematch` job with a
+  `player_identity_link` row count, proving the schema's `jobTypeSchema`
+  extension actually round-trips (not just that the TS union compiles).
+
+#### Verification output
+- `npx vitest run tests/unit/features/identity-links tests/unit/features/ingestion`:
+  **5 files, 32 tests, all passed.**
+- `npx eslint` on every touched/new file: no issues (checked separately from
+  `npm run build`'s typecheck since this project's `build` doesn't run
+  ESLint). Note: `use-identity-link-rematch.ts` (and, pre-existingly,
+  `use-transfermarkt-sync-job.ts` and `use-pending-identity-links.ts`) trips
+  `react-hooks/set-state-in-effect` -- verified this is a pre-existing
+  pattern already present in the exact hook this task was told to mirror,
+  not something newly introduced; left as-is rather than deviating from the
+  mirrored pattern for a single new hook.
+- `npm run build` (typecheck): failed, but on files this task never touched.
+  Proved via `git diff main...feat/identity-link-rematch --stat -- <path>`
+  (empty for all of them) that none of the 5 failing source files
+  (`src/features/chat/apply-live-event.ts`, `.../home-shell.tsx`,
+  `.../home-sidebar.tsx`, `.../parse-message-parts.ts`,
+  `tests/unit/features/chat/use-chat-thread.test.tsx`) were ever touched by
+  this branch's commits or by this task's own edits -- pre-existing on
+  `main`, unrelated to identity-links/ingestion. Two more failures
+  (`.next/dev/types/app/api/.../bulk-synthetic-upload/route.ts` and
+  `.next/dev/types/validator.ts`) are stale generated files from a prior
+  `next dev`/build run against the sibling `feat/bulk-synthetic-upload`
+  branch's route (which does not exist in this checkout's `src/`); `.next/`
+  is gitignored, and this stale cache could not be removed to re-verify
+  cleanly (`rm -rf .next` was permission-denied in this environment) --
+  disclosed rather than silently worked around. No new frontend TypeScript
+  error was introduced by this task's own changes (confirmed by grepping for
+  every reference to `jobType`/`IngestionJobType` in `src/`: the only
+  consumers are the schema/type files this task edited and the new rematch
+  hook's doc-comment -- nothing else switches over it exhaustively, so
+  widening the union could not have broken another call site).
+
+#### Commit
+Committed locally (Conventional Commit), not pushed, no PR opened. Hash
+recorded in a follow-up docs commit, per this feature's own established
+precedent (`eb60df7`, which did the same for T1-T8).

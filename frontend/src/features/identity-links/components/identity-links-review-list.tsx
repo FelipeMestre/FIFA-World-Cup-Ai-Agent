@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IdentityLinkReviewCard } from "@/features/identity-links/components/identity-link-review-card";
 import { PendingLinksPaginator } from "@/features/identity-links/components/pending-links-paginator";
-import { usePendingIdentityLinks } from "@/features/identity-links/hooks/use-pending-identity-links";
-import type { IdentityLinkReviewStatus } from "@/features/identity-links/types";
+import type { IdentityLinkReview, IdentityLinkReviewStatus } from "@/features/identity-links/types";
 
 const STATUS_FILTERS: { value: IdentityLinkReviewStatus; label: string }[] = [
   { value: "pending", label: "Pending" },
@@ -13,28 +12,46 @@ const STATUS_FILTERS: { value: IdentityLinkReviewStatus; label: string }[] = [
   { value: "rejected", label: "Rejected" },
 ];
 
+interface IdentityLinksReviewListProps {
+  status: IdentityLinkReviewStatus;
+  changeStatus: (status: IdentityLinkReviewStatus) => void;
+  reviews: IdentityLinkReview[];
+  isLoading: boolean;
+  loadError: string | null;
+  refresh: () => Promise<void>;
+  approve: (linkId: number) => Promise<void>;
+  reject: (linkId: number) => Promise<void>;
+  reassign: (linkId: number, realPlayerId: number) => Promise<void>;
+  page: number;
+  totalPages: number;
+  total: number;
+  pageSize: number;
+  goToPage: (page: number) => void;
+}
+
 /** Admin-only review queue: `player_identity_link`s filtered to one review
  * status at a time, with approve / reject / correct-match actions per row,
- * 50 to a page.
+ * 50 to a page. Presentational -- driven entirely by props so the owning
+ * `usePendingIdentityLinks()` state can live in a parent that also needs to
+ * trigger a refresh from elsewhere (e.g. after a clean rematch regenerates
+ * every row).
  */
-export function IdentityLinksReviewList() {
-  const {
-    status,
-    changeStatus,
-    reviews,
-    isLoading,
-    loadError,
-    refresh,
-    approve,
-    reject,
-    reassign,
-    page,
-    totalPages,
-    total,
-    pageSize,
-    goToPage,
-  } = usePendingIdentityLinks();
-
+export function IdentityLinksReviewList({
+  status,
+  changeStatus,
+  reviews,
+  isLoading,
+  loadError,
+  refresh,
+  approve,
+  reject,
+  reassign,
+  page,
+  totalPages,
+  total,
+  pageSize,
+  goToPage,
+}: IdentityLinksReviewListProps) {
   return (
     <div className="flex flex-col gap-ds-4">
       <div className="flex items-center justify-between gap-ds-3">

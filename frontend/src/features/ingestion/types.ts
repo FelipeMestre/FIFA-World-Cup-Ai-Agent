@@ -1,4 +1,4 @@
-export type IngestionJobType = "synthetic_upload" | "transfermarkt_sync";
+export type IngestionJobType = "synthetic_upload" | "transfermarkt_sync" | "identity_link_rematch";
 
 export type IngestionJobStatus = "queued" | "running" | "succeeded" | "failed";
 
