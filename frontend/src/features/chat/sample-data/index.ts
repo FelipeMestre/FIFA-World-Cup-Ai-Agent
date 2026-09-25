@@ -11,3 +11,4 @@ export { sampleMatch } from "@/features/chat/sample-data/match";
 export { samplePlayerForward, samplePlayerGoalkeeper } from "@/features/chat/sample-data/player";
 export { sampleRanking } from "@/features/chat/sample-data/ranking";
 export { sampleTeam } from "@/features/chat/sample-data/team";
+export { sampleTeamComparison } from "@/features/chat/sample-data/team-comparison";

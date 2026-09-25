@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { teamComparisonSchema } from "@/features/chat/schemas/team-comparison.schema";
+
 /**
  * Runtime validation for the backend's `MessagePart` discriminated union
  * (design/README.md's widget contract). `type: "team_widget"`,
@@ -268,6 +270,7 @@ export const messagePartSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("player_widget"), data: playerSummarySchema }),
   z.object({ type: z.literal("compare_widget"), data: playerComparisonSchema }),
   z.object({ type: z.literal("ranking_widget"), data: playerRankingSchema }),
+  z.object({ type: z.literal("team_compare_widget"), data: teamComparisonSchema }),
 ]);
 
 /** Loosely typed part as received over the wire, before validation. */

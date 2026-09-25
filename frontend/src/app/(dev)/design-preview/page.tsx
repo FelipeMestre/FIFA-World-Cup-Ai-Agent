@@ -15,12 +15,14 @@ import { PanelCompare } from "@/features/chat/components/panel-compare";
 import { PanelMatch } from "@/features/chat/components/panel-match";
 import { PanelPlayer } from "@/features/chat/components/panel-player";
 import { PanelRanking } from "@/features/chat/components/panel-ranking";
+import { PanelTeamCompare } from "@/features/chat/components/panel-team-compare";
 import { PanelTeam } from "@/features/chat/components/panel-team";
 import { SidePanel } from "@/features/chat/components/side-panel";
 import { WidgetCompare } from "@/features/chat/components/widget-compare";
 import { WidgetMatch } from "@/features/chat/components/widget-match";
 import { WidgetPlayer } from "@/features/chat/components/widget-player";
 import { WidgetRanking } from "@/features/chat/components/widget-ranking";
+import { WidgetTeamCompare } from "@/features/chat/components/widget-team-compare";
 import { WidgetTeam } from "@/features/chat/components/widget-team";
 import { useChatPanel } from "@/features/chat/hooks/use-chat-panel";
 import {
@@ -30,6 +32,7 @@ import {
   samplePlayerGoalkeeper,
   sampleRanking,
   sampleTeam,
+  sampleTeamComparison,
 } from "@/features/chat/sample-data";
 
 function Section({
@@ -106,6 +109,11 @@ See [FIFA](https://www.fifa.com).`}</AssistantText>
             active={activeKey === "ranking"}
             onViewDetails={() => toggle("ranking")}
           />
+          <WidgetTeamCompare
+            comparison={sampleTeamComparison}
+            active={activeKey === "team-compare"}
+            onViewDetails={() => toggle("team-compare")}
+          />
         </Section>
 
         <Section title="Panels — 560px desktop">
@@ -149,6 +157,14 @@ See [FIFA](https://www.fifa.com).`}</AssistantText>
               onJumpToMessage={() => {}}
             />
           </div>
+          <div className="h-[1360px] w-[560px] overflow-y-auto rounded-lg border border-border-strong">
+            <PanelTeamCompare
+              comparison={sampleTeamComparison}
+              fromMessage="Compare Argentina and Brazil"
+              onClose={() => {}}
+              onJumpToMessage={() => {}}
+            />
+          </div>
         </Section>
 
         <Section title="Panels — mobile sheet (isSheet, no collapse control)">
@@ -186,12 +202,26 @@ See [FIFA](https://www.fifa.com).`}</AssistantText>
           >
             Open Argentina in the side panel
           </button>
+          <button
+            type="button"
+            onClick={() =>
+              demoPanel.openEntity(
+                { type: "team_compare", id: sampleTeamComparison.id },
+                "demo-compare",
+              )
+            }
+            className="focus-ring w-fit rounded-md border border-border-strong bg-surface-800 px-4 py-2.5 text-label-md text-ink-primary hover:bg-surface-700"
+          >
+            Open Argentina vs Brazil in the side panel
+          </button>
         </section>
       </div>
 
       <SidePanel
         panelState={demoPanel.state}
-        resolveEntity={() => sampleTeam}
+        resolveEntity={(ref) =>
+          ref.type === "team_compare" ? sampleTeamComparison : sampleTeam
+        }
         fromMessagePreview="How did Argentina perform defensively?"
         onCollapse={demoPanel.collapse}
         onExpand={demoPanel.expand}

@@ -1,3 +1,5 @@
+import type { TeamComparison } from "@/features/chat/team-comparison";
+
 /**
  * Widget contract from design/README.md. The backend sends structured
  * "parts"; the renderer maps each to a component. Only `type: "text"` is
@@ -7,13 +9,15 @@
  * Panel*.dc.html), for forward-compat with a future analytics-tool phase.
  */
 
+export type { TeamComparison } from "@/features/chat/team-comparison";
+
 export type ResultLetter = "W" | "D" | "L";
 
 /** design/README.md's hard data-limit rule: positions only GK/DEF/MID/FWD. */
 export type Position = "GK" | "DEF" | "MID" | "FWD";
 
 export type EntityRef = {
-  type: "team" | "match" | "player" | "compare" | "ranking";
+  type: "team" | "match" | "player" | "compare" | "ranking" | "team_compare";
   id: string;
 };
 
@@ -309,7 +313,8 @@ export type MessagePart =
   | { type: "match_widget"; data: MatchSummary }
   | { type: "player_widget"; data: PlayerSummary }
   | { type: "compare_widget"; data: PlayerComparison }
-  | { type: "ranking_widget"; data: PlayerRanking };
+  | { type: "ranking_widget"; data: PlayerRanking }
+  | { type: "team_compare_widget"; data: TeamComparison };
 
 export type ChatRole = "user" | "assistant";
 

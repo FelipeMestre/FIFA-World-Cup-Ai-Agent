@@ -21,6 +21,10 @@ from fastapi import Depends
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.chat.exceptions.chat_exceptions import (
+    SameTeamComparisonError,
+    TeamNotFoundError,
+)
 from src.domain.team_analytics.model.team_analysis import (
     ResultLetter,
     StatWithFieldAverage,
@@ -30,10 +34,12 @@ from src.domain.team_analytics.model.team_analysis import (
     TeamMatchResult,
     TeamRecord,
 )
+from src.domain.team_analytics.model.team_comparison import TeamComparison
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.team_analytics_repository_interface import (
     TeamAnalyticsRepositoryInterface,
 )
+from src.infra.postgres.repositories._team_comparison_query import load_team_comparison
 from src.infra.postgres.schemas.match_schema import (
     MatchEventSchema,
     MatchSchema,
@@ -105,6 +111,22 @@ class _SqlAlchemyTeamAnalyticsRepository:
             ),
             stage_caption=_build_stage_caption(match_rows),
         )
+
+    async def get_team_comparison(self, team_a_query: str, team_b_query: str) -> TeamComparison:
+        team_a = await self._require_team(team_a_query)
+        team_b = await self._require_team(team_b_query)
+        if team_a.team_id == team_b.team_id:
+            raise SameTeamComparisonError(
+                f"'{team_a_query}' and '{team_b_query}' both resolved to "
+                f"{team_a.team_name} -- pick two different teams to compare."
+            )
+        return await load_team_comparison(self._session, team_a, team_b)
+
+    async def _require_team(self, team_query: str) -> NationalTeamSchema:
+        team = await self._resolve_team(team_query)
+        if team is None:
+            raise TeamNotFoundError(f"No team found matching '{team_query}'.")
+        return team
 
     async def _resolve_team(self, team_query: str) -> NationalTeamSchema | None:
         exact_stmt = select(NationalTeamSchema).where(

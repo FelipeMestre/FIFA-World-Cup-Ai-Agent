@@ -52,6 +52,15 @@ class CompareWidgetPart(BaseModel):
     data: dict
 
 
+class TeamCompareWidgetPart(BaseModel):
+    """`data` is `TeamComparison.model_dump(mode="json", by_alias=True)`.
+    Produced by the `get_team_comparison` chat tool.
+    """
+
+    type: Literal["team_compare_widget"] = "team_compare_widget"
+    data: dict
+
+
 class RankingWidgetPart(BaseModel):
     """`data` is `PlayerRanking.model_dump(mode="json", by_alias=True)` --
     already camelCased for the frontend's `PlayerRanking` contract.
@@ -68,6 +77,7 @@ MessagePart = Annotated[
     | MatchWidgetPart
     | PlayerWidgetPart
     | CompareWidgetPart
+    | TeamCompareWidgetPart
     | RankingWidgetPart,
     Field(discriminator="type"),
 ]
@@ -84,12 +94,14 @@ WIDGET_TYPE_TO_PART_CLASS: dict[
     | type[MatchWidgetPart]
     | type[PlayerWidgetPart]
     | type[CompareWidgetPart]
+    | type[TeamCompareWidgetPart]
     | type[RankingWidgetPart],
 ] = {
     "team_widget": TeamWidgetPart,
     "match_widget": MatchWidgetPart,
     "player_widget": PlayerWidgetPart,
     "compare_widget": CompareWidgetPart,
+    "team_compare_widget": TeamCompareWidgetPart,
     "ranking_widget": RankingWidgetPart,
 }
 

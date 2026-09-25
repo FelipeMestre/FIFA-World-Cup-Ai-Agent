@@ -20,6 +20,20 @@ class SamePlayerComparisonError(ChatError):
     """
 
 
+class TeamNotFoundError(ChatError):
+    """Raised when a chat-tool query does not resolve to a known national team.
+    Carries the offending query in its message so the handler can surface
+    exactly which side of a lookup failed.
+    """
+
+
+class SameTeamComparisonError(ChatError):
+    """Raised when both sides of a `get_team_comparison` call resolve to
+    the same national team -- comparing a team against itself is not a
+    meaningful comparison.
+    """
+
+
 class RankingQueryError(ChatError):
     """Raised when a `query_player_stats` call cannot run: unknown
     competition, a field that does not exist on that dataset, or a

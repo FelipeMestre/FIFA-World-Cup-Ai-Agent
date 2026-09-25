@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { MessagePartView } from "@/features/chat/components/message-part-renderer";
-import { sampleRanking, sampleTeam } from "@/features/chat/sample-data";
+import { sampleRanking, sampleTeam, sampleTeamComparison } from "@/features/chat/sample-data";
 import type { EntityRef, MessagePart } from "@/features/chat/types";
 
 describe("MessagePartView", () => {
@@ -53,5 +53,21 @@ describe("MessagePartView", () => {
     expect(screen.getByLabelText(/player ranking: goals/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /view full details/i }));
     expect(onOpenEntity).toHaveBeenCalledWith({ type: "ranking", id: sampleRanking.id });
+  });
+
+  it("renders a team_compare_widget and opens the team comparison entity", async () => {
+    const user = userEvent.setup();
+    const onOpenEntity = vi.fn();
+    const part: MessagePart = { type: "team_compare_widget", data: sampleTeamComparison };
+    render(<MessagePartView part={part} openEntity={null} onOpenEntity={onOpenEntity} />);
+
+    expect(
+      screen.getByLabelText(/team comparison: argentina and brazil/i),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /view full details/i }));
+    expect(onOpenEntity).toHaveBeenCalledWith({
+      type: "team_compare",
+      id: sampleTeamComparison.id,
+    });
   });
 });
