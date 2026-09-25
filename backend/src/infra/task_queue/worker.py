@@ -7,6 +7,7 @@ from src.infra.task_queue.chat_tasks import categorize_conversation_task, genera
 from src.infra.task_queue.config import task_queue_settings
 from src.infra.task_queue.tasks import (
     identity_link_rematch_task,
+    bulk_synthetic_upload_task,
     synthetic_upload_task,
     transfermarkt_sync_task,
 )
@@ -25,6 +26,7 @@ CATEGORIZE_JOB_TIMEOUT_SECONDS = 60
 class WorkerSettings:
     functions = (
         synthetic_upload_task,
+        bulk_synthetic_upload_task,
         transfermarkt_sync_task,
         identity_link_rematch_task,
         func(generate_chat_reply_task, timeout=CHAT_REPLY_JOB_TIMEOUT_SECONDS),
