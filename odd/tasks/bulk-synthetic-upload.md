@@ -62,6 +62,9 @@ endpoint must not reintroduce that failure mode.
 - [x] T4: Router endpoint + DTOs (`BulkSyntheticUploadResponse` etc.), wired to `require_admin`
 - [x] T5: Integration tests for the endpoint (scrambled order, rejection, zero-accepted)
 - [x] T6: Live smoke test (in-process, real DB/Redis, real dataset -- see Progress for why not literal curl); `ruff check`/`ruff format`; full pytest suite
+- [x] T7: Rebase onto `main` after user confirmed `origin/claude/player-linking-approval-7qi9fu` (the admin panel branch) was merged; fix migration `down_revision` conflict this surfaced (two heads: `0f67254f34fc` from the merged chat-categorization migration chain, `d23ea2153231` from this branch) -- re-pointed to `0f67254f34fc`, single head restored
+- [ ] T8 (NEW, scope added after rebase): populate `current_stage`/`stage_checkpoints` on the bulk-upload job (one checkpoint per table ingested), mirroring `TransfermarktSyncService`'s use of `IngestionJob.record_stage_checkpoint` -- added because the merged admin panel's `stage-progress.tsx` component renders exactly these fields, and the user wants CSV job status to look "just like transfermarkt". `record_stage_checkpoint(stage: TransfermarktSyncStage)` is currently typed to a Transfermarkt-specific enum; needs generalizing (or a parallel enum) without breaking the existing caller.
+- [ ] T9 (NEW): frontend admin UI -- a bulk-CSV-upload trigger + job status view in `frontend/src/features/ingestion/`, mirroring the existing Transfermarkt `sync-jobs-panel.tsx` exactly: same manual-refresh-only pattern (no polling), same Route-Handler-proxy API client pattern, same `StageProgress` rendering, same UI primitives/design tokens. Wire into the existing `(admin)/sync-jobs` page (or a clearly-placed addition to it) alongside the existing Transfermarkt trigger.
 
 ## Verification
 - `ruff check backend/src backend/tests && ruff format --check backend/src backend/tests`
