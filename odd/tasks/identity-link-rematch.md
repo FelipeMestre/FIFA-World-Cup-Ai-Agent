@@ -471,6 +471,10 @@ call for actually belongs.
   widening the union could not have broken another call site).
 
 #### Commit
-Committed locally (Conventional Commit), not pushed, no PR opened. Hash
-recorded in a follow-up docs commit, per this feature's own established
-precedent (`eb60df7`, which did the same for T1-T8).
+Committed locally (Conventional Commit), not pushed, no PR opened:
+`eb614a3` -- "feat(identity-links): add clean-rematch trigger to admin
+review tab" on `feat/identity-link-rematch`.
+
+### T9 status: complete
+All tasks (T1-T9) are now done. This feature is ready for the user's own
+push/PR decision (per the Delivery section above, neither was done here).
