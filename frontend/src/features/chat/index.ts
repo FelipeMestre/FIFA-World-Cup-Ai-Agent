@@ -9,5 +9,6 @@ export type {
   PlayerComparison,
   PlayerRanking,
   PlayerSummary,
+  TeamComparison,
   TeamSummary,
 } from "@/features/chat/types";

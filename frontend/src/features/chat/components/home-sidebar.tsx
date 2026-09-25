@@ -69,8 +69,8 @@ function ConversationRow({
     <div
       className={
         isActive
-          ? "group flex h-10 items-center gap-0.5 rounded-md bg-surface-800 pr-1"
-          : "group flex h-10 items-center gap-0.5 rounded-md pr-1 hover:bg-surface-800"
+          ? "group flex h-10 items-center gap-0.5 rounded-md bg-surface-800 pr-2"
+          : "group flex h-10 items-center gap-0.5 rounded-md pr-2 hover:bg-surface-800"
       }
     >
       <Link

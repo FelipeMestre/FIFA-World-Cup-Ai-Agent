@@ -5,6 +5,7 @@ import { Shield } from "lucide-react";
 import { AvatarBadge } from "@/components/shared/avatar-badge";
 import { StatChip } from "@/features/chat/components/stat-chip";
 import { WidgetFrame } from "@/features/chat/components/widget-frame";
+import { formatAge, formatMarketValue } from "@/features/chat/format-team-comparison";
 import type { TeamSummary } from "@/features/chat/types";
 
 const BAR_UNIT_PX = 14;
@@ -32,7 +33,7 @@ export function WidgetTeam({
       active={active}
       onViewDetails={onViewDetails}
     >
-      <div className="flex shrink-0 items-center gap-3 px-4 pt-4 pb-3">
+      <div className="flex shrink-0 items-center gap-ds-3 px-ds-4 pt-ds-4 pb-ds-3">
         <AvatarBadge label={team.code} size={48} />
         <div className="flex min-w-0 grow flex-col gap-0.5">
           <span className="text-heading-md">{team.name}</span>
@@ -44,7 +45,9 @@ export function WidgetTeam({
         </div>
       </div>
 
-      <div className="grid shrink-0 grid-cols-2 gap-2 px-4 sm:grid-cols-4">
+      <div className="grid shrink-0 grid-cols-2 gap-ds-2 px-ds-4 sm:grid-cols-3">
+        <StatChip label="Age" value={formatAge(team.squad.averageAge)} />
+        <StatChip label="Value" value={formatMarketValue(team.squad.totalMarketValueEur)} />
         <StatChip
           label="Goal diff"
           value={goalDiffLabel}
@@ -55,19 +58,19 @@ export function WidgetTeam({
         <StatChip label="Avg possession" value={`${team.avgPossessionPct.toFixed(1)}%`} />
       </div>
 
-      <div className="flex grow flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex grow flex-col gap-ds-3 p-ds-4">
+        <div className="flex flex-wrap items-center justify-between gap-ds-3">
           <span className="text-label-sm text-ink-muted">Goals for vs against, by match</span>
-          <div className="flex gap-3 text-body-sm text-ink-secondary">
-            <span className="flex items-center gap-1">
+          <div className="flex gap-ds-3 text-body-sm text-ink-secondary">
+            <span className="flex items-center gap-ds-1">
               <span className="size-2 rounded-[2px] bg-data-positive" />▲ For
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-ds-1">
               <span className="size-2 rounded-[2px] bg-data-negative" />▼ Against
             </span>
           </div>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-ds-1">
           {team.goalsByMatch.map((m) => (
             <div key={m.opponentCode} className="flex min-w-0 flex-1 flex-col items-center">
               <div className="flex h-16 flex-col items-center justify-end gap-1">

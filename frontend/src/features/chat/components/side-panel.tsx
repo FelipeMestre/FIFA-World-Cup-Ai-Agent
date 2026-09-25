@@ -8,6 +8,7 @@ import { PanelCompare } from "@/features/chat/components/panel-compare";
 import { PanelMatch } from "@/features/chat/components/panel-match";
 import { PanelPlayer } from "@/features/chat/components/panel-player";
 import { PanelRanking } from "@/features/chat/components/panel-ranking";
+import { PanelTeamCompare } from "@/features/chat/components/panel-team-compare";
 import { PanelTeam } from "@/features/chat/components/panel-team";
 import type {
   EntityRef,
@@ -16,6 +17,7 @@ import type {
   PlayerComparison,
   PlayerRanking,
   PlayerSummary,
+  TeamComparison,
   TeamSummary,
 } from "@/features/chat/types";
 
@@ -75,6 +77,15 @@ function renderPanelBody(
       return (
         <PanelRanking
           ranking={data as PlayerRanking}
+          isSheet={isSheet}
+          fromMessage={fromMessage}
+          {...handlers}
+        />
+      );
+    case "team_compare":
+      return (
+        <PanelTeamCompare
+          comparison={data as TeamComparison}
           isSheet={isSheet}
           fromMessage={fromMessage}
           {...handlers}

@@ -51,7 +51,7 @@ export function WidgetFrame({
             type="button"
             aria-pressed="true"
             onClick={onViewDetails}
-            className="focus-ring flex h-11 items-center gap-ds-2 rounded-md border border-border-strong bg-surface-600 px-[14px] text-label-md text-ink-primary"
+            className="focus-ring flex h-11 items-center gap-ds-2 rounded-md border border-border-strong bg-surface-600 px-[14px] text-label-md text-ink-primary hover:cursor-pointer"
           >
             <span className="size-1.5 rounded-full bg-accent-live" />
             Showing in panel
@@ -61,7 +61,7 @@ export function WidgetFrame({
           <button
             type="button"
             onClick={onViewDetails}
-            className="focus-ring flex h-11 items-center gap-ds-2 rounded-md border border-border-strong bg-transparent px-[14px] text-label-md text-ink-primary hover:bg-surface-700"
+            className="focus-ring flex h-11 items-center gap-ds-2 rounded-md border border-border-strong bg-transparent px-[14px] text-label-md text-ink-primary hover:cursor-pointer hover:bg-surface-700"
           >
             View full details
             <ArrowUpRight className="size-4" aria-hidden />

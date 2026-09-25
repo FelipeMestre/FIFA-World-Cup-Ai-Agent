@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { messagePartSchema } from "@/features/chat/schemas/message-part.schema";
-import { samplePlayerForward, sampleRanking, sampleTeam } from "@/features/chat/sample-data";
+import {
+  samplePlayerForward,
+  sampleRanking,
+  sampleTeam,
+  sampleTeamComparison,
+} from "@/features/chat/sample-data";
 
 describe("messagePartSchema", () => {
   it("accepts a well-formed text part -- the only variant the live backend sends today", () => {
@@ -48,6 +53,15 @@ describe("messagePartSchema", () => {
     const result = messagePartSchema.safeParse({
       type: "ranking_widget",
       data: sampleRanking,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a team_compare_widget part matching TeamComparison", () => {
+    const result = messagePartSchema.safeParse({
+      type: "team_compare_widget",
+      data: sampleTeamComparison,
     });
 
     expect(result.success).toBe(true);

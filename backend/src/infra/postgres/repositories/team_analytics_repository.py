@@ -21,18 +21,25 @@ from fastapi import Depends
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.chat.exceptions.chat_exceptions import (
+    SameTeamComparisonError,
+    TeamNotFoundError,
+)
+from src.domain.team_analytics.model.base import ResultLetter, TeamMatchResult, TeamRecord
 from src.domain.team_analytics.model.team_analysis import (
-    ResultLetter,
     StatWithFieldAverage,
     TeamAnalysis,
     TeamDiscipline,
     TeamGoalsByMatch,
-    TeamMatchResult,
-    TeamRecord,
 )
+from src.domain.team_analytics.model.team_comparison import TeamComparison
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.team_analytics_repository_interface import (
     TeamAnalyticsRepositoryInterface,
+)
+from src.infra.postgres.repositories._team_comparison_query import (
+    load_team_comparison,
+    load_team_side,
 )
 from src.infra.postgres.schemas.match_schema import (
     MatchEventSchema,
@@ -83,6 +90,7 @@ class _SqlAlchemyTeamAnalyticsRepository:
         match_count = len(match_rows)
         record = _build_record(team_id, match_rows)
         fouls_total = sum(row.fouls for row in stat_rows)
+        side = await load_team_side(self._session, team_row)
 
         return TeamAnalysis(
             id=str(team_row.team_id),
@@ -98,13 +106,40 @@ class _SqlAlchemyTeamAnalyticsRepository:
             clean_sheets=_count_clean_sheets(team_id, match_rows),
             avg_possession_pct=_avg([row.possession_pct for row in stat_rows]),
             goals_by_match=_build_goals_by_match(team_id, match_rows, opponent_names),
-            tournament_averages=_build_tournament_averages(stat_rows, field_averages),
+            tournament_averages=_build_tournament_averages(stat_rows, field_averages)
+            + side.extra_averages,
             match_results=_build_match_results(team_id, match_rows, opponent_names),
             discipline=_build_discipline(
                 event_counts, fouls_total, match_count, field_yellow_per_match
             ),
             stage_caption=_build_stage_caption(match_rows),
+            confederation=side.identity.confederation,
+            group_letter=side.identity.group_letter,
+            manager_name=side.identity.manager_name,
+            fifa_ranking_pre_tournament=side.identity.fifa_ranking_pre_tournament,
+            squad=side.identity.squad,
+            group=side.identity.group,
+            top_scorer=side.identity.top_scorer,
+            top_assister=side.identity.top_assister,
+            most_minutes=side.identity.most_minutes,
+            positions=side.positions,
         )
+
+    async def get_team_comparison(self, team_a_query: str, team_b_query: str) -> TeamComparison:
+        team_a = await self._require_team(team_a_query)
+        team_b = await self._require_team(team_b_query)
+        if team_a.team_id == team_b.team_id:
+            raise SameTeamComparisonError(
+                f"'{team_a_query}' and '{team_b_query}' both resolved to "
+                f"{team_a.team_name} -- pick two different teams to compare."
+            )
+        return await load_team_comparison(self._session, team_a, team_b)
+
+    async def _require_team(self, team_query: str) -> NationalTeamSchema:
+        team = await self._resolve_team(team_query)
+        if team is None:
+            raise TeamNotFoundError(f"No team found matching '{team_query}'.")
+        return team
 
     async def _resolve_team(self, team_query: str) -> NationalTeamSchema | None:
         exact_stmt = select(NationalTeamSchema).where(
