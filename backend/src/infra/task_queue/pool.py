@@ -38,6 +38,11 @@ async def enqueue_synthetic_upload(table_name: str, job_id: int, csv_bytes: byte
     await pool.enqueue_job("synthetic_upload_task", job_id, table_name, csv_bytes)
 
 
+async def enqueue_bulk_synthetic_upload(job_id: int, files: list[tuple[str, bytes]]) -> None:
+    pool = await get_arq_pool()
+    await pool.enqueue_job("bulk_synthetic_upload_task", job_id, files)
+
+
 async def enqueue_transfermarkt_sync(job_id: int, skip_populated: bool = False) -> None:
     # NOTE: the design's optional `table_filter` (partial-table sync) is
     # deferred -- this batch runs the full scoped pipeline only (optionally

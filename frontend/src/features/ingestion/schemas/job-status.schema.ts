@@ -2,7 +2,11 @@ import { z } from "zod";
 
 import type { IngestionJobStatus, IngestionJobType, JobStatus } from "@/features/ingestion/types";
 
-const jobTypeSchema = z.enum(["synthetic_upload", "transfermarkt_sync"]);
+const jobTypeSchema = z.enum([
+  "synthetic_upload",
+  "transfermarkt_sync",
+  "bulk_synthetic_upload",
+]);
 const jobStatusValueSchema = z.enum(["queued", "running", "succeeded", "failed"]);
 
 const stageCheckpointSchema = z.object({

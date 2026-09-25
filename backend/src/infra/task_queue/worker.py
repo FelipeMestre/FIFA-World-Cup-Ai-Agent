@@ -5,7 +5,11 @@ from arq.worker import func
 
 from src.infra.task_queue.chat_tasks import categorize_conversation_task, generate_chat_reply_task
 from src.infra.task_queue.config import task_queue_settings
-from src.infra.task_queue.tasks import synthetic_upload_task, transfermarkt_sync_task
+from src.infra.task_queue.tasks import (
+    bulk_synthetic_upload_task,
+    synthetic_upload_task,
+    transfermarkt_sync_task,
+)
 
 # 5 minutes, not the shared ingestion default below -- a chat reply is
 # request-latency-shaped work, not a batch job; `job_timeout` on
@@ -21,6 +25,7 @@ CATEGORIZE_JOB_TIMEOUT_SECONDS = 60
 class WorkerSettings:
     functions = (
         synthetic_upload_task,
+        bulk_synthetic_upload_task,
         transfermarkt_sync_task,
         func(generate_chat_reply_task, timeout=CHAT_REPLY_JOB_TIMEOUT_SECONDS),
         func(categorize_conversation_task, timeout=CATEGORIZE_JOB_TIMEOUT_SECONDS),

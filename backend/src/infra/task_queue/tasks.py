@@ -36,6 +36,10 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.ingestion.model.ingestion_job import IngestionJobStatus
+from src.domain.ingestion.services.bulk_synthetic_ingestion_service import (
+    BulkSyntheticIngestionService,
+    resolve_and_order_files,
+)
 from src.domain.ingestion.services.csv_ingestion_service import CsvIngestionService
 from src.domain.ingestion.services.player_identity_matching_service import (
     PlayerIdentityMatchingService,
@@ -106,6 +110,28 @@ async def synthetic_upload_task(ctx: dict, job_id: int, table_name: str, csv_byt
         )
         try:
             await service.ingest_upload(table_name, _parse_csv_rows(csv_bytes), job)
+        except BaseException as exc:
+            await _fail_job(session, job_repository, job_id, exc)
+            raise
+
+
+async def bulk_synthetic_upload_task(
+    ctx: dict, job_id: int, files: list[tuple[str, bytes]]
+) -> None:
+    async with session_scope() as session:
+        job_repository = _SqlAlchemyIngestionJobRepository(session)
+        job = await job_repository.get(job_id)
+        if job is None:
+            raise ValueError(f"ingestion_job {job_id} not found")
+
+        service = BulkSyntheticIngestionService(
+            csv_ingestion_service=CsvIngestionService(),
+            ingestion_repository=_SqlAlchemyIngestionRepository(session),
+            ingestion_job_repository=job_repository,
+        )
+        resolution = resolve_and_order_files(files)
+        try:
+            await service.ingest_batch(resolution.accepted, job)
         except BaseException as exc:
             await _fail_job(session, job_repository, job_id, exc)
             raise
