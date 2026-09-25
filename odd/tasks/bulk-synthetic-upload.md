@@ -63,7 +63,7 @@ endpoint must not reintroduce that failure mode.
 - [x] T5: Integration tests for the endpoint (scrambled order, rejection, zero-accepted)
 - [x] T6: Live smoke test (in-process, real DB/Redis, real dataset -- see Progress for why not literal curl); `ruff check`/`ruff format`; full pytest suite
 - [x] T7: Rebase onto `main` after user confirmed `origin/claude/player-linking-approval-7qi9fu` (the admin panel branch) was merged; fix migration `down_revision` conflict this surfaced (two heads: `0f67254f34fc` from the merged chat-categorization migration chain, `d23ea2153231` from this branch) -- re-pointed to `0f67254f34fc`, single head restored
-- [ ] T8 (NEW, scope added after rebase): populate `current_stage`/`stage_checkpoints` on the bulk-upload job (one checkpoint per table ingested), mirroring `TransfermarktSyncService`'s use of `IngestionJob.record_stage_checkpoint` -- added because the merged admin panel's `stage-progress.tsx` component renders exactly these fields, and the user wants CSV job status to look "just like transfermarkt". `record_stage_checkpoint(stage: TransfermarktSyncStage)` is currently typed to a Transfermarkt-specific enum; needs generalizing (or a parallel enum) without breaking the existing caller.
+- [x] T8 (NEW, scope added after rebase): populate `current_stage`/`stage_checkpoints` on the bulk-upload job (one checkpoint per table ingested), mirroring `TransfermarktSyncService`'s use of `IngestionJob.record_stage_checkpoint` -- added because the merged admin panel's `stage-progress.tsx` component renders exactly these fields, and the user wants CSV job status to look "just like transfermarkt". `record_stage_checkpoint(stage: TransfermarktSyncStage)` is currently typed to a Transfermarkt-specific enum; needs generalizing (or a parallel enum) without breaking the existing caller.
 - [ ] T9 (NEW): frontend admin UI -- a bulk-CSV-upload trigger + job status view in `frontend/src/features/ingestion/`, mirroring the existing Transfermarkt `sync-jobs-panel.tsx` exactly: same manual-refresh-only pattern (no polling), same Route-Handler-proxy API client pattern, same `StageProgress` rendering, same UI primitives/design tokens. Wire into the existing `(admin)/sync-jobs` page (or a clearly-placed addition to it) alongside the existing Transfermarkt trigger.
 
 ## Verification
@@ -202,3 +202,114 @@ returned to the exact same `7 failed, 126 passed, 49 errors` baseline.
 
 No deviations from scope otherwise: single-file `synthetic-upload` endpoint and
 the Transfermarkt sync pipeline were not touched.
+
+### T8 -- stage checkpoints for the bulk-upload job
+
+Mechanism chosen for `record_stage_checkpoint`'s typing: widened the
+parameter from the Transfermarkt-specific `TransfermarktSyncStage` to the
+generic `enum.StrEnum` (not a bare `str`, not a `TransfermarktSyncStage |
+BulkSyntheticUploadStage` union that would need editing every time a third
+job type wants stages). `current_stage`/`stage_checkpoints` on `IngestionJob`
+are already job-type-agnostic (`str | None` / `list[dict[str, str]]`), so
+`record_stage_checkpoint(stage: StrEnum)` loses no type safety at any call
+site -- each caller still passes a real concrete enum member
+(`TransfermarktSyncStage.CLUBS`, `BulkSyntheticUploadStage.TEAM`, ...),
+type-checked by its own enum, matching AGENTS.md's "type safety over
+strings" rule. `JobProgressTracker.checkpoint` (the wrapper
+`TransfermarktSyncService` already used to persist checkpoints through the
+job repository) was widened the same way, so `BulkSyntheticIngestionService`
+reuses that exact class instead of a second, divergent checkpoint-persisting
+path -- one shared, tested code path for both job types, per the brief.
+
+New `backend/src/domain/ingestion/model/bulk_synthetic_upload_stage.py`:
+`BulkSyntheticUploadStage(StrEnum)`, one member per
+`BULK_SYNTHETIC_INGESTION_ORDER` table name, with a module-level assertion
+in `bulk_synthetic_ingestion_service.py` keeping the two in exact sync
+(mirrors T1's `BULK_SYNTHETIC_FILENAME_TO_TABLE`/`BULK_SYNTHETIC_INGESTION_ORDER`
+drift guard).
+
+`BulkSyntheticIngestionService.ingest_batch` now builds a `JobProgressTracker`
+right after `mark_running()`, exactly where `TransfermarktSyncService.run_sync`
+does, and calls `await progress.checkpoint(BulkSyntheticUploadStage(resolved.table_name))`
+immediately after each table's rows are ingested (mirrors
+`TransfermarktSyncService`/`TransfermarktDetailSync`'s "checkpoint right after
+that phase's work finishes" convention, including its
+`TransfermarktSyncStage(source_name)`-from-string construction style). On a
+mid-batch `IngestionValidationError`, the failure path now marks
+`progress.job` (not the stale pre-loop `running_job`) failed, so checkpoints
+already recorded for tables ingested before the failure survive onto the
+failed job's history instead of being silently discarded.
+
+Deviation found and fixed (within T8's own stated scope): `ingestion_dtos.py`'s
+`JobStatusResponse.from_domain` hardcoded `all_stages` to populate only for
+`job_type == TRANSFERMARKT_SYNC`, returning `[]` for every other job type --
+its own docstring said so explicitly. The merged admin panel's
+`StageProgress` component (`frontend/src/features/ingestion/components/
+stage-progress.tsx`) renders nothing at all when `job.allStages.length === 0`
+(`if (job.allStages.length === 0) return null`), so leaving this hardcoded
+would mean `current_stage`/`stage_checkpoints` populate correctly on the
+backend but the progress UI never renders for a bulk-upload job -- directly
+contradicting T8's own goal ("show live progress just like transfermarkt").
+Fixed via a `dict[IngestionJobType, list[str]]` lookup
+(`_ALL_STAGES_BY_JOB_TYPE`) covering both `TRANSFERMARKT_SYNC` and
+`BULK_SYNTHETIC_UPLOAD`, defaulting to `[]` for any other job type (e.g.
+plain `synthetic_upload`, which has no sub-stages) -- confirmed via the brief's
+own instruction to read this exact file rather than assume, and confirmed
+in-scope since a stage field (`all_stages`) was NOT flowing through the DTO
+for this job type at all, which is exactly the carve-out the brief allowed.
+Did not touch anything in `frontend/` -- the frontend zod schema's
+`jobTypeSchema` still doesn't include `"bulk_synthetic_upload"` either, but
+wiring the bulk job type into the frontend is explicitly T9's job, not T8's.
+
+TDD: extended `tests/unit/domain/ingestion/test_bulk_synthetic_ingestion_service.py`
+first -- added assertions on `result.stage_checkpoints`/`result.current_stage`
+to the existing succeeded-job test (updating its expected
+`job_repository.updates` status sequence to include the two intermediate
+RUNNING updates from mid-batch checkpoints), a new test asserting checkpoints
+land in fixed ingestion order regardless of upload order, and a new test
+asserting checkpoints from tables ingested before a later failure survive
+onto the failed job. Ran the suite first to confirm RED (3 failed:
+`AssertionError: assert [] == ['team', 'player']` etc., since
+`BulkSyntheticUploadStage` and the checkpoint calls didn't exist yet), then
+implemented, then confirmed GREEN (6 passed). Also extended the existing
+integration test in `test_bulk_synthetic_upload_router.py` (the scrambled-order
+happy path) with assertions on `stage_checkpoints`, `current_stage`, and
+`all_stages` from the real `GET /jobs/{id}` response -- ran against the real
+docker-compose Postgres, passed (this doubles as T8's own live check, per the
+brief's fallback: same in-process approach as T6, since the live admin
+password is still unknown).
+
+Verification:
+- `ruff check backend/src backend/tests && ruff format --check backend/src backend/tests`:
+  clean (`[]` / `266 files already formatted`).
+- `pytest tests/unit domain/ingestion` (all ingestion unit tests, Transfermarkt
+  included): 85 passed -- confirms widening `record_stage_checkpoint`/
+  `JobProgressTracker.checkpoint` to `StrEnum` did not change
+  `TransfermarktSyncService`'s own behavior or break its existing tests.
+- `pytest tests/integration/api/admin/test_bulk_synthetic_upload_router.py`:
+  3 passed against the real docker-compose Postgres, including the new
+  stage-checkpoint/`all_stages` assertions.
+- Full `pytest` (backend/, real Postgres/Redis): `6 failed, 217 passed, 33 errors`.
+  Confirmed identical failure/error set before and after this change via
+  `git stash`/`git stash pop` around a full-suite re-run on the same
+  checkout: stashed (pre-T8) run was `6 failed, 215 passed, 33 errors` --
+  same 6 failures, same 33 errors, node-for-node; the only difference is the
+  +2 passed from the two new unit tests T8 added. None of the pre-existing
+  failures/errors reference any file T8 touches (`test_tool_call_executor.py`'s
+  `TurnResolvedEvent.widget_results` gap and the `AmbiguousParameterError`
+  seed-user-SQL fixture issue across several `tests/integration/**` files are
+  the same pre-existing, unrelated issues T5/T6 already documented).
+
+Commit: `38fe17f` `feat(ingestion): add stage checkpoints to bulk synthetic upload job`.
+
+Files touched: `backend/src/domain/ingestion/model/ingestion_job.py`,
+`backend/src/domain/ingestion/model/bulk_synthetic_upload_stage.py` (new),
+`backend/src/domain/ingestion/services/job_progress_tracker.py`,
+`backend/src/domain/ingestion/services/bulk_synthetic_ingestion_service.py`,
+`backend/src/api/v1/admin/dtos/ingestion_dtos.py`,
+`backend/tests/unit/domain/ingestion/test_bulk_synthetic_ingestion_service.py`,
+`backend/tests/integration/api/admin/test_bulk_synthetic_upload_router.py`.
+No router/Arq task/schema changes needed -- `GET /jobs/{id}` already returns
+`JobStatusResponse.from_domain(job)` generically, and `IngestionJobRepository.
+update()` already persisted `current_stage`/`stage_checkpoints` for any job
+type (verified, not assumed, per the brief).
