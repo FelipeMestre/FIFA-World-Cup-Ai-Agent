@@ -20,7 +20,12 @@ export function useChatPanel() {
   const [state, setState] = useState<PanelState>(INITIAL_STATE);
 
   const openEntity = useCallback((ref: EntityRef, sourceMessageId: string) => {
-    setState({ openEntity: ref, collapsed: false, sourceMessageId });
+    setState((prev) => {
+      const showingThisEntity =
+        prev.openEntity?.type === ref.type && prev.openEntity.id === ref.id && !prev.collapsed;
+      if (showingThisEntity) return { ...prev, collapsed: true };
+      return { openEntity: ref, collapsed: false, sourceMessageId };
+    });
   }, []);
 
   const collapse = useCallback(() => {

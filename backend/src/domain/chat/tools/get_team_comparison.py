@@ -24,7 +24,7 @@ GET_TEAM_COMPARISON_SCHEMA: dict = {
             "how far each went, goal and xG rates, possession, chance quality, "
             "discipline, and cards, each against the other team and the tournament "
             "average. Also returns squad average age, estimated market value, FIFA "
-            "rank, Elo, manager, group points, and a player-by-player comparison "
+            "rank, manager, group points, and a player-by-player comparison "
             "grouped GK vs GK, DEF vs DEF, MID vs MID, and FWD vs FWD. Use this "
             "whenever the user asks to compare two teams, or asks who is stronger "
             "between two named countries."

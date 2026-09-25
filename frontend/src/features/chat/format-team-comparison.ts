@@ -32,7 +32,7 @@ export function barShare(stat: ComparedStat): number {
 
 export function playerLine(player: ComparisonPlayer, position: Position): string {
   if (position === "GK") {
-    return `${player.minutes} min · CS ${formatCount(player.cleanSheets)} · ${formatCount(player.saves)} saves · ${formatCount(player.goalsConceded)} conceded`;
+    return `${player.minutes} min · ${formatCount(player.cleanSheets)} clean sheets · ${formatCount(player.saves)} saves · ${formatCount(player.goalsConceded)} conceded`;
   }
-  return `${player.minutes} min · ${player.goals} G · ${player.assists} A · ${player.goalContributionsPer90.toFixed(2)} /90`;
+  return `${player.minutes} min · ${player.goals} goals · ${player.assists} assists · ${player.goalContributionsPer90.toFixed(2)} /90`;
 }

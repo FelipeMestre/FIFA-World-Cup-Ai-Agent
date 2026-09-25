@@ -104,8 +104,8 @@ export function WidgetTeamCompare({
       <div className="grid shrink-0 grid-cols-2 gap-ds-2 px-ds-4 pt-ds-3 sm:grid-cols-4">
         <StatChip label={`${teamA.code} age`} value={formatAge(teamA.squad.averageAge)} />
         <StatChip label={`${teamA.code} value`} value={formatMarketValue(teamA.squad.totalMarketValueEur)} />
-        <StatChip label={`${teamB.code} age`} value={formatAge(teamB.squad.averageAge)} />
         <StatChip label={`${teamB.code} value`} value={formatMarketValue(teamB.squad.totalMarketValueEur)} />
+        <StatChip label={`${teamB.code} age`} value={formatAge(teamB.squad.averageAge)} />
       </div>
 
       {comparison.meetings.length > 0 ? (
