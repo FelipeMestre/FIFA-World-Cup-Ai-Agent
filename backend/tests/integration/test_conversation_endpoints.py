@@ -329,13 +329,17 @@ async def test_send_message_persists_publishes_and_enqueues_reply_and_categoriza
     from sharing `start_turn`, with no extra wiring in this endpoint.
     """
     conversation_id = uuid4()
-    reply_calls: list[tuple[str, int, str, int]] = []
+    reply_calls: list[tuple[str, int, str, int, dict | None]] = []
     categorize_calls: list[tuple[str, int, str]] = []
 
     async def _fake_enqueue_chat_reply(
-        conversation_id: str, user_id: int, user_message: str, user_message_id: int
+        conversation_id: str,
+        user_id: int,
+        user_message: str,
+        user_message_id: int,
+        context: dict | None = None,
     ) -> None:
-        reply_calls.append((conversation_id, user_id, user_message, user_message_id))
+        reply_calls.append((conversation_id, user_id, user_message, user_message_id, context))
 
     async def _fake_enqueue_categorize(
         conversation_id: str, user_id: int, first_message: str
@@ -378,9 +382,12 @@ async def test_send_message_persists_publishes_and_enqueues_reply_and_categoriza
         "message_id": body["message_id"],
         "content": "Hello there",
         "title": "Hello there",
+        "metadata": None,
     }
 
-    assert reply_calls == [(str(conversation_id), _USER_ID, "Hello there", body["message_id"])]
+    assert reply_calls == [
+        (str(conversation_id), _USER_ID, "Hello there", body["message_id"], None)
+    ]
     assert categorize_calls == [(str(conversation_id), _USER_ID, "Hello there")]
 
     await _cleanup_turn_state(str(conversation_id))

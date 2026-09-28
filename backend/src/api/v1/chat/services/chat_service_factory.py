@@ -17,6 +17,8 @@ from src.infra.postgres.repositories.conversation_repository import get_conversa
 from src.infra.postgres.repositories.match_analytics_repository import (
     get_match_analytics_repository,
 )
+from src.infra.postgres.repositories.match_repository import get_match_repository
+from src.infra.postgres.repositories.national_team_repository import get_national_team_repository
 from src.infra.postgres.repositories.player_analytics_repository import (
     get_player_analytics_repository,
 )
@@ -38,5 +40,7 @@ def build_chat_service(session: AsyncSession) -> ChatService:
         ),
         conversation_repo=get_conversation_repository(session),
         chat_message_repo=get_chat_message_repository(session),
+        match_repo=get_match_repository(session),
+        national_team_repo=get_national_team_repository(session),
         session=session,
     )

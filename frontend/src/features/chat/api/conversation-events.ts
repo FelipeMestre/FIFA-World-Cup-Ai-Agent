@@ -64,6 +64,11 @@ export interface UserMessageEvent {
   conversation_id: string;
   title: string;
   cursor: string;
+  /** Server-resolved Match-chip metadata, snake_case:
+   * `{"match_selector": {"match_id": ..., "label": ...}}`. `null`/absent when
+   * no chip was selected for this message.
+   */
+  metadata?: { match_selector?: { match_id: number; label: string } } | null;
 }
 
 export type ConversationEvent = (ChatStreamEvent & { cursor?: string }) | UserMessageEvent;

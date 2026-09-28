@@ -11,6 +11,7 @@ class ChatMessageRepositoryInterface(Protocol):
         role: ChatMessageRole,
         content: str,
         widgets: list[tuple[str, str, dict]] | None = None,
+        metadata: dict | None = None,
     ) -> ChatMessage: ...
     async def list_for_conversation(
         self, conversation_id: UUID, user_id: int

@@ -361,6 +361,13 @@ export interface ChatMessage {
   clarification?: string;
   /** Set on an assistant message that failed to send/receive a reply. */
   error?: string;
+  /**
+   * Server-resolved context selected on a user message (currently only the
+   * Match chip). `null`/absent renders no badge. Camel-cased on the way in
+   * from the backend's snake_case `{"match_selector": {...}}` shape, per
+   * this codebase's DTO-mapping convention (see `parse-message-parts.ts`).
+   */
+  metadata?: { matchSelector?: { matchId: number; label: string } } | null;
 }
 
 // ---------------------------------------------------------------------------

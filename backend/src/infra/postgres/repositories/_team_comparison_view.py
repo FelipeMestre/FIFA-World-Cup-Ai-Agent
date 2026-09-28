@@ -352,9 +352,7 @@ def _sorted_players(players: list[ComparisonPlayer]) -> list[ComparisonPlayer]:
 def _comparison_player(player: PlayerFact, position: Position) -> ComparisonPlayer:
     saves_per90 = None if player.saves is None else per_ninety(player.saves, player.minutes)
     conceded_per90 = (
-        None
-        if player.goals_conceded is None
-        else per_ninety(player.goals_conceded, player.minutes)
+        None if player.goals_conceded is None else per_ninety(player.goals_conceded, player.minutes)
     )
     return ComparisonPlayer(
         id=str(player.player_id),

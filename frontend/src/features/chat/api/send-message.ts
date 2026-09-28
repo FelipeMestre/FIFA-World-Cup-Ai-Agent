@@ -5,6 +5,13 @@ export interface SendMessageResult {
   messageId: number;
 }
 
+/** The selected Match chip, forwarded to the backend so it can resolve the
+ * match and inject a directive tool-use instruction for the agent.
+ */
+export interface SendMessageContext {
+  matchId: number;
+}
+
 interface SendMessageResponseDto {
   conversation_id: string;
   message_id: number;
@@ -20,13 +27,16 @@ interface SendMessageResponseDto {
 export async function sendMessage(
   conversationId: string,
   content: string,
+  context?: SendMessageContext,
 ): Promise<SendMessageResult> {
   const payload = await fetchJson<SendMessageResponseDto>(
     `/api/conversations/${conversationId}/messages`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(
+        context ? { content, context: { match_id: context.matchId } } : { content },
+      ),
     },
   );
   return { conversationId: payload.conversation_id, messageId: payload.message_id };

@@ -30,6 +30,10 @@ from src.infra.postgres.interfaces.chat_message_repository_interface import (
 from src.infra.postgres.interfaces.conversation_repository_interface import (
     ConversationRepositoryInterface,
 )
+from src.infra.postgres.interfaces.match_repository_interface import MatchRepositoryInterface
+from src.infra.postgres.interfaces.national_team_repository_interface import (
+    NationalTeamRepositoryInterface,
+)
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
 from src.infra.redis.config import redis_client
@@ -79,12 +83,16 @@ class ChatService:
         tool_registry: dict[str, ToolDefinition],
         conversation_repo: ConversationRepositoryInterface,
         chat_message_repo: ChatMessageRepositoryInterface,
+        match_repo: MatchRepositoryInterface,
+        national_team_repo: NationalTeamRepositoryInterface,
         session: AsyncSession,
     ) -> None:
         self._conversation_cache = conversation_cache
         self._tool_executor = ToolCallExecutor(openrouter_client, tool_registry)
         self._conversation_repo = conversation_repo
         self._chat_message_repo = chat_message_repo
+        self._match_repo = match_repo
+        self._national_team_repo = national_team_repo
         self._session = session
 
     async def start_turn(
@@ -138,7 +146,9 @@ class ChatService:
             )
         return conversation
 
-    async def persist_user_message(self, conversation_id: UUID, content: str) -> ChatMessage:
+    async def persist_user_message(
+        self, conversation_id: UUID, content: str, metadata: dict | None = None
+    ) -> ChatMessage:
         """Persists the user's own message synchronously, independent of
         whether the reply is ever generated -- called by the router right
         before enqueueing `generate_chat_reply_task`, so the user's message
@@ -153,7 +163,7 @@ class ChatService:
         row can be recorded against on a failed turn.
         """
         message = await self._chat_message_repo.append_message(
-            conversation_id, role="user", content=content
+            conversation_id, role="user", content=content, metadata=metadata
         )
         await self._session.commit()
         return message
@@ -164,6 +174,7 @@ class ChatService:
         user_id: int,
         user_message: str,
         tools: list[dict] | None = None,
+        context: dict | None = None,
     ) -> AsyncIterator[ChatTurnEvent]:
         """Streams reasoning/content deltas as they arrive from the tool
         loop, then persists the assistant's reply and yields the terminal
@@ -171,12 +182,25 @@ class ChatService:
         the user's own message has already been persisted via
         `persist_user_message` -- this method only ever appends the
         assistant's reply, never the user's turn.
+
+        `context` is `MessageContextDto.model_dump()` (currently just
+        `match_id`) from the match-selector chip. When it resolves, this
+        injects a **directive imperative instruction** naming the exact tool
+        and arguments to call -- never a passive "take this into account"
+        fact statement. An earlier (reverted) player/team-selector feature
+        used passive phrasing and the model sometimes skipped the matching
+        tool call even with the data named right there; the user confirmed
+        for this feature that a pinned match must force `get_match_analysis`
+        use, so the injected message is phrased as a command instead.
         """
         resolved_conversation_id = str(conversation_id)
         history = await self._conversation_cache.get_history(resolved_conversation_id)
         history.append(Message(role="user", content=user_message))
 
         completion_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        match_directive = await self._build_match_directive(context)
+        if match_directive is not None:
+            completion_messages.append({"role": "system", "content": match_directive})
         completion_messages.extend({"role": m.role, "content": m.content} for m in history)
 
         final_result: ChatCompletionResult | ToolLoopCapReached | None = None
@@ -263,6 +287,36 @@ class ChatService:
             content=reply_content,
             model=model,
             content_segments=message_parts_segments,
+        )
+
+    async def _build_match_directive(self, context: dict | None) -> str | None:
+        """Resolves `context["match_id"]` (from `MessageContextDto`) into the
+        directive instruction injected in `send_message`, or `None` on any
+        missing/unset/unresolved id -- silent best-effort, same philosophy as
+        the router's own `_resolve_message_metadata`. Never raises.
+        """
+        if not context:
+            return None
+        match_id = context.get("match_id")
+        if match_id is None:
+            return None
+
+        match = await self._match_repo.get(match_id)
+        if match is None:
+            return None
+        home_team = await self._national_team_repo.get(match.home_team_id)
+        away_team = await self._national_team_repo.get(match.away_team_id)
+        if home_team is None or away_team is None:
+            return None
+
+        date_iso = match.date.isoformat()
+        return (
+            f"The user selected this specific match via the match selector: "
+            f"{home_team.name} vs {away_team.name} on {date_iso}.\n"
+            f"You MUST call the get_match_analysis tool with "
+            f'home_team_name="{home_team.name}", away_team_name="{away_team.name}", '
+            f'date="{date_iso}" before answering anything about this match. '
+            f"Do not answer from assumptions."
         )
 
 

@@ -10,7 +10,7 @@ from uuid import UUID as PyUUID
 
 from sqlalchemy import DateTime, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infra.postgres.schemas.base import Base
@@ -40,6 +40,14 @@ class ChatMessageSchema(Base):
         SAEnum(ChatMessageRole, name="chat_message_role"), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Server-resolved, best-effort context pinned by the user for this turn
+    # (currently just the match-selector chip's `{"match_selector": {...}}`
+    # shape) -- nullable because most messages carry none. Never echoed back
+    # into the LLM prompt itself; only used to render a badge on replay/live
+    # events (see `ChatService.send_message`'s directive-injection path,
+    # which is built from `SendMessageRequest.context`, not from this
+    # column).
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

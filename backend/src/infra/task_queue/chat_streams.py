@@ -148,12 +148,19 @@ async def stream_cursor_has_gap(conversation_id: str, cursor: str) -> bool:
 
 
 def serialize_user_message_event(
-    conversation_id: str, message_id: int, content: str, title: str
+    conversation_id: str,
+    message_id: int,
+    content: str,
+    title: str,
+    metadata: dict | None = None,
 ) -> dict[str, str]:
     """Stream entry every connected client reads when a turn is accepted.
 
     Written by the send endpoint before the reply job starts, so a second
     device blocked on `XREAD` sees the user message without refreshing.
+    `metadata` mirrors the persisted `chat_message.metadata` column (e.g.
+    the match-selector chip's `{"match_selector": {...}}` shape), so a live
+    watcher can render the same badge a reload would.
     """
     payload = json.dumps(
         {
@@ -161,6 +168,7 @@ def serialize_user_message_event(
             "message_id": message_id,
             "content": content,
             "title": title,
+            "metadata": metadata,
         }
     )
     return {"event_type": "UserMessageEvent", "payload": payload}

@@ -9,6 +9,10 @@ const replayMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   parts: z.array(z.unknown()),
   created_at: z.string(),
+  metadata: z
+    .object({ match_selector: z.object({ match_id: z.number(), label: z.string() }).optional() })
+    .nullable()
+    .optional(),
 });
 
 const replaySchema = z.object({
@@ -31,6 +35,14 @@ export function parseConversationReplay(payload: unknown): ConversationReplay {
     id: `${parsed.conversation_id}:${index}`,
     role: message.role,
     parts: parseMessageParts(message.parts as RawMessagePart[]),
+    metadata: message.metadata?.match_selector
+      ? {
+          matchSelector: {
+            matchId: message.metadata.match_selector.match_id,
+            label: message.metadata.match_selector.label,
+          },
+        }
+      : null,
   }));
 
   // `last_turn_failure` is only ever set by the backend when the failed

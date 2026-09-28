@@ -1,17 +1,15 @@
 "use client";
 
-import { Pencil, Share } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import type { ChatMessage } from "@/features/chat/types";
 
 /**
- * The active thread's top bar: title (renamable), answer count, Share.
+ * The active thread's top bar: title (renamable), answer count.
  * Rendered above both the thread column and the side panel (home-shell.tsx),
  * so it spans the full width of that combined area -- the panel starts
  * right where this bar ends, with no gap and no separate header of its own
  * duplicating it.
- *
- * Share is presentational -- no share/permalink backend exists yet.
  */
 export function ThreadHeader({
   title,
@@ -47,13 +45,6 @@ export function ThreadHeader({
         {answerCount} {answerCount === 1 ? "answer" : "answers"}
       </span>
       <div className="grow" />
-      <button
-        type="button"
-        className="focus-ring flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border-strong px-3 text-body-sm font-semibold text-ink-primary hover:bg-surface-800"
-      >
-        <Share className="size-4" aria-hidden />
-        Share
-      </button>
     </header>
   );
 }

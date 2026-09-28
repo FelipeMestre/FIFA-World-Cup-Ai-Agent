@@ -38,6 +38,7 @@ class ConversationMessageDto(BaseModel):
     role: Literal["user", "assistant"]
     parts: list[MessagePart]
     created_at: datetime
+    metadata: dict | None = None
 
 
 class ConversationMessagesResponse(BaseModel):
@@ -52,10 +53,21 @@ class ConversationMessagesResponse(BaseModel):
     last_turn_failure: str | None = None
 
 
+class MessageContextDto(BaseModel):
+    """Optional match "chip" selection pinned by the user for this turn --
+    resolved server-side into a directive instruction injected ahead of
+    history in ChatService.send_message, and into persisted message
+    metadata for the frontend's badge. Never a passive fact statement --
+    see ChatService.send_message's docstring for why."""
+
+    match_id: int | None = None
+
+
 class SendMessageRequest(BaseModel):
     """Body of `POST /conversations/{id}/messages`."""
 
     content: str = Field(min_length=1, max_length=_SEND_MESSAGE_MAX_LENGTH)
+    context: MessageContextDto | None = None
 
     @field_validator("content")
     @classmethod

@@ -122,7 +122,7 @@ export function MessageList({
 
             {answer ? (
               <div id={answer.id} className="scroll-mt-6">
-                <AssistantBubble>
+                <AssistantBubble metadata={turn.question?.metadata}>
                   {answer.error ? (
                     <Alert
                       variant="destructive"

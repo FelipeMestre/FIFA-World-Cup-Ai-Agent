@@ -6,8 +6,8 @@ from arq.worker import func
 from src.infra.task_queue.chat_tasks import categorize_conversation_task, generate_chat_reply_task
 from src.infra.task_queue.config import task_queue_settings
 from src.infra.task_queue.tasks import (
-    identity_link_rematch_task,
     bulk_synthetic_upload_task,
+    identity_link_rematch_task,
     synthetic_upload_task,
     transfermarkt_sync_task,
 )

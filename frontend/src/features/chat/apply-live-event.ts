@@ -20,8 +20,27 @@ function streamingAssistant(): ChatMessage {
   return { id: makeId(), role: "assistant", parts: [], reasoning: "", isStreaming: true };
 }
 
-function userMessage(content: string): ChatMessage {
-  return { id: makeId(), role: "user", parts: [{ type: "text", content }] };
+/** Raw wire shape of the `user_message` event's `metadata` field -- snake_case,
+ * per the backend's `{"match_selector": {"match_id": ..., "label": ...}}`.
+ */
+interface RawMatchSelectorMetadata {
+  match_selector?: { match_id: number; label: string };
+}
+
+function parseMetadata(raw: unknown): ChatMessage["metadata"] {
+  if (!raw || typeof raw !== "object") return null;
+  const matchSelector = (raw as RawMatchSelectorMetadata).match_selector;
+  if (!matchSelector) return null;
+  return { matchSelector: { matchId: matchSelector.match_id, label: matchSelector.label } };
+}
+
+function userMessage(content: string, metadata?: unknown): ChatMessage {
+  return {
+    id: makeId(),
+    role: "user",
+    parts: [{ type: "text", content }],
+    metadata: parseMetadata(metadata),
+  };
 }
 
 /** Appends a content delta onto the last text part, or starts a new one. */
@@ -89,7 +108,7 @@ export function applyLiveEvent(
     if (last?.role === "user" && textOf(last) === event.content) {
       return [...messages, streamingAssistant()];
     }
-    return [...messages, userMessage(event.content), streamingAssistant()];
+    return [...messages, userMessage(event.content, event.metadata), streamingAssistant()];
   }
 
   switch (event.type) {

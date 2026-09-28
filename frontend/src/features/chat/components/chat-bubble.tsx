@@ -5,6 +5,7 @@ import { Check, ChevronDown, ChevronRight, Copy, RotateCw, Wrench } from "lucide
 
 import { AssistantMark } from "@/components/shared/assistant-mark";
 import { AssistantMarkdown } from "@/features/chat/components/assistant-markdown";
+import type { ChatMessage } from "@/features/chat/types";
 
 /**
  * The visitor's own message, right-aligned on the violet-tinted user surface.
@@ -24,11 +25,21 @@ export function UserBubble({ children }: { children: ReactNode }) {
 /**
  * The assistant's reply (HomeActive.dc.html): an attribution row above the
  * answer, which then runs full width -- not a bubble beside the mark, so the
- * 640px-wide widgets below line up with the prose.
+ * 640px-wide widgets below line up with the prose. When `metadata.matchSelector`
+ * is set (the turn's question used the Match chip), a small badge renders
+ * below-left of this response showing which match was picked.
  */
-export function AssistantBubble({ children }: { children: ReactNode }) {
+export function AssistantBubble({
+  children,
+  metadata,
+}: {
+  children: ReactNode;
+  metadata?: ChatMessage["metadata"];
+}) {
+  const matchLabel = metadata?.matchSelector?.label;
+
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className={`relative flex flex-col gap-3.5${matchLabel ? " pb-5" : ""}`}>
       <div className="flex items-center gap-2.5">
         <AssistantMark
           size={28}
@@ -38,6 +49,11 @@ export function AssistantBubble({ children }: { children: ReactNode }) {
         <span className="text-body-md font-semibold text-ink-primary">Scout</span>
       </div>
       {children}
+      {matchLabel ? (
+        <span className="absolute -bottom-2 left-0 max-w-[420px] truncate rounded-full border border-border-strong bg-surface-800 px-ds-3 py-[2px] text-label-sm text-ink-muted shadow-[0_4px_12px_rgba(2,3,5,0.4)]">
+          {matchLabel}
+        </span>
+      ) : null}
     </div>
   );
 }

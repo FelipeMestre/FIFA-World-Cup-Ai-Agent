@@ -54,12 +54,6 @@ export function ThreadComposer({
         />
         <button
           type="button"
-          className="focus-ring hidden h-8 shrink-0 items-center gap-1.5 rounded-full border border-border-strong bg-surface-700 px-2.5 text-body-sm text-ink-secondary hover:bg-surface-600 md:flex"
-        >
-          <span className="font-mono text-ink-primary">@</span> Mention
-        </button>
-        <button
-          type="button"
           aria-label="Send"
           onClick={send}
           disabled={isSending || draft.trim().length === 0}
@@ -68,10 +62,6 @@ export function ThreadComposer({
           <ArrowUp className="size-[18px]" aria-hidden />
         </button>
       </div>
-      {/* Absent on mobile in MobileChat.dc.html. */}
-      <span className="hidden text-body-sm text-ink-muted md:block">
-        Covers results, events, lineups and match stats. No passing or tracking data.
-      </span>
     </div>
   );
 }

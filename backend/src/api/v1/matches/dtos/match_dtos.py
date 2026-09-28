@@ -2,7 +2,7 @@ from datetime import date, time
 
 from pydantic import BaseModel
 
-from src.domain.matches.model.match import Match
+from src.domain.matches.model.match import Match, MatchSearchRow
 
 
 class MatchResponse(BaseModel):
@@ -44,4 +44,35 @@ class MatchResponse(BaseModel):
             away_xg=match.away_xg,
             referee_id=match.referee_id,
             player_of_the_match_id=match.player_of_the_match_id,
+        )
+
+
+class MatchSearchResultDto(BaseModel):
+    """One `GET /matches/search` result -- carries team names (unlike
+    `MatchResponse`, which only has ids) so the match-selector chip can
+    render a label like "Brazil vs Argentina" without a follow-up lookup.
+    """
+
+    id: int
+    date: date
+    home_team_id: int
+    home_team_name: str
+    away_team_id: int
+    away_team_name: str
+    home_score: int
+    away_score: int
+    status: str
+
+    @classmethod
+    def from_domain(cls, row: MatchSearchRow) -> "MatchSearchResultDto":
+        return cls(
+            id=row.match.id,
+            date=row.match.date,
+            home_team_id=row.match.home_team_id,
+            home_team_name=row.home_team_name,
+            away_team_id=row.match.away_team_id,
+            away_team_name=row.away_team_name,
+            home_score=row.match.home_score,
+            away_score=row.match.away_score,
+            status=row.match.status,
         )

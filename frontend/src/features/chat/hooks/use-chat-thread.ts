@@ -17,6 +17,7 @@ import {
   type ConversationReplay,
 } from "@/features/chat/api/get-conversation-messages";
 import { sendMessage } from "@/features/chat/api/send-message";
+import type { SubmitContext } from "@/features/chat/submit-context";
 import { newConversationId } from "@/features/chat/conversation-id";
 import {
   forgetInFlightTurn,
@@ -220,11 +221,17 @@ export function useChatThread({
   );
 
   const submit = useCallback(
-    async (text: string) => {
+    async (text: string, context?: SubmitContext) => {
       const userMessage: ChatMessage = {
         id: makeId(),
         role: "user",
         parts: [{ type: "text", content: text }],
+        // Built client-side rather than waiting for the server echo -- the
+        // frontend already knows the match immediately (it's the one the
+        // user just picked), so the badge shows instantly.
+        metadata: context
+          ? { matchSelector: { matchId: context.matchId, label: context.label } }
+          : undefined,
       };
       const draftAssistant: ChatMessage = {
         id: makeId(),
@@ -264,7 +271,11 @@ export function useChatThread({
       if (!didMintConversation) ensureEvents(activeConversationId);
 
       try {
-        await sendMessage(activeConversationId, text);
+        await sendMessage(
+          activeConversationId,
+          text,
+          context ? { matchId: context.matchId } : undefined,
+        );
       } catch (error) {
         // The conversation may have been switched away from while the POST
         // was in flight -- the thread state is no longer this turn's, so

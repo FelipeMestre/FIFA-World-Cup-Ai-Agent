@@ -21,3 +21,17 @@ class Match:
     away_xg: float
     referee_id: int
     player_of_the_match_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class MatchSearchRow:
+    """One `MatchRepositoryInterface.search()` result -- a `Match` plus the
+    home/away team names the match-selector chip needs to render a label
+    like "Brazil vs Argentina". Neither `Match` itself nor a bare query row
+    carries team names (they live on `NationalTeamSchema`), so this is a
+    search-only shape, not a general-purpose replacement for `Match`.
+    """
+
+    match: Match
+    home_team_name: str
+    away_team_name: str
