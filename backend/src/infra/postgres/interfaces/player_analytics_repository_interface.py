@@ -20,8 +20,17 @@ class PlayerAnalyticsRepositoryInterface(Protocol):
         club profile, a season-by-season club table, and the transfer path;
         pending and rejected links do not.
 
-        Returns `None` when no player matches `player_query`; never raises
-        for an unmatched query.
+        When `player_query` doesn't resolve against `player` at all, or
+        resolves to a `player` row with no `player_stat` row, falls back to
+        `real_player`/`real_player_season_stat` (a player who never appeared
+        at this World Cup but has a Transfermarkt career) and returns a
+        career-totals `PlayerAnalysis` instead: `full_breakdown` holds summed
+        career totals with `percentile` always `None`, and
+        `per_ninety_vs_position_average` is always `[]` -- no World Cup peer
+        population exists to rank a club-only career against.
+
+        Returns `None` when no player matches `player_query` in either
+        `player` or `real_player`; never raises for an unmatched query.
         """
         ...
 

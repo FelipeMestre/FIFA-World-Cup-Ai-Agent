@@ -6,7 +6,7 @@ looks up the actual intended Transfermarkt player by name.
 from typing import Annotated, Any
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.ingestion.model.real_player import RealPlayer
@@ -50,20 +50,37 @@ class _SqlAlchemyRealPlayerRepository:
         return _to_domain(row) if row else None
 
     async def search(self, query: str, limit: int = 20, offset: int = 0) -> list[RealPlayer]:
-        # Matches the pg_trgm GIN index on the stored `full_name` column
-        # (migration a1a2adf5c8b4) -- an ILIKE directly on that column, not
-        # a query-time concatenation, is what makes the planner use it
-        # instead of a sequential scan as the table grows to Transfermarkt's
-        # full player count.
-        pattern = f"%{query.strip()}%"
-        result = await self._session.execute(
+        # Two-tier, mirroring `_SqlAlchemyPlayerAnalyticsRepository._resolve_player`:
+        # an exact (diacritic-insensitive) match first, falling back to a
+        # substring match only when nothing matched exactly. `unaccent()` on
+        # both sides makes an accented query (e.g. "Mbappé") resolve the
+        # DB's unaccented "Mbappe" row -- requires the `unaccent` Postgres
+        # extension, see migrations/versions. The substring tier still
+        # benefits from the pg_trgm GIN index on the stored `full_name`
+        # column (migration a1a2adf5c8b4), since `unaccent()` wrapping a
+        # column reference doesn't stop the trigram index from being used
+        # the way an expression index mismatch would.
+        stripped = query.strip()
+        exact_stmt = (
             select(RealPlayerSchema)
-            .where(RealPlayerSchema.full_name.ilike(pattern))
+            .where(func.unaccent(RealPlayerSchema.full_name).ilike(func.unaccent(stripped)))
             .order_by(RealPlayerSchema.last_name, RealPlayerSchema.first_name)
             .limit(limit)
             .offset(offset)
         )
-        return [_to_domain(row) for row in result.scalars().all()]
+        exact_rows = (await self._session.execute(exact_stmt)).scalars().all()
+        if exact_rows:
+            return [_to_domain(row) for row in exact_rows]
+
+        fuzzy_stmt = (
+            select(RealPlayerSchema)
+            .where(func.unaccent(RealPlayerSchema.full_name).ilike(func.unaccent(f"%{stripped}%")))
+            .order_by(RealPlayerSchema.last_name, RealPlayerSchema.first_name)
+            .limit(limit)
+            .offset(offset)
+        )
+        fuzzy_rows = (await self._session.execute(fuzzy_stmt)).scalars().all()
+        return [_to_domain(row) for row in fuzzy_rows]
 
     async def list_match_candidates(self) -> list[dict[str, Any]]:
         # Column-projected select, not a full-row fetch: the identity-link
@@ -96,7 +113,11 @@ class _SqlAlchemyRealPlayerRepository:
         ]
 
 
+def build_real_player_repository(session: AsyncSession) -> RealPlayerRepositoryInterface:
+    return _SqlAlchemyRealPlayerRepository(session)
+
+
 def get_real_player_repository(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> RealPlayerRepositoryInterface:
-    return _SqlAlchemyRealPlayerRepository(session)
+    return build_real_player_repository(session)

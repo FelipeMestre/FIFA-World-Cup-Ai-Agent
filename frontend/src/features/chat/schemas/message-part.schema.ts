@@ -159,6 +159,9 @@ const playerSummarySchema = z.object({
       highestMarketValueEur: z.number().nullable(),
       internationalCaps: z.number().nullable(),
       internationalGoals: z.number().nullable(),
+      // Widgets stored before this field existed omit it -- default to
+      // not-retired rather than rejecting the whole widget.
+      isRetired: z.boolean().default(false),
     })
     .nullable()
     .optional(),

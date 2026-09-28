@@ -8,6 +8,7 @@ import {
   DisciplineTag,
   positionLabel,
   PositionTag,
+  TeamCodeLabel,
   TierTag,
 } from "@/features/chat/components/profile-tag";
 import { StatChip } from "@/features/chat/components/stat-chip";
@@ -38,8 +39,8 @@ export function WidgetPlayer({
         <AvatarBadge label={player.initials} size={56} className="text-heading-md" />
         <div className="flex min-w-0 grow flex-col gap-0.5">
           <span className="text-heading-lg">{player.name}</span>
-          <span className="text-body-sm text-ink-secondary">
-            {player.teamCode} · {positionLabel(player.position)}
+          <span className="flex items-center gap-1.5 text-body-sm text-ink-secondary">
+            <TeamCodeLabel teamCode={player.teamCode} /> · {positionLabel(player.position)}
           </span>
         </div>
       </div>

@@ -489,3 +489,198 @@ async def test_get_player_comparison_builds_insights(db_session: AsyncSession) -
         "Test Striker" in insight or "Test Peer Forward" in insight
         for insight in comparison.insights
     )
+
+
+_TM_ONLY_CLUB_ID = 990621
+_TM_ONLY_PLAYER_ID = 990621
+
+
+async def test_get_player_analysis_falls_back_to_transfermarkt_when_no_world_cup_row(
+    db_session: AsyncSession,
+) -> None:
+    """`Test Transfermarkt Only` exists only in `real_player` (no `player`/
+    `player_stat` row at all) -- the repository must fall back to
+    `RealPlayerRepositoryInterface.search` and build a career-totals
+    `PlayerAnalysis` instead of returning `None`.
+    """
+    await db_session.execute(
+        text(
+            "INSERT INTO real_club (club_id, club_code, name, url) "
+            "VALUES (:id, 'BVB', 'Borussia Dortmund', 'https://example.test/bvb')"
+        ),
+        {"id": _TM_ONLY_CLUB_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player (player_id, first_name, last_name, position, "
+            "current_club_id, profile_url, last_synced_at) "
+            "VALUES (:id, 'Test', 'Transfermarkt Only', 'Attack', :club_id, "
+            "'https://example.test/tm-only', now())"
+        ),
+        {"id": _TM_ONLY_PLAYER_ID, "club_id": _TM_ONLY_CLUB_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player_season_stat (real_player_id, season, competition_id, "
+            "appearances, goals, assists, yellow_cards, red_cards, minutes_played) "
+            "VALUES (:id, '23/24', 'GB1', 20, 5, 3, 2, 0, 1500), "
+            "(:id, '24/25', 'GB1', 10, 2, 1, 1, 0, 700)"
+        ),
+        {"id": _TM_ONLY_PLAYER_ID},
+    )
+    await db_session.commit()
+
+    try:
+        repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+        analysis = await repository.get_player_analysis("Test Transfermarkt Only")
+    finally:
+        await db_session.execute(
+            text("DELETE FROM real_player_season_stat WHERE real_player_id = :id"),
+            {"id": _TM_ONLY_PLAYER_ID},
+        )
+        await db_session.execute(
+            text("DELETE FROM real_player WHERE player_id = :id"), {"id": _TM_ONLY_PLAYER_ID}
+        )
+        await db_session.execute(
+            text("DELETE FROM real_club WHERE club_id = :id"), {"id": _TM_ONLY_CLUB_ID}
+        )
+        await db_session.commit()
+
+    assert analysis is not None
+    assert analysis.id == str(_TM_ONLY_PLAYER_ID)
+    assert analysis.name == "Test Transfermarkt Only"
+    assert analysis.team_code == "Borussia Dortmund"
+    assert analysis.position == "FWD"
+    assert analysis.appearances == 30
+    assert analysis.minutes == 2200
+
+    goals_row = next(row for row in analysis.full_breakdown if row.stat == "Goals")
+    assert goals_row.total == "7"
+    assert goals_row.percentile is None
+    assists_row = next(row for row in analysis.full_breakdown if row.stat == "Assists")
+    assert assists_row.total == "4"
+    assert assists_row.percentile is None
+    yellow_row = next(row for row in analysis.full_breakdown if row.stat == "Yellow cards")
+    assert yellow_row.total == "3"
+    assert yellow_row.percentile is None
+
+    assert analysis.per_ninety_vs_position_average == []
+    assert len(analysis.career_seasons) == 2
+    assert analysis.club_profile is not None
+    assert analysis.club_profile.current_club == "Borussia Dortmund"
+
+
+_RETIRED_CLUB_ID = 990631
+_RETIRED_PLAYER_ID = 990631
+_ACTIVE_PLAYER_ID = 990632
+_FREE_AGENT_PLAYER_ID = 990633
+
+
+async def test_get_player_analysis_flags_retired_transfermarkt_player(
+    db_session: AsyncSession,
+) -> None:
+    """A Transfermarkt-only player whose last season stat row is far behind
+    the dataset's own latest known season classifies as retired: `is_retired`
+    is `True` and `current_club` is suppressed (never shown stale), while a
+    player with a season stat row near the dataset's latest known season
+    does not.
+    """
+    latest_known_year = (
+        await db_session.execute(text("SELECT MAX(season) FROM real_player_season_stat"))
+    ).scalar_one()
+    from src.infra.postgres.repositories.player_club_career_repository import (
+        _season_start_year,
+    )
+
+    latest_year = _season_start_year(latest_known_year) or 0
+    retired_season = f"{(latest_year - 10) % 100:02d}/{(latest_year - 9) % 100:02d}"
+    active_season = latest_known_year
+
+    await db_session.execute(
+        text(
+            "INSERT INTO real_club (club_id, club_code, name, url) "
+            "VALUES (:id, 'RET', 'Retired FC', 'https://example.test/retired')"
+        ),
+        {"id": _RETIRED_CLUB_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player (player_id, first_name, last_name, position, "
+            "current_club_id, profile_url, last_synced_at) "
+            "VALUES (:id, 'Test', 'Retired Player', 'Attack', :club_id, "
+            "'https://example.test/retired-player', now())"
+        ),
+        {"id": _RETIRED_PLAYER_ID, "club_id": _RETIRED_CLUB_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player (player_id, first_name, last_name, position, "
+            "current_club_id, profile_url, last_synced_at) "
+            "VALUES (:id, 'Test', 'Active Player', 'Attack', :club_id, "
+            "'https://example.test/active-player', now())"
+        ),
+        {"id": _ACTIVE_PLAYER_ID, "club_id": _RETIRED_CLUB_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player (player_id, first_name, last_name, position, "
+            "current_club_id, profile_url, last_synced_at) "
+            "VALUES (:id, 'Test', 'Free Agent Player', 'Attack', NULL, "
+            "'https://example.test/free-agent-player', now())"
+        ),
+        {"id": _FREE_AGENT_PLAYER_ID},
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO real_player_season_stat (real_player_id, season, competition_id, "
+            "appearances, goals, assists, yellow_cards, red_cards, minutes_played) "
+            "VALUES (:retired_id, :retired_season, 'GB1', 10, 1, 1, 0, 0, 900), "
+            "(:active_id, :active_season, 'GB1', 10, 1, 1, 0, 0, 900), "
+            "(:free_id, :active_season, 'GB1', 10, 1, 1, 0, 0, 900)"
+        ),
+        {
+            "retired_id": _RETIRED_PLAYER_ID,
+            "retired_season": retired_season,
+            "active_id": _ACTIVE_PLAYER_ID,
+            "active_season": active_season,
+            "free_id": _FREE_AGENT_PLAYER_ID,
+        },
+    )
+    await db_session.commit()
+
+    try:
+        repository = _SqlAlchemyPlayerAnalyticsRepository(db_session)
+        retired_analysis = await repository.get_player_analysis("Test Retired Player")
+        active_analysis = await repository.get_player_analysis("Test Active Player")
+        free_agent_analysis = await repository.get_player_analysis("Test Free Agent Player")
+    finally:
+        await db_session.execute(
+            text("DELETE FROM real_player_season_stat WHERE real_player_id IN (:a, :b, :c)"),
+            {"a": _RETIRED_PLAYER_ID, "b": _ACTIVE_PLAYER_ID, "c": _FREE_AGENT_PLAYER_ID},
+        )
+        await db_session.execute(
+            text("DELETE FROM real_player WHERE player_id IN (:a, :b, :c)"),
+            {"a": _RETIRED_PLAYER_ID, "b": _ACTIVE_PLAYER_ID, "c": _FREE_AGENT_PLAYER_ID},
+        )
+        await db_session.execute(
+            text("DELETE FROM real_club WHERE club_id = :id"), {"id": _RETIRED_CLUB_ID}
+        )
+        await db_session.commit()
+
+    assert retired_analysis is not None
+    assert retired_analysis.club_profile is not None
+    assert retired_analysis.club_profile.is_retired is True
+    assert retired_analysis.club_profile.current_club is None
+    assert retired_analysis.team_code == "RETIRED"
+
+    assert active_analysis is not None
+    assert active_analysis.club_profile is not None
+    assert active_analysis.club_profile.is_retired is False
+    assert active_analysis.club_profile.current_club == "Retired FC"
+    assert active_analysis.team_code == "Retired FC"
+
+    assert free_agent_analysis is not None
+    assert free_agent_analysis.club_profile is not None
+    assert free_agent_analysis.club_profile.is_retired is False
+    assert free_agent_analysis.club_profile.current_club is None
+    assert free_agent_analysis.team_code == "FREE"

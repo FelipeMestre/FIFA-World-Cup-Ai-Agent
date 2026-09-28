@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.player_analytics.competition_names import competition_name
@@ -51,6 +51,19 @@ def _season_start_year(season: str) -> int | None:
     return year
 
 
+def _is_retired(career_seasons: list[PlayerSeasonStat], latest_known_year: int) -> bool:
+    """No season-stat row within the dataset's last two known seasons.
+
+    A player with no season rows at all trivially qualifies (`default=0`).
+    Relative to the dataset's own latest known season, not wall-clock time --
+    this is a synthetic/snapshot dataset, not live data.
+    """
+    latest_played_year = max(
+        (_season_start_year(season.season) or 0 for season in career_seasons), default=0
+    )
+    return latest_played_year < latest_known_year - 1
+
+
 def club_at_season_midpoint(season: str, transfers: list[PlayerTransfer]) -> str | None:
     """Club registered on 1 January after the season's start year.
 
@@ -79,8 +92,19 @@ class _SqlAlchemyPlayerClubCareerRepository:
         if linked is None:
             return None
         real_player, club_name = linked
+        return await self._build_career(real_player, club_name)
+
+    async def get_career_by_real_player_id(self, real_player_id: int) -> ApprovedClubCareer:
+        real_player, club_name = await self._load_real_player(real_player_id)
+        return await self._build_career(real_player, club_name)
+
+    async def _build_career(
+        self, real_player: RealPlayerSchema, club_name: str | None
+    ) -> ApprovedClubCareer:
         transfers = await self._load_transfers(real_player.player_id)
         career_seasons = await self._load_career_seasons(real_player.player_id, transfers)
+        latest_known_year = await self._load_latest_known_season_year()
+        is_retired = _is_retired(career_seasons, latest_known_year)
         return ApprovedClubCareer(
             profile=PlayerClubProfile(
                 preferred_foot=real_player.foot,
@@ -88,15 +112,23 @@ class _SqlAlchemyPlayerClubCareerRepository:
                 height_cm=real_player.height_cm,
                 date_of_birth=real_player.date_of_birth,
                 citizenship=real_player.country_of_citizenship,
-                current_club=club_name,
+                current_club=None if is_retired else club_name,
                 market_value_eur=real_player.market_value_eur,
                 highest_market_value_eur=real_player.highest_market_value_eur,
                 international_caps=real_player.international_caps,
                 international_goals=real_player.international_goals,
+                is_retired=is_retired,
             ),
             transfers=tuple(transfers),
             career_seasons=tuple(career_seasons),
         )
+
+    async def _load_latest_known_season_year(self) -> int:
+        stmt = select(func.max(RealPlayerSeasonStatSchema.season))
+        latest_season = (await self._session.execute(stmt)).scalar_one_or_none()
+        if latest_season is None:
+            return 0
+        return _season_start_year(latest_season) or 0
 
     async def _load_approved_player(
         self, player_id: int
@@ -116,6 +148,15 @@ class _SqlAlchemyPlayerClubCareerRepository:
         row = (await self._session.execute(stmt)).one_or_none()
         if row is None:
             return None
+        return row[0], row[1]
+
+    async def _load_real_player(self, real_player_id: int) -> tuple[RealPlayerSchema, str | None]:
+        stmt = (
+            select(RealPlayerSchema, RealClubSchema.name)
+            .outerjoin(RealClubSchema, RealClubSchema.club_id == RealPlayerSchema.current_club_id)
+            .where(RealPlayerSchema.player_id == real_player_id)
+        )
+        row = (await self._session.execute(stmt)).one()
         return row[0], row[1]
 
     async def _load_transfers(self, real_player_id: int) -> list[PlayerTransfer]:

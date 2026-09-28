@@ -12,6 +12,15 @@ fixtures) rather than the frontend's `GK`/`DEF`/`MID`/`FWD` literals, so
 `_normalize_position` maps by first letter rather than an exact lookup --
 tolerant of an upstream `"Defender"`/`"Forward"`-style spelling too, since
 nothing elsewhere in the codebase pins the exact upstream spelling down.
+
+`real_player.position` (Transfermarkt's own export, confirmed against this
+codebase's own integration-test fixtures) instead uses `"Attack"`,
+`"Defender"`, `"Midfield"`, `"Goalkeeper"` -- three of those four already
+share a first letter with the World Cup code above, but `"Attack"` starts
+with `"A"`, not `"F"`, so it needs its own entry below (added to this same
+shared map rather than a separate Transfermarkt-only function, since it
+never collides with a World Cup code: `"FW"` also starts with `"F"`, never
+`"A"`).
 """
 
 from typing import Literal
@@ -25,9 +34,20 @@ _POSITION_BY_FIRST_LETTER: dict[str, Position] = {
     "D": "DEF",
     "M": "MID",
     "F": "FWD",
+    "A": "FWD",  # Transfermarkt's "Attack", see module docstring.
 }
+# Kept as its own explicit literal, not derived by reversing
+# `_POSITION_BY_FIRST_LETTER`: two keys ("F" and "A") map to "FWD" there, and
+# a naive reversal would let whichever is inserted last silently overwrite
+# the other. `first_letter_for_position` backs `_get_position_peers`'s
+# World-Cup-only `player_stat.position ILIKE '<letter>%'` query, which must
+# stay "F" (`player_stat` never stores "Attack") regardless of this map's
+# insertion order.
 _FIRST_LETTER_BY_POSITION: dict[Position, str] = {
-    letter_position: letter for letter, letter_position in _POSITION_BY_FIRST_LETTER.items()
+    "GK": "G",
+    "DEF": "D",
+    "MID": "M",
+    "FWD": "F",
 }
 
 

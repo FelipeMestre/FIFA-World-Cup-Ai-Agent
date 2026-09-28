@@ -19,6 +19,7 @@ const profile: PlayerClubProfile = {
   highestMarketValueEur: 200_000_000,
   internationalCaps: 85,
   internationalGoals: 48,
+  isRetired: false,
 };
 
 describe("clubProfileFacts", () => {
