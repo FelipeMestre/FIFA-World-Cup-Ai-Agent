@@ -32,9 +32,13 @@ from src.infra.postgres.interfaces.player_analytics_repository_interface import 
 from src.infra.postgres.interfaces.player_club_career_repository_interface import (
     PlayerClubCareerRepositoryInterface,
 )
+from src.infra.postgres.interfaces.real_player_repository_interface import (
+    RealPlayerRepositoryInterface,
+)
 from src.infra.postgres.repositories import _player_analysis_view as analysis_view
 from src.infra.postgres.repositories import _player_comparison_view as comparison_view
 from src.infra.postgres.repositories import _player_ranking_query as ranking_query
+from src.infra.postgres.repositories import _transfermarkt_player_view as fallback_view
 from src.infra.postgres.repositories._player_stat_helpers import (
     Position,
     first_letter_for_position,
@@ -44,6 +48,7 @@ from src.infra.postgres.repositories._player_stat_helpers import (
 from src.infra.postgres.repositories.player_club_career_repository import (
     build_player_club_career_repository,
 )
+from src.infra.postgres.repositories.real_player_repository import build_real_player_repository
 from src.infra.postgres.schemas.national_team_schema import NationalTeamSchema
 from src.infra.postgres.schemas.player_schema import PlayerSchema, PlayerStatSchema
 
@@ -53,19 +58,27 @@ class _SqlAlchemyPlayerAnalyticsRepository:
         self,
         session: AsyncSession,
         club_career_repository: PlayerClubCareerRepositoryInterface | None = None,
+        real_player_repository: RealPlayerRepositoryInterface | None = None,
     ) -> None:
         self._session = session
         self._club_career = club_career_repository or build_player_club_career_repository(session)
+        self._real_player = real_player_repository or build_real_player_repository(session)
 
     async def get_player_analysis(self, player_query: str) -> PlayerAnalysis | None:
         player_row = await self._resolve_player(player_query)
-        if player_row is None:
-            return None
+        stat_row = None if player_row is None else await self._get_player_stat(player_row.player_id)
+        if player_row is not None and stat_row is not None:
+            return await self._build_world_cup_analysis(player_row, stat_row)
 
-        stat_row = await self._get_player_stat(player_row.player_id)
-        if stat_row is None:
-            return None
+        # No World Cup `player` row at all, or a row with no `player_stat`
+        # (never played, or a stats-collection gap) -- both fall back to the
+        # Transfermarkt-sourced `real_player` table so the tool still
+        # answers instead of reporting "not found".
+        return await self._build_transfermarkt_fallback_analysis(player_query)
 
+    async def _build_world_cup_analysis(
+        self, player_row: PlayerSchema, stat_row: PlayerStatSchema
+    ) -> PlayerAnalysis:
         position = normalize_position(stat_row.position or player_row.position)
         team_code = await self._get_team_code(player_row.team_id)
         peer_rows = await self._get_position_peers(position)
@@ -101,6 +114,53 @@ class _SqlAlchemyPlayerAnalyticsRepository:
             club_profile=None if club_career is None else club_career.profile,
             transfers=[] if club_career is None else list(club_career.transfers),
             career_seasons=[] if club_career is None else list(club_career.career_seasons),
+        )
+
+    async def _build_transfermarkt_fallback_analysis(
+        self, player_query: str
+    ) -> PlayerAnalysis | None:
+        matches = await self._real_player.search(player_query, limit=1)
+        if not matches:
+            return None
+        real_player = matches[0]
+
+        career = await self._club_career.get_career_by_real_player_id(real_player.player_id)
+        position = normalize_position(real_player.position)
+        appearances = fallback_view.total_appearances(career.career_seasons)
+        minutes = fallback_view.total_minutes(career.career_seasons)
+        # Sentinels the frontend renders as a badge instead of plain text --
+        # there's no national-team code to fall back on outside the World
+        # Cup path, so a retired/clubless player needs an explicit state
+        # rather than a bare "???".
+        if career.profile.is_retired:
+            team_code = "RETIRED"
+        else:
+            team_code = career.profile.current_club or "FREE"
+        name = f"{real_player.first_name} {real_player.last_name}"
+
+        return PlayerAnalysis(
+            id=str(real_player.player_id),
+            name=name,
+            initials=player_initials(name),
+            team_code=team_code,
+            position=position,
+            appearances=appearances,
+            minutes=minutes,
+            # No World Cup tournament scope or peer-ranked tier applies to a
+            # club-career totals view -- neutral, non-tiering labels rather
+            # than forcing WC-style percentile language onto data that has
+            # no peer population (see task file's design decisions).
+            scope_label="Club career · totals",
+            tier_label="Club career",
+            tier_segments=0,
+            discipline_label=fallback_view.discipline_label(career.career_seasons),
+            chips=fallback_view.build_chips(career.career_seasons),
+            footer_caption=f"{appearances} apps · {minutes} min · club career totals",
+            full_breakdown=fallback_view.build_full_breakdown(career.career_seasons),
+            per_ninety_vs_position_average=[],
+            club_profile=career.profile,
+            transfers=list(career.transfers),
+            career_seasons=list(career.career_seasons),
         )
 
     async def get_player_comparison(

@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { clubProfileFacts } from "@/features/chat/components/player-club-format";
 import type { PlayerClubProfile } from "@/features/chat/types";
 
@@ -10,7 +11,7 @@ export function PlayerClubProfileFacts({
   layout: "widget" | "panel";
 }) {
   const facts = clubProfileFacts(profile);
-  if (facts.length === 0) {
+  if (facts.length === 0 && !profile.isRetired) {
     return null;
   }
 
@@ -29,7 +30,10 @@ export function PlayerClubProfileFacts({
           : "flex shrink-0 flex-col gap-3 border-b border-border-subtle p-5"
       }
     >
-      {heading}
+      <div className="flex items-center gap-2">
+        {heading}
+        {profile.isRetired ? <Badge variant="outline">Retired</Badge> : null}
+      </div>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
         {facts.map((fact) => (
           <div key={fact.label} className="flex min-w-0 flex-col gap-0.5">

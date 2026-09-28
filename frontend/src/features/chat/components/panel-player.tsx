@@ -1,7 +1,6 @@
 "use client";
 
 import { AvatarBadge } from "@/components/shared/avatar-badge";
-import { BenchmarkBarRow } from "@/features/chat/components/comparison-row";
 import { PanelHeader } from "@/features/chat/components/panel-header";
 import { PlayerSeasonTable } from "@/features/chat/components/player-season-table";
 import { PlayerClubProfileFacts } from "@/features/chat/components/player-club-profile";
@@ -10,6 +9,7 @@ import {
   DisciplineTag,
   PositionTag,
   positionLabel,
+  TeamCodeLabel,
   TierTag,
 } from "@/features/chat/components/profile-tag";
 import type { PlayerSummary } from "@/features/chat/types";
@@ -28,13 +28,6 @@ export function PanelPlayer({
   onJumpToMessage: () => void;
   isSheet?: boolean;
 }) {
-  const maxPerNinety = Math.max(
-    1,
-    ...player.perNinetyVsPositionAverage.map(
-      (r) => Math.max(r.value, r.positionAverage) * 1.15,
-    ),
-  );
-
   return (
     <aside
       aria-label={`Player detail: ${player.name}`}
@@ -58,8 +51,8 @@ export function PanelPlayer({
           />
           <div className="flex flex-col gap-0.5">
             <span className="text-heading-lg">{player.name}</span>
-            <span className="text-body-sm text-ink-secondary">
-              {player.teamCode} ·{" "}
+            <span className="flex flex-wrap items-center gap-1.5 text-body-sm text-ink-secondary">
+              <TeamCodeLabel teamCode={player.teamCode} /> ·{" "}
               {positionLabel(player.position)} ·{" "}
               {player.scopeLabel}
             </span>
@@ -98,15 +91,9 @@ export function PanelPlayer({
               </th>
               <th
                 scope="col"
-                className="px-2 text-right text-label-sm text-ink-muted"
-              >
-                Per 90
-              </th>
-              <th
-                scope="col"
                 className="px-2 pr-3.5 text-right text-label-sm text-ink-muted"
               >
-                Pct · {positionLabel(player.position)}
+                Per 90
               </th>
             </tr>
           </thead>
@@ -122,27 +109,8 @@ export function PanelPlayer({
                 <td className="px-2 text-right font-mono text-data-md">
                   {row.total}
                 </td>
-                <td className="px-2 text-right font-mono text-data-md text-ink-secondary">
+                <td className="px-2 pr-3.5 text-right font-mono text-data-md text-ink-secondary">
                   {row.perNinety}
-                </td>
-                <td className="px-2 pr-3.5">
-                  {row.percentile != null ? (
-                    <div className="flex items-center justify-end gap-2">
-                      <div className="h-1 w-14 rounded-sm bg-border-subtle">
-                        <div
-                          className="h-1 rounded-sm bg-accent-live"
-                          style={{ width: `${row.percentile}%` }}
-                        />
-                      </div>
-                      <span className="w-6 text-right font-mono text-data-sm">
-                        {row.percentile}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-right font-mono text-data-sm text-ink-muted">
-                      —
-                    </div>
-                  )}
                 </td>
               </tr>
             ))}
@@ -150,33 +118,6 @@ export function PanelPlayer({
         </table>
       </section>
 
-      <section className="flex shrink-0 flex-col gap-3.5 border-b border-border-subtle p-5">
-        <h3 className="text-heading-sm">Per 90 vs {positionLabel(player.position)} average</h3>
-        <div className="flex gap-4 text-data-sm text-ink-secondary">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-3 rounded-sm bg-accent-live" />
-            {player.name.split(" ").at(-1)}
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-0.5 bg-data-neutral" />
-            {positionLabel(player.position)} average
-          </span>
-        </div>
-        {player.perNinetyVsPositionAverage.map((row) => (
-          <BenchmarkBarRow
-            key={row.label}
-            label={row.label}
-            value={row.value.toFixed(2)}
-            average={row.positionAverage.toFixed(2)}
-            valuePct={Math.round((row.value / maxPerNinety) * 100)}
-            averagePct={Math.round((row.positionAverage / maxPerNinety) * 100)}
-          />
-        ))}
-        <p className="text-body-sm text-ink-muted">
-          Per 90 = total ÷ minutes × 90. {positionLabel(player.position)} average and
-          percentiles use players at this position with at least 270 minutes.
-        </p>
-      </section>
       <PlayerTransferPath transfers={player.transfers ?? []} />
       <PlayerSeasonTable seasons={player.careerSeasons ?? []} />
     </aside>

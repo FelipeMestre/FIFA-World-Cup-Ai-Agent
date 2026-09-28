@@ -38,9 +38,14 @@ GET_PLAYER_ANALYSIS_SCHEMA: dict = {
             "the team he played for that year, and "
             "that player's transfer path. Those fields "
             "are absent when the player is not linked, and club numbers are not part "
-            "of the World Cup percentiles. Use this whenever the user asks about a "
-            "specific player's performance, form, role, or stats in the tournament, "
-            "or about their club career and transfer history."
+            "of the World Cup percentiles. For a player who never appeared at this "
+            "World Cup but has a Transfermarkt club career on record, falls back to "
+            "career-totals stats instead (appearances, goals, assists, cards, and "
+            "minutes summed across their club seasons, plus the same club profile "
+            "and transfer history) -- those totals carry no percentile ranking, since "
+            "no World Cup peer group applies to them. Use this whenever the user asks "
+            "about a specific player's performance, form, role, or stats in the "
+            "tournament, or about their club career and transfer history."
         ),
         "parameters": {
             "type": "object",

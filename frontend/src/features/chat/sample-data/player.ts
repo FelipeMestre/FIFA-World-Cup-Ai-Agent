@@ -49,6 +49,7 @@ export const samplePlayerGoalkeeper: PlayerSummary = {
     highestMarketValueEur: 28_000_000,
     internationalCaps: 36,
     internationalGoals: 0,
+    isRetired: false,
   },
   careerSeasons: [
     {
@@ -130,6 +131,7 @@ export const samplePlayerForward: PlayerSummary = {
     highestMarketValueEur: 200_000_000,
     internationalCaps: 85,
     internationalGoals: 48,
+    isRetired: false,
   },
   careerSeasons: [
     {
@@ -259,4 +261,59 @@ export const samplePlayerForward: PlayerSummary = {
       marketValueEur: 180_000_000,
     },
   ],
+};
+
+/** Retired player: `currentClub` is suppressed and the "Retired" badge shows. */
+export const samplePlayerRetired: PlayerSummary = {
+  id: "player-buffon",
+  name: "Gianluigi Buffon",
+  initials: "GB",
+  teamCode: "RETIRED",
+  position: "GK",
+  appearances: 0,
+  minutes: 0,
+  scopeLabel: "Club career · totals",
+  tierLabel: "Club career",
+  tierSegments: 0,
+  disciplineLabel: "Clean record",
+  chips: [
+    { label: "Saves", value: "0" },
+    { label: "Clean sheets", value: "0" },
+    { label: "Conceded", value: "0" },
+    { label: "Minutes", value: "0" },
+  ],
+  footerCaption: "0 apps · 0 min · club career totals",
+  fullBreakdown: [
+    { stat: "Appearances", total: "0", perNinety: "—", percentile: null },
+    { stat: "Minutes", total: "0", perNinety: "—", percentile: null },
+  ],
+  perNinetyVsPositionAverage: [],
+  clubProfile: {
+    preferredFoot: "left",
+    subPosition: "Goalkeeper",
+    heightCm: 192,
+    dateOfBirth: "1978-01-28",
+    citizenship: "Italy",
+    currentClub: null,
+    marketValueEur: null,
+    highestMarketValueEur: 40_000_000,
+    internationalCaps: 176,
+    internationalGoals: 0,
+    isRetired: true,
+  },
+  careerSeasons: [
+    {
+      season: "19/20",
+      team: "Juventus",
+      competitionId: "IT1",
+      competition: "Serie A",
+      appearances: 13,
+      minutes: 1170,
+      goals: 0,
+      assists: 0,
+      yellowCards: 1,
+      redCards: 0,
+    },
+  ],
+  transfers: [],
 };

@@ -56,6 +56,9 @@ class PlayerClubProfile(_CamelModel):
     highest_market_value_eur: int | None
     international_caps: int | None
     international_goals: int | None
+    # No `real_player_season_stat` row in the dataset's last two known
+    # seasons. `current_club` is always `None` when this is true.
+    is_retired: bool
 
 
 class PlayerTransfer(_CamelModel):

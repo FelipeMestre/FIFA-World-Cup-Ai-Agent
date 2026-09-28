@@ -22,12 +22,17 @@ CHAT_REPLY_JOB_TIMEOUT_SECONDS = 300
 # headroom than a full chat reply's 300s above.
 CATEGORIZE_JOB_TIMEOUT_SECONDS = 60
 
+# The shared ingestion default below (30 min) isn't enough for this task's
+# largest step: `game_lineups.csv.gz` alone is ~126MB, ingested as thousands
+# of sequential 500-row upsert commits with no per-file budget of its own.
+TRANSFERMARKT_SYNC_JOB_TIMEOUT_SECONDS = 3600
+
 
 class WorkerSettings:
     functions = (
         synthetic_upload_task,
         bulk_synthetic_upload_task,
-        transfermarkt_sync_task,
+        func(transfermarkt_sync_task, timeout=TRANSFERMARKT_SYNC_JOB_TIMEOUT_SECONDS),
         identity_link_rematch_task,
         func(generate_chat_reply_task, timeout=CHAT_REPLY_JOB_TIMEOUT_SECONDS),
         func(categorize_conversation_task, timeout=CATEGORIZE_JOB_TIMEOUT_SECONDS),

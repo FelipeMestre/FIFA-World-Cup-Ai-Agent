@@ -193,6 +193,8 @@ export interface PlayerClubProfile {
   highestMarketValueEur: number | null;
   internationalCaps: number | null;
   internationalGoals: number | null;
+  /** No season-stat row in the dataset's last two known seasons. */
+  isRetired: boolean;
 }
 
 export interface PlayerTransfer {
