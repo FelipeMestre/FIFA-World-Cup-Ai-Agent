@@ -38,6 +38,7 @@ def _to_domain(row: ChatMessageSchema) -> ChatMessage:
         content=row.content,
         created_at=row.created_at,
         widgets=[_widget_to_domain(widget) for widget in row.widgets],
+        metadata=row.metadata_,
     )
 
 
@@ -51,6 +52,7 @@ class _SqlAlchemyChatMessageRepository:
         role: ChatMessageRole,
         content: str,
         widgets: list[tuple[str, str, dict]] | None = None,
+        metadata: dict | None = None,
     ) -> ChatMessage:
         """Deliberately does NOT `commit()` -- only `add()`/`flush()`. This
         is the append-only, single-turn-atomic write path: the `sequence`
@@ -78,6 +80,7 @@ class _SqlAlchemyChatMessageRepository:
             sequence=next_sequence,
             role=SchemaRole(role),
             content=content,
+            metadata_=metadata,
         )
         self._session.add(row)
         await self._session.flush()
@@ -104,6 +107,7 @@ class _SqlAlchemyChatMessageRepository:
             content=row.content,
             created_at=row.created_at,
             widgets=[_widget_to_domain(widget) for widget in widget_rows],
+            metadata=row.metadata_,
         )
 
     async def list_for_conversation(self, conversation_id: UUID, user_id: int) -> list[ChatMessage]:

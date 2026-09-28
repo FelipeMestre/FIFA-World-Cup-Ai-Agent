@@ -13,6 +13,7 @@ from src.api.v1.chat.dtos.conversation_dtos import (
     ConversationMessageDto,
     ConversationMessagesResponse,
     ConversationSummaryDto,
+    MessageContextDto,
     SendMessageRequest,
     SendMessageResponse,
     UpdateConversationTitleRequest,
@@ -37,11 +38,17 @@ from src.infra.postgres.interfaces.chat_turn_failure_repository_interface import
 from src.infra.postgres.interfaces.conversation_repository_interface import (
     ConversationRepositoryInterface,
 )
+from src.infra.postgres.interfaces.match_repository_interface import MatchRepositoryInterface
+from src.infra.postgres.interfaces.national_team_repository_interface import (
+    NationalTeamRepositoryInterface,
+)
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
 from src.infra.postgres.repositories.chat_turn_failure_repository import (
     get_chat_turn_failure_repository,
 )
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
+from src.infra.postgres.repositories.match_repository import get_match_repository
+from src.infra.postgres.repositories.national_team_repository import get_national_team_repository
 from src.infra.redis.config import redis_client
 from src.infra.task_queue.chat_streams import (
     TURN_IN_PROGRESS_TTL_SECONDS,
@@ -64,6 +71,10 @@ ChatMessageRepositoryDep = Annotated[
 ]
 ChatTurnFailureRepositoryDep = Annotated[
     ChatTurnFailureRepositoryInterface, Depends(get_chat_turn_failure_repository)
+]
+MatchRepositoryDep = Annotated[MatchRepositoryInterface, Depends(get_match_repository)]
+NationalTeamRepositoryDep = Annotated[
+    NationalTeamRepositoryInterface, Depends(get_national_team_repository)
 ]
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
@@ -94,7 +105,37 @@ def _to_message_dto(message: ChatMessage) -> ConversationMessageDto:
     # resolves during the tool call, before the model's prose about it.
     parts: list[MessagePart] = [_widget_to_part(widget) for widget in message.widgets]
     parts.append(TextPart(content=message.content))
-    return ConversationMessageDto(role=message.role, parts=parts, created_at=message.created_at)
+    return ConversationMessageDto(
+        role=message.role, parts=parts, created_at=message.created_at, metadata=message.metadata
+    )
+
+
+async def _resolve_message_metadata(
+    context: MessageContextDto | None,
+    match_repo: MatchRepositoryInterface,
+    national_team_repo: NationalTeamRepositoryInterface,
+) -> dict | None:
+    """Best-effort, silent resolution of the match-selector chip's metadata
+    -- never raises on a missing/stale id, same philosophy as the earlier
+    (reverted) player/team-selector feature's context resolution.
+    """
+    if context is None or context.match_id is None:
+        return None
+
+    match = await match_repo.get(context.match_id)
+    if match is None:
+        return None
+    home_team = await national_team_repo.get(match.home_team_id)
+    away_team = await national_team_repo.get(match.away_team_id)
+    if home_team is None or away_team is None:
+        return None
+
+    return {
+        "match_selector": {
+            "match_id": match.id,
+            "label": f"{home_team.name} vs {away_team.name} — {match.date.isoformat()}",
+        }
+    }
 
 
 @router.get(
@@ -168,6 +209,8 @@ async def send_message(
     payload: SendMessageRequest,
     session: SessionDep,
     jwt_data: JwtDataDep,
+    match_repo: MatchRepositoryDep,
+    national_team_repo: NationalTeamRepositoryDep,
 ) -> SendMessageResponse:
     user_id = int(jwt_data["sub"])
     chat_service = build_chat_service(session)
@@ -193,14 +236,26 @@ async def send_message(
             status_code=status.HTTP_409_CONFLICT, detail=TURN_ALREADY_IN_PROGRESS_DETAIL
         ) from exc
 
-    user_message = await chat_service.persist_user_message(conversation_id, payload.content)
+    message_metadata = await _resolve_message_metadata(
+        payload.context, match_repo, national_team_repo
+    )
+    user_message = await chat_service.persist_user_message(
+        conversation_id, payload.content, metadata=message_metadata
+    )
     await redis_client.xadd(
         turn_stream_key(str(conversation_id)),
         serialize_user_message_event(
-            str(conversation.id), user_message.id, payload.content, conversation.title
+            str(conversation.id),
+            user_message.id,
+            payload.content,
+            conversation.title,
+            metadata=message_metadata,
         ),
     )
-    await enqueue_chat_reply(str(conversation_id), user_id, payload.content, user_message.id)
+    context_payload = payload.context.model_dump() if payload.context else None
+    await enqueue_chat_reply(
+        str(conversation_id), user_id, payload.content, user_message.id, context_payload
+    )
 
     return SendMessageResponse(conversation_id=conversation.id, message_id=user_message.id)
 

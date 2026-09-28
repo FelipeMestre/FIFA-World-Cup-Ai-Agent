@@ -54,6 +54,8 @@ from src.infra.postgres.repositories.conversation_repository import get_conversa
 from src.infra.postgres.repositories.match_analytics_repository import (
     get_match_analytics_repository,
 )
+from src.infra.postgres.repositories.match_repository import get_match_repository
+from src.infra.postgres.repositories.national_team_repository import get_national_team_repository
 from src.infra.postgres.repositories.player_analytics_repository import (
     get_player_analytics_repository,
 )
@@ -103,7 +105,12 @@ async def _record_turn_failure(conversation_id: str, user_message_id: int, detai
 
 
 async def generate_chat_reply_task(
-    ctx: dict, conversation_id: str, user_id: int, user_message: str, user_message_id: int
+    ctx: dict,
+    conversation_id: str,
+    user_id: int,
+    user_message: str,
+    user_message_id: int,
+    context: dict | None = None,
 ) -> None:
     stream_key = turn_stream_key(conversation_id)
     progress_key = turn_in_progress_key(conversation_id)
@@ -126,6 +133,8 @@ async def generate_chat_reply_task(
                 ),
                 conversation_repo=get_conversation_repository(session),
                 chat_message_repo=get_chat_message_repository(session),
+                match_repo=get_match_repository(session),
+                national_team_repo=get_national_team_repository(session),
                 session=session,
             )
             try:
@@ -133,6 +142,7 @@ async def generate_chat_reply_task(
                     conversation_id=UUID(conversation_id),
                     user_id=user_id,
                     user_message=user_message,
+                    context=context,
                 ):
                     await redis_client.xadd(stream_key, serialize_chat_turn_event(event))
             except ChatServiceUnavailable as exc:

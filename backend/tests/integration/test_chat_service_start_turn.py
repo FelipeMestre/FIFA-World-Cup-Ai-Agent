@@ -18,6 +18,8 @@ from src.domain.chat.services.chat_service import ChatService
 from src.infra.postgres.config import SessionFactory
 from src.infra.postgres.repositories.chat_message_repository import get_chat_message_repository
 from src.infra.postgres.repositories.conversation_repository import get_conversation_repository
+from src.infra.postgres.repositories.match_repository import get_match_repository
+from src.infra.postgres.repositories.national_team_repository import get_national_team_repository
 from src.infra.redis.config import redis_client
 from src.infra.task_queue.chat_streams import user_events_key
 
@@ -79,6 +81,8 @@ async def test_start_turn_enqueues_categorization_only_on_first_call(monkeypatch
             tool_registry={},
             conversation_repo=get_conversation_repository(session),
             chat_message_repo=get_chat_message_repository(session),
+            match_repo=get_match_repository(session),
+            national_team_repo=get_national_team_repository(session),
             session=session,
         )
         await chat_service.start_turn(
@@ -111,6 +115,8 @@ async def test_start_turn_publishes_conversation_created_event_only_on_first_cal
             tool_registry={},
             conversation_repo=get_conversation_repository(session),
             chat_message_repo=get_chat_message_repository(session),
+            match_repo=get_match_repository(session),
+            national_team_repo=get_national_team_repository(session),
             session=session,
         )
         conversation = await chat_service.start_turn(

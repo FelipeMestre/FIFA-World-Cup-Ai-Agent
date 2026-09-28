@@ -62,10 +62,6 @@ export function ThreadComposer({
           <ArrowUp className="size-[18px]" aria-hidden />
         </button>
       </div>
-      {/* Absent on mobile in MobileChat.dc.html. */}
-      <span className="hidden text-body-sm text-ink-muted md:block">
-        Covers results, events, lineups and match stats. No passing or tracking data.
-      </span>
     </div>
   );
 }
