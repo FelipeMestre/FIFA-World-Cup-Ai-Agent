@@ -1,0 +1,98 @@
+# Render Blueprint. Create it via Dashboard > New > Blueprint (see docs/deploy-render.md).
+# Field names checked against https://render.com/docs/blueprint-spec.
+# Plans are the cheapest paid tiers; raise them as traffic grows.
+
+databases:
+  - name: scout-db
+    region: frankfurt
+    plan: 0.1c-256mb
+    postgresMajorVersion: "16"
+    databaseName: world_cup_ai_scout
+    user: world_cup_ai_scout
+    ipAllowList: [] # internal connections only
+
+envVarGroups:
+  # Values that backend and worker must share verbatim.
+  - name: scout-backend-shared
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALG
+        value: HS256
+      - key: JWT_EXP_MINUTES
+        value: "60"
+      - key: ENVIRONMENT
+        value: production
+
+services:
+  - type: keyvalue
+    name: scout-redis
+    region: frankfurt
+    plan: 256mb
+    maxmemoryPolicy: noeviction # queue data must never be evicted
+    ipAllowList: [] # internal connections only
+
+  - type: web
+    name: backend
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    dockerfilePath: ./backend/Dockerfile.prod
+    dockerContext: ./backend
+    preDeployCommand: alembic upgrade head
+    healthCheckPath: /health
+    envVars:
+      - fromGroup: scout-backend-shared
+      - key: PORT # pinned so the frontend can reach http://backend:8000 privately
+        value: "8000"
+      - key: DATABASE_URL # postgresql:// is normalized to +asyncpg by PostgresConfig
+        fromDatabase:
+          name: scout-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: scout-redis
+          property: connectionString
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_APP_URL # public URL of the frontend service
+        sync: false
+
+  - type: worker
+    name: worker
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    dockerfilePath: ./backend/Dockerfile.prod
+    dockerContext: ./backend
+    dockerCommand: arq src.infra.task_queue.worker.WorkerSettings
+    envVars:
+      - fromGroup: scout-backend-shared
+      - key: DATABASE_URL
+        fromDatabase:
+          name: scout-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: scout-redis
+          property: connectionString
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_APP_URL
+        sync: false
+
+  - type: web
+    name: frontend
+    runtime: docker
+    region: frankfurt
+    plan: 0.5c-512mb
+    dockerfilePath: ./frontend/Dockerfile.prod
+    dockerContext: ./frontend
+    healthCheckPath: /login
+    envVars:
+      # Server-side proxy target over Render's private network; the browser
+      # never calls the backend directly.
+      - key: BACKEND_API_URL
+        value: http://backend:8000/api/v1
