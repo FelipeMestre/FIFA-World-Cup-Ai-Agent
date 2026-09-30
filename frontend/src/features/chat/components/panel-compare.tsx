@@ -214,7 +214,7 @@ function ComparisonCell({
 }: {
   value: string;
   isBetter: boolean;
-  percentile?: number;
+  percentile?: number | null;
   barClass: string;
 }) {
   return (

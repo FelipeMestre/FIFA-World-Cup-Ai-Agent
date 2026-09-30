@@ -1,0 +1,27 @@
+# Production image (used by render.yaml for the API and the arq worker).
+# The dev Dockerfile stays untouched for docker-compose. Differences: no
+# --reload, no test/lint tooling, non-root user, binds $PORT (Render sets it).
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# requirements.txt is a single pinned freeze that also contains the dev-only
+# tooling (pytest, ruff); drop it so the production image ships runtime deps only.
+COPY requirements.txt .
+RUN grep -Ev '^(pytest|pytest-asyncio|ruff|iniconfig|pluggy)==' requirements.txt > requirements.prod.txt \
+    && pip install --no-cache-dir -r requirements.prod.txt \
+    && rm requirements.prod.txt
+
+COPY . .
+
+RUN useradd --system --create-home --uid 10001 app && chown -R app:app /app
+USER app
+
+EXPOSE 8000
+
+# Shell form on purpose: ${PORT} must be expanded at start. `exec` keeps uvicorn
+# as PID 1 so it receives SIGTERM. The worker overrides this via dockerCommand.
+CMD ["sh", "-c", "exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

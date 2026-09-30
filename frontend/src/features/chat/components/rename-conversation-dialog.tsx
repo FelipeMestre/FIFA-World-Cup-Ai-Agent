@@ -27,7 +27,7 @@ export function RenameConversationDialog({
   currentTitle: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (conversationId: string, title: string) => Promise<void>;
+  onSave: (conversationId: string, title: string) => Promise<unknown>;
 }) {
   const [draft, setDraft] = useState(currentTitle);
   const [error, setError] = useState<string | null>(null);
