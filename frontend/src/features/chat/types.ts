@@ -110,16 +110,16 @@ export interface MatchEvent {
   kind: MatchEventKind;
   teamCode: string;
   title: string;
-  detail?: string;
-  subOn?: string;
-  subOff?: string;
+  detail?: string | null;
+  subOn?: string | null;
+  subOff?: string | null;
 }
 
 export interface LineupPlayer {
   number: number;
   name: string;
   /** e.g. "▲ 64'" (on) or "▼ 72'" (off); undefined when not substituted. */
-  mark?: string;
+  mark?: string | null;
 }
 
 export interface LineupGroup {
@@ -138,7 +138,7 @@ export interface MatchSummary {
   id: string;
   stageLabel: string;
   dateLabel: string;
-  venueLabel?: string;
+  venueLabel?: string | null;
   homeTeam: { code: string; name: string };
   awayTeam: { code: string; name: string };
   homeScore: number;
@@ -258,7 +258,7 @@ export interface ComparisonPlayerRef {
 
 export interface ComparisonRowData {
   label: string;
-  note?: string;
+  note?: string | null;
   playerAPerNinety: string;
   playerBPerNinety: string;
   playerATotal: string;
@@ -269,8 +269,8 @@ export interface ComparisonRowData {
   /** Raw-total comparison -- can differ in order from the per-90 one above. */
   playerATotalIsBetter: boolean;
   playerBTotalIsBetter: boolean;
-  playerAPercentile?: number;
-  playerBPercentile?: number;
+  playerAPercentile?: number | null;
+  playerBPercentile?: number | null;
 }
 
 export interface PlayerComparison {

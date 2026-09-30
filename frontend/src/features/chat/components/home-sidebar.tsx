@@ -133,7 +133,6 @@ function ConversationGroup({
           conversation={conversation}
           isActive={conversation.id === activeId}
           onRename={onRename}
-          className="hover:cursor-pointer"
         />
       ))}
     </div>

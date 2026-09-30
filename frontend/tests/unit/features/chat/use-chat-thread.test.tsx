@@ -500,7 +500,11 @@ describe("useChatThread", () => {
     const { result, rerender } = renderHook(
       ({ urlConversationId }: { urlConversationId: string | null }) =>
         useChatThread({ urlConversationId }),
-      { initialProps: { urlConversationId: "550e8400-e29b-41d4-a716-446655440000" } },
+      {
+        initialProps: {
+          urlConversationId: "550e8400-e29b-41d4-a716-446655440000" as string | null,
+        },
+      },
     );
 
     await act(async () => {
@@ -584,7 +588,7 @@ describe("useChatThread", () => {
     const { result, rerender } = renderHook(
       ({ urlConversationId }: { urlConversationId: string | null }) =>
         useChatThread({ urlConversationId, onConversationCreated }),
-      { initialProps: { urlConversationId: null } },
+      { initialProps: { urlConversationId: null as string | null } },
     );
 
     await act(async () => {

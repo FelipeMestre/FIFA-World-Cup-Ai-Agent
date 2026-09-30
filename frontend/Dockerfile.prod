@@ -1,0 +1,32 @@
+# Production image (used by render.yaml). Multi-stage: deps -> build -> runner.
+# The dev Dockerfile stays untouched for docker-compose. Uses `next start`
+# (no `output: "standalone"`), so next.config.ts needs no change.
+FROM node:20-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM node:20-slim AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+FROM node:20-slim AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+FROM node:20-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY package.json next.config.ts ./
+USER node
+EXPOSE 3000
+# Shell form so ${PORT} (set by Render) expands; Next reads no PORT flag by default here.
+CMD ["sh", "-c", "exec node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
