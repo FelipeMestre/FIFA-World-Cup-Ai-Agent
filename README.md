@@ -54,7 +54,7 @@ Two rules shape the diagram:
 | Postgres | Durable source of truth: tournament data, real-world enrichment data, chat history, job records. | Postgres 16, asyncpg, Alembic | `backend/src/infra/postgres/`, `backend/migrations/` |
 | Redis | Job queue, per-turn coordination flags, event streams for realtime updates, and a prompt-history cache. | Redis 7 | `backend/src/infra/redis/`, `backend/src/infra/task_queue/` |
 | LLM gateway | Provider-independent LLM access with tool calling, streamed reasoning, prompt caching and model fallback. | OpenRouter (OpenAI-compatible API) | `backend/src/infra/openrouter/` |
-| Transfermarkt source | Real-world player, valuation, transfer and season data that the synthetic dataset lacks. | httpx, gzip CSV | `backend/src/infra/transfermarkt/` |
+| Transfermarkt source | Club-level player, valuation, transfer and season data that the tournament dataset lacks. | httpx, gzip CSV | `backend/src/infra/transfermarkt/` |
 
 ### Data held in Postgres
 
@@ -62,7 +62,7 @@ Two rules shape the diagram:
 |---|---|---|
 | Synthetic tournament | `national_team`, `player`, `player_stat`, `match`, `match_event`, `match_team_stat`, `match_lineup`, `venue`, `referee`, `tournament_stage` | The World Cup 2026 dataset the analytics tools query. |
 | Real enrichment | `real_player`, `real_player_valuation`, `real_transfer`, `real_player_season_stat`, `real_club`, `real_club_game`, `real_game_lineup`, `real_match_event` | Transfermarkt data for club-level context. |
-| Identity links | `player_identity_link` | Joins a synthetic player to a real player. Carries match method, confidence and a review status (`pending`, `approved`, and a rejected state). |
+| Identity links | `player_identity_link` | Joins a tournament-dataset player to a Transfermarkt player. Carries match method, confidence and a review status (`pending`, `approved`, and a rejected state). |
 | Chat | `conversation`, `chat_message`, `chat_message_widget`, `chat_turn_failure` | Durable, append-only chat history and widget payloads. |
 | Operations | `user`, `ingestion_job` | Accounts and asynchronous job status (`queued`, `running`, `succeeded`, `failed`). |
 
@@ -235,7 +235,7 @@ cd frontend && npm run lint
 │   ├── src/lib/             HTTP proxy helpers and session handling
 │   └── tests/unit/          vitest tests
 ├── design/                  Design tokens and artboard snapshots used to build the UI
-├── data/                    Synthetic dataset (git-ignored, cloned separately)
+├── data/                    World Cup 2026 tournament dataset (git-ignored, cloned separately)
 ├── odd/                     Development task notes
 ├── docker-compose.yml       Local stack: postgres, redis, backend, worker, frontend
 ├── AGENTS.md                Coding conventions and architecture rules
