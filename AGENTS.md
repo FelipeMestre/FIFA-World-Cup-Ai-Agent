@@ -176,23 +176,30 @@ async def valid_owned_post(
 
 ## Authentication — JWT
 
-Use **`auth0-fastapi-api==1.0.0b5`** for this project's Auth0 RS256/JWKS/audience boundary (handles JWKS cache, `aud` `https://openbank.api/com/auth`, `permissions[]`/`scope` via `require_permissions`). Use **`PyJWT`** only for non-Auth0 JWT cases — never `python-jose` (unmaintained). `auth0-fastapi-api` is the blessed SDK for this codebase (blessed over stale `PyJWT` for the security boundary).
+This project issues and verifies its own **HS256 JWTs with `PyJWT`** (`import jwt`). There is no external identity provider: users live in the local `user` table, `POST /api/v1/auth/login` verifies the bcrypt hash and returns a token, and every protected route verifies it with a dependency. Never use `python-jose` (unmaintained).
+
+- Token creation and decoding: `backend/src/domain/auth/services/token_service.py`. The payload carries `sub` (user id), `is_admin`, `iat` and `exp`.
+- Settings: `backend/src/domain/auth/config.py` (`JWT_SECRET`, `JWT_ALG`, `JWT_EXP_MINUTES`). Use a secret of at least 32 bytes — PyJWT warns on shorter HS256 keys.
+- Route protection: `parse_jwt_data` (any logged-in user) and `require_admin` (admin only) in `backend/src/api/v1/auth/services/dependencies.py`. Import them into routers instead of re-implementing token checks.
+- The frontend never exposes the token to browser JavaScript: it lives in an httpOnly cookie, and Next.js Route Handlers forward it as a Bearer token.
 
 ```python
-# This project — Auth0 boundary (blessed)
-from fastapi_plugin.fast_api_client import Auth0FastAPI
-from openbankapi.config.dependencies import require_permissions  # permissions[] primary, scope fallback
-
-# Generic JWT (non-Auth0) — PyJWT
 import jwt  # PyJWT
 from jwt.exceptions import InvalidTokenError
 
-def decode_token(token: str) -> dict:
-    try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALG])
-    except InvalidTokenError as exc:
-        raise InvalidCredentials() from exc
+def decode_access_token(token: str) -> dict:
+    return jwt.decode(token, auth_settings.SECRET, algorithms=[auth_settings.ALG])
+
+# In a router: protect a route
+@router.get("/teams")
+async def list_teams(token_data: JwtDataDep): ...
+
+# Admin-only route
+@router.post("/admin/...")
+async def admin_action(admin: Annotated[dict, Depends(require_admin)]): ...
 ```
+
+If an external identity provider (Auth0, Cognito, ...) is ever adopted, replace this section and the `auth` bounded context together — do not mix the two approaches.
 
 ## Database — SQLAlchemy 2.0 async
 
@@ -289,7 +296,7 @@ async def test_create_post(client: AsyncClient):
 Don't monkeypatch internals. Use FastAPI's built-in `dependency_overrides`.
 
 ```python
-from src.auth.dependencies import parse_jwt_data
+from src.api.v1.auth.services.dependencies import parse_jwt_data
 from src.main import app
 
 
