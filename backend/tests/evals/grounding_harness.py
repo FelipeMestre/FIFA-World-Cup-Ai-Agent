@@ -14,6 +14,8 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel
+
 from src.domain.chat.services.chat_service import DEFAULT_TOOL_SCHEMAS, SYSTEM_PROMPT
 from src.domain.chat.services.tool_call_executor import (
     ToolCallExecutor,
@@ -34,10 +36,19 @@ EVAL_MIN_PASSES = int(os.environ.get("EVAL_MIN_PASSES", "2"))
 
 
 @dataclass(frozen=True)
+class ToolInvocation:
+    """One validated tool call: the tool name and its parsed arguments (defaults included)."""
+
+    name: str
+    arguments: dict
+
+
+@dataclass(frozen=True)
 class ObservedTurn:
     answer: str
     tools_called: list[str]
     repository_calls: list[str] = field(default_factory=list)
+    tool_invocations: list[ToolInvocation] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -45,12 +56,14 @@ class TurnSetup:
     """Everything a turn needs besides the question. Unset repositories raise
     `NotImplementedError` if a tool touches them. `registry_overrides`
     replaces whole tool definitions (used to fake the static clock tool).
+    `extra_system_messages` follow the system prompt, like the match-chip directive.
     """
 
     team_repo: object = field(default_factory=UnusedTeamRepository)
     player_repo: object = field(default_factory=UnusedPlayerRepository)
     match_repo: object = field(default_factory=UnusedMatchRepository)
     registry_overrides: dict[str, ToolDefinition] = field(default_factory=dict)
+    extra_system_messages: tuple[str, ...] = ()
 
 
 async def run_turn(question: str, setup: TurnSetup) -> ObservedTurn:
@@ -59,10 +72,13 @@ async def run_turn(question: str, setup: TurnSetup) -> ObservedTurn:
         **build_tool_registry(setup.team_repo, setup.player_repo, setup.match_repo),
         **setup.registry_overrides,
     }
+    invocations: list[ToolInvocation] = []
+    registry = {name: _recording(name, tool, invocations) for name, tool in registry.items()}
     calls_before = _repository_call_counts(setup)
     executor = ToolCallExecutor(get_openrouter_client(), registry)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
+        *({"role": "system", "content": text} for text in setup.extra_system_messages),
         {"role": "user", "content": question},
     ]
 
@@ -80,6 +96,7 @@ async def run_turn(question: str, setup: TurnSetup) -> ObservedTurn:
         answer=final_answer,
         tools_called=tools_called,
         repository_calls=_new_repository_calls(setup, calls_before),
+        tool_invocations=invocations,
     )
 
 
@@ -104,8 +121,20 @@ async def passes_enough_attempts(
     )
 
 
+def _recording(name: str, tool: ToolDefinition, invocations: list[ToolInvocation]):
+    """Same tool, but every validated call is appended to `invocations`."""
+
+    async def handler(args: BaseModel):
+        invocations.append(ToolInvocation(name=name, arguments=args.model_dump()))
+        return await tool.handler(args)
+
+    return tool.model_copy(update={"handler": handler})
+
+
 def _repositories(setup: TurnSetup) -> list[object]:
-    return [setup.team_repo, setup.player_repo, setup.match_repo]
+    """Repositories that log their calls; real repositories do not and are skipped."""
+    candidates = [setup.team_repo, setup.player_repo, setup.match_repo]
+    return [repository for repository in candidates if hasattr(repository, "calls")]
 
 
 def _repository_call_counts(setup: TurnSetup) -> list[int]:
