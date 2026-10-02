@@ -2,6 +2,7 @@ from typing import Protocol
 from uuid import UUID
 
 from src.domain.chat.model.chat_message import ChatMessage, ChatMessageRole
+from src.domain.chat.model.message import Message
 
 
 class ChatMessageRepositoryInterface(Protocol):
@@ -16,3 +17,4 @@ class ChatMessageRepositoryInterface(Protocol):
     async def list_for_conversation(
         self, conversation_id: UUID, user_id: int
     ) -> list[ChatMessage]: ...
+    async def list_prompt_turns(self, conversation_id: UUID) -> list[Message]: ...

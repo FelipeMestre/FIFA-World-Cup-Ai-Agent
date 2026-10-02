@@ -1,13 +1,16 @@
 import logging
 from collections.abc import AsyncIterator
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.domain.chat.config import chat_history_settings
 from src.domain.chat.exceptions.chat_exceptions import ChatServiceUnavailable
 from src.domain.chat.model.chat_message import ChatMessage
 from src.domain.chat.model.conversation import Conversation
 from src.domain.chat.model.message import Message
+from src.domain.chat.services.chat_history_rebuild_service import ChatHistoryRebuildService
 from src.domain.chat.services.chat_turn_events import (
     CapReachedEvent,
     ChatTurnEvent,
@@ -43,10 +46,12 @@ from src.infra.redis.interfaces.conversation_cache_repository_interface import (
 from src.infra.task_queue.chat_streams import (
     USER_EVENTS_STREAM_MAXLEN,
     ConversationCreatedEvent,
+    publish_conversation_touched,
     serialize_conversation_created_event,
     user_events_key,
 )
 from src.infra.task_queue.pool import enqueue_categorize_conversation
+from src.infra.tokens.repositories.tiktoken_token_counter import get_token_counter
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,7 @@ class ChatService:
         match_repo: MatchRepositoryInterface,
         national_team_repo: NationalTeamRepositoryInterface,
         session: AsyncSession,
+        history_rebuild_service: ChatHistoryRebuildService | None = None,
     ) -> None:
         self._conversation_cache = conversation_cache
         self._tool_executor = ToolCallExecutor(openrouter_client, tool_registry)
@@ -94,6 +100,9 @@ class ChatService:
         self._match_repo = match_repo
         self._national_team_repo = national_team_repo
         self._session = session
+        self._history_rebuild_service = history_rebuild_service or ChatHistoryRebuildService(
+            chat_message_repo, get_token_counter(), chat_history_settings.TOKEN_BUDGET
+        )
 
     async def start_turn(
         self, conversation_id: UUID, user_id: int, first_message: str
@@ -147,7 +156,7 @@ class ChatService:
         return conversation
 
     async def persist_user_message(
-        self, conversation_id: UUID, content: str, metadata: dict | None = None
+        self, conversation_id: UUID, user_id: int, content: str, metadata: dict | None = None
     ) -> ChatMessage:
         """Persists the user's own message synchronously, independent of
         whether the reply is ever generated -- called by the router right
@@ -161,11 +170,17 @@ class ChatService:
         Returns the persisted message so the router can pass its `id` on to
         `generate_chat_reply_task` -- the only thing a `chat_turn_failure`
         row can be recorded against on a failed turn.
+
+        Also touches the conversation in the same transaction and, after the
+        commit, announces the new `updated_at` on the per-user stream so the
+        sidebar row jumps to the top the moment the user hits send.
         """
         message = await self._chat_message_repo.append_message(
             conversation_id, role="user", content=content, metadata=metadata
         )
+        updated_at = await self._conversation_repo.touch(conversation_id)
         await self._session.commit()
+        await publish_conversation_touched(user_id, conversation_id, updated_at)
         return message
 
     async def send_message(
@@ -194,7 +209,7 @@ class ChatService:
         use, so the injected message is phrased as a command instead.
         """
         resolved_conversation_id = str(conversation_id)
-        history = await self._conversation_cache.get_history(resolved_conversation_id)
+        history = await self._load_prompt_history(conversation_id)
         history.append(Message(role="user", content=user_message))
 
         completion_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -203,6 +218,7 @@ class ChatService:
             completion_messages.append({"role": "system", "content": match_directive})
         completion_messages.extend({"role": m.role, "content": m.content} for m in history)
 
+        touched_at: datetime | None = None
         final_result: ChatCompletionResult | ToolLoopCapReached | None = None
         final_content_segments: list[str | ToolWidgetResult] = []
         try:
@@ -251,7 +267,7 @@ class ChatService:
                 await chat_message_repo.append_message(
                     conversation_id, role="assistant", content=reply_content, widgets=widgets
                 )
-                await conversation_repo.touch(conversation_id)
+                touched_at = await conversation_repo.touch(conversation_id)
                 await turn_session.commit()
         except Exception:
             logger.exception(
@@ -267,6 +283,8 @@ class ChatService:
             yield PersistenceFailedEvent(
                 detail="This message could not be saved. It may not be here after a reload."
             )
+
+        await publish_conversation_touched(user_id, conversation_id, touched_at)
 
         history.append(Message(role="assistant", content=reply_content))
         try:
@@ -288,6 +306,37 @@ class ChatService:
             model=model,
             content_segments=message_parts_segments,
         )
+
+    async def _load_prompt_history(self, conversation_id: UUID) -> list[Message]:
+        """Redis first; on a miss (never cached, 24h expiry, flush, failed
+        turn) rebuild the text-only history from Postgres and write it back
+        so later turns reuse the same stable prompt prefix. The rebuild
+        excludes the current user message (already persisted, appended by
+        the caller). Never raises: a failed rebuild degrades to an empty
+        history (the pre-rebuild behavior) rather than failing the turn.
+        """
+        resolved_conversation_id = str(conversation_id)
+        history = await self._conversation_cache.get_history(resolved_conversation_id)
+        if history:
+            return history
+        try:
+            history = await self._history_rebuild_service.rebuild(conversation_id)
+        except Exception:
+            logger.exception(
+                "Failed to rebuild chat history from Postgres for conversation %s", conversation_id
+            )
+            return []
+        if history:
+            try:
+                await self._conversation_cache.save_history(
+                    resolved_conversation_id, history, ttl_seconds=CONVERSATION_HISTORY_TTL_SECONDS
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to cache rebuilt chat history for conversation %s (non-fatal)",
+                    conversation_id,
+                )
+        return history
 
     async def _build_match_directive(self, context: dict | None) -> str | None:
         """Resolves `context["match_id"]` (from `MessageContextDto`) into the

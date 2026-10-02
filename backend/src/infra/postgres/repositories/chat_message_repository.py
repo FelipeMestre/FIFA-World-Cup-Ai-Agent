@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from src.domain.chat.model.chat_message import ChatMessage, ChatMessageRole
 from src.domain.chat.model.chat_message_widget import ChatMessageWidget
+from src.domain.chat.model.message import Message
 from src.infra.postgres.config import get_db
 from src.infra.postgres.interfaces.chat_message_repository_interface import (
     ChatMessageRepositoryInterface,
@@ -122,6 +123,20 @@ class _SqlAlchemyChatMessageRepository:
             .options(selectinload(ChatMessageSchema.widgets))
         )
         return [_to_domain(row) for row in result.scalars().all()]
+
+    async def list_prompt_turns(self, conversation_id: UUID) -> list[Message]:
+        """Role and content only, in `sequence` order -- no widgets (never
+        loaded), metadata, or ownership join. Ownership is the caller's
+        concern (`start_turn` already enforced it); this feeds prompt
+        history rebuilds, where anything beyond the text the LLM saw would
+        break prompt-prefix (KV) cache stability.
+        """
+        result = await self._session.execute(
+            select(ChatMessageSchema.role, ChatMessageSchema.content)
+            .where(ChatMessageSchema.conversation_id == conversation_id)
+            .order_by(ChatMessageSchema.sequence.asc())
+        )
+        return [Message(role=role.value, content=content) for role, content in result.all()]
 
 
 def get_chat_message_repository(

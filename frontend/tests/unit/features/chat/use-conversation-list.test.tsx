@@ -296,4 +296,69 @@ describe("useConversationList", () => {
     expect(patched?.icon).toBe("team");
     expect(result.current.conversations[0]?.title).toBe("Argentina defence");
   });
+
+  it("conversation_touched moves the row to the top with the new updatedAt", async () => {
+    const first = {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      title: "Old chat",
+      icon: "team",
+      updatedAt: "2026-09-01T10:00:00Z",
+      createdAt: "2026-09-01T09:00:00Z",
+    };
+    const second = {
+      id: "660e8400-e29b-41d4-a716-446655440000",
+      title: "France vs Spain",
+      icon: "match",
+      updatedAt: "2026-09-22T11:00:00Z",
+      createdAt: "2026-09-22T11:00:00Z",
+    };
+    listConversationsMock.mockResolvedValue([second, first]);
+
+    const { result } = renderHook(() => useConversationList());
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    act(() => {
+      deliverUserEvent({
+        type: "conversation_touched",
+        conversation_id: first.id,
+        updated_at: "2026-09-24T12:00:00Z",
+        cursor: "20-0",
+      });
+    });
+
+    expect(result.current.conversations.map((row) => row.id)).toEqual([first.id, second.id]);
+    expect(result.current.conversations[0]).toEqual({
+      ...first,
+      updatedAt: "2026-09-24T12:00:00Z",
+    });
+  });
+
+  it("conversation_touched for an unknown id leaves the list unchanged", async () => {
+    const first = {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      title: "Argentina defence",
+      icon: null,
+      updatedAt: "2026-09-22T10:00:00Z",
+      createdAt: "2026-09-22T09:00:00Z",
+    };
+    listConversationsMock.mockResolvedValue([first]);
+
+    const { result } = renderHook(() => useConversationList());
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    act(() => {
+      deliverUserEvent({
+        type: "conversation_touched",
+        conversation_id: "does-not-exist",
+        updated_at: "2026-09-24T12:00:00Z",
+        cursor: "21-0",
+      });
+    });
+
+    expect(result.current.conversations).toEqual([first]);
+  });
 });

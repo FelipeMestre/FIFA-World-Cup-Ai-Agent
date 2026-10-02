@@ -168,3 +168,37 @@ async def test_list_for_conversation_returns_empty_for_unknown_conversation(
     repository = _SqlAlchemyChatMessageRepository(db_session)
 
     assert await repository.list_for_conversation(uuid4(), _USER_ID) == []
+
+
+async def test_list_prompt_turns_returns_only_role_and_content_in_sequence_order(
+    db_session: AsyncSession,
+) -> None:
+    conversation_id = await _seed_conversation(db_session)
+    repository = _SqlAlchemyChatMessageRepository(db_session)
+    await repository.append_message(
+        conversation_id, "user", "Compare France and Spain", metadata={"match_id": 7}
+    )
+    await repository.append_message(
+        conversation_id,
+        "assistant",
+        "France edges it.",
+        widgets=[("get_team_comparison", "team_comparison", {"teams": ["France", "Spain"]})],
+    )
+    await repository.append_message(conversation_id, "user", "And Brazil?")
+    await db_session.commit()
+
+    turns = await repository.list_prompt_turns(conversation_id)
+
+    assert [(t.role, t.content) for t in turns] == [
+        ("user", "Compare France and Spain"),
+        ("assistant", "France edges it."),
+        ("user", "And Brazil?"),
+    ]
+
+
+async def test_list_prompt_turns_returns_empty_for_unknown_conversation(
+    db_session: AsyncSession,
+) -> None:
+    repository = _SqlAlchemyChatMessageRepository(db_session)
+
+    assert await repository.list_prompt_turns(uuid4()) == []

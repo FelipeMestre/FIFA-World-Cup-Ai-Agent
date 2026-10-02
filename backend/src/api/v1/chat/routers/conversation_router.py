@@ -240,7 +240,7 @@ async def send_message(
         payload.context, match_repo, national_team_repo
     )
     user_message = await chat_service.persist_user_message(
-        conversation_id, payload.content, metadata=message_metadata
+        conversation_id, user_id, payload.content, metadata=message_metadata
     )
     await redis_client.xadd(
         turn_stream_key(str(conversation_id)),

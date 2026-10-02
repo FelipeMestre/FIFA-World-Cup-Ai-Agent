@@ -90,13 +90,15 @@ def client_message(entry_id: str, event_type: str, payload: dict) -> dict:
 
 
 # Maps a per-user-stream `event_type` (the Redis stream field written by
-# `serialize_conversation_created_event`/`serialize_conversation_categorized_event`)
+# `serialize_conversation_created_event`/`serialize_conversation_categorized_event`/
+# `serialize_conversation_touched_event`)
 # to the wire vocabulary `GET /users/events` (`user_events_router.py`) uses --
 # both the frame's `event:` name and its `data.type` field share this same
 # value, so one mapping derives both instead of hardcoding either.
 _USER_EVENT_WIRE_TYPE: dict[str, str] = {
     "ConversationCreatedEvent": "conversation_created",
     "ConversationCategorizedEvent": "conversation_updated",
+    "ConversationTouchedEvent": "conversation_touched",
 }
 
 

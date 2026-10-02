@@ -16,12 +16,17 @@ builders, cursor helpers, event (de)serializers, and the constants they use
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal, get_args
+from uuid import UUID
 
 from src.domain.chat.services.chat_turn_events import ChatTurnEvent, chat_turn_event_payload
 from src.infra.redis.config import redis_client
+
+logger = logging.getLogger(__name__)
 
 # Matches `generate_chat_reply_task`'s own 5-minute Arq timeout (see
 # worker.py) -- the flag should never outlive the job that set it, even if
@@ -250,3 +255,52 @@ def serialize_conversation_created_event(event: ConversationCreatedEvent) -> dic
         }
     )
     return {"event_type": "ConversationCreatedEvent", "payload": payload}
+
+
+@dataclass(frozen=True)
+class ConversationTouchedEvent:
+    """Published to `user_events_key(user_id)` right after a conversation's
+    `updated_at` is bumped (`ConversationRepositoryInterface.touch`) -- when
+    the user's message is persisted and again when the assistant turn is --
+    so every open device moves that sidebar row to the top. `updated_at` is
+    the real database value (ISO 8601), never a client-side guess.
+    """
+
+    conversation_id: str
+    updated_at: str
+
+
+def serialize_conversation_touched_event(event: ConversationTouchedEvent) -> dict[str, str]:
+    """Redis stream fields for one `ConversationTouchedEvent`. Same
+    `{"event_type": ..., "payload": ...}` shape every other event in this
+    module uses.
+    """
+    payload = json.dumps({"conversation_id": event.conversation_id, "updated_at": event.updated_at})
+    return {"event_type": "ConversationTouchedEvent", "payload": payload}
+
+
+async def publish_conversation_touched(
+    user_id: int, conversation_id: UUID, updated_at: datetime | None
+) -> None:
+    """XADD one `ConversationTouchedEvent` to the user's stream. Fail-soft:
+    the sidebar reorder is a nicety, so a Redis outage is logged and a
+    conversation that no longer exists (`updated_at is None`) is skipped --
+    neither may fail a chat turn. Call only after the touch has committed.
+    """
+    if updated_at is None:
+        return
+    try:
+        await redis_client.xadd(
+            user_events_key(user_id),
+            serialize_conversation_touched_event(
+                ConversationTouchedEvent(
+                    conversation_id=str(conversation_id), updated_at=updated_at.isoformat()
+                )
+            ),
+            maxlen=USER_EVENTS_STREAM_MAXLEN,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to publish conversation_touched for conversation %s (non-fatal)",
+            conversation_id,
+        )
