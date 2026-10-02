@@ -17,7 +17,7 @@ When the Redis prompt-history cache is empty (miss, 24h expiry, flush, failed tu
 ## Token counting
 - `tiktoken` (`o200k_base`), behind `TokenCounterInterface` (infra/tokens: config, interfaces, repositories-style private impl + provider).
 - Fail-soft: if encoding cannot load (offline), fall back to `ceil(len(text)/4)` and log a warning.
-- Budget configurable via settings (`CHAT_HISTORY_TOKEN_BUDGET`, sensible default e.g. 24000), per-domain BaseSettings.
+- Budget configurable via settings (`CHAT_HISTORY_TOKEN_BUDGET`, sensible default e.g. 50000), per-domain BaseSettings.
 
 ## Tasks
 - [x] T1 token counter interface + tiktoken impl + fallback (+ tests)
@@ -35,7 +35,7 @@ When the Redis prompt-history cache is empty (miss, 24h expiry, flush, failed tu
 ## Progress / evidence
 - T1 433035c: token counter + fallback. 4 unit tests pass (RED observed first: ModuleNotFoundError).
 - T2 68ba760: `list_prompt_turns` (role+content, sequence order, no widget load). Integration tests written in tests/integration/infra/test_chat_message_repository.py but NOT RUN: no Postgres/Redis/docker available in this environment (RED/GREEN not observed for these two tests; only module import + ruff verified).
-- T3 26ed677: ChatHistoryRebuildService + ChatHistoryConfig (CHAT_HISTORY_TOKEN_BUDGET, default 24000). 14 unit tests pass (RED first: collection ImportError). Covers orphans, stray assistant, ordering, whole-turn windowing, fallback counter path, no widgets/metadata/tool fields.
+- T3 26ed677: ChatHistoryRebuildService + ChatHistoryConfig (CHAT_HISTORY_TOKEN_BUDGET, default 50000). 14 unit tests pass (RED first: collection ImportError). Covers orphans, stray assistant, ordering, whole-turn windowing, fallback counter path, no widgets/metadata/tool fields.
 - T4 25a1dc8: ChatService._load_prompt_history (cache -> rebuild -> save with CONVERSATION_HISTORY_TTL_SECONDS; fail-soft). 5 unit tests pass (RED first: unexpected kwarg).
 - T5: tiktoken==0.14.0 (+ regex, requests, urllib3 pins) in requirements.txt (433035c); env.example.txt note (last commit).
 - Verification: `pytest tests/unit` -> 141 passed (run with dummy DATABASE_URL/REDIS_URL/OPENROUTER_API_KEY; unit tests make no connections). `ruff format --check` clean; `ruff check src tests` -> 5 E501 errors, all pre-existing in chat_service.py SYSTEM_PROMPT (same count on base).
