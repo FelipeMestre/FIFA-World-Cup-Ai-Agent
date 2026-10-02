@@ -41,10 +41,10 @@ clarification request (deterministic via scripted client); match-selector chip d
 - Delivery: ask-on-risk; stacked on PR #39.
 
 ## Tasks
-- [ ] T1 Fixture seeding + case definitions (committed mini tournament, cleanup) — delegated writer
-- [ ] T2 Layer A deterministic golden tests for all known cases — delegated writer
-- [ ] T3 Layer B LLM golden tests (llm_eval) — delegated writer
-- [ ] T4 Verify, commit work units, open PR (base: claude/llm-data-validation-a22f7e)
+- [x] T1 Fixture seeding + case definitions (committed mini tournament, cleanup) — delegated writer
+- [x] T2 Layer A deterministic golden tests for all known cases — delegated writer
+- [x] T3 Layer B LLM golden tests (llm_eval) — delegated writer
+- [x] T4 Verify, commit work units, open PR (base: claude/llm-data-validation-a22f7e)
 
 ## Route declaration
 Mapping needed 4+ files (done via one Explore worker); writer touches 2+ non-trivial files per task, so
@@ -56,7 +56,16 @@ one bounded sonnet writer per task, sequential, single writer thread.
 - ruff clean; existing unit + eval collection unaffected.
 
 ## Progress / evidence
-(none yet)
+- Layer A: 113 deterministic golden tests pass against local Postgres (twice, idempotent), fixture leaves 0 rows; mutation check (fixture goals 4->5) failed 6 tests.
+- Layer B: 44 opt-in llm_eval cases; collected, deselected by default; scripted-client smoke: checks pass on 51 correct variants and fail on 55 hallucinated ones. Never run against the live model (no API key).
+- unit 148 passed, evals collect 39, ruff clean.
+- Commits: afca91e (fixture + Layer A), harness tweak, Layer B.
+
+## Findings (possible production bugs, not changed)
+1. get_team_analysis / get_team_comparison are not accent-insensitive ("Curacao" does not find "Curaçao"); players and matches are.
+2. Ambiguous player name is silent: `_resolve_player` takes .first() with no ORDER BY.
+3. get_match_analysis with an invalid `date` raises an uncaught ValueError that aborts the turn.
+4. After a penalty-shootout loss the standing label reads "out 1-1 to Karsovia" (pinned as-is).
 
 ## Next step
-T1+T2.
+Run `cd backend && pytest -m llm_eval tests/golden` with a real OPENROUTER_API_KEY; decide on fixes for the findings.
