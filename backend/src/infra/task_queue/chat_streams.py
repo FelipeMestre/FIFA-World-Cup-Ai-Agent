@@ -250,3 +250,25 @@ def serialize_conversation_created_event(event: ConversationCreatedEvent) -> dic
         }
     )
     return {"event_type": "ConversationCreatedEvent", "payload": payload}
+
+
+@dataclass(frozen=True)
+class ConversationTouchedEvent:
+    """Published to `user_events_key(user_id)` right after a conversation's
+    `updated_at` is bumped (`ConversationRepositoryInterface.touch`) -- when
+    the user's message is persisted and again when the assistant turn is --
+    so every open device moves that sidebar row to the top. `updated_at` is
+    the real database value (ISO 8601), never a client-side guess.
+    """
+
+    conversation_id: str
+    updated_at: str
+
+
+def serialize_conversation_touched_event(event: ConversationTouchedEvent) -> dict[str, str]:
+    """Redis stream fields for one `ConversationTouchedEvent`. Same
+    `{"event_type": ..., "payload": ...}` shape every other event in this
+    module uses.
+    """
+    payload = json.dumps({"conversation_id": event.conversation_id, "updated_at": event.updated_at})
+    return {"event_type": "ConversationTouchedEvent", "payload": payload}
