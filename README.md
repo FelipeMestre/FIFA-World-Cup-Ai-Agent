@@ -125,7 +125,7 @@ The repository records some of its own reasoning in [`creation_blog.md`](creatio
 - **Problem (recorded in the repository):** the WebSocket needed a ticket-minting auth flow because it could not carry the httpOnly session cookie, and it only reached clients watching that one conversation. SSE was chosen because it "rides ordinary HTTP through any proxy/LB without WS-specific config", removes the ticket system, and provides native reconnect through `Last-Event-ID`, which matches the Redis Stream cursor model.
 - **How it works:** two SSE endpoints read Redis Streams.
   - `GET /conversations/{id}/events` reads the per-conversation turn stream (`chat:turn-stream:{id}`). An in-progress turn replays from the cursor stored when the turn was reserved, so a reloaded page can reattach mid-reply. An idle conversation starts at the stream tail, because history already comes from Postgres.
-  - `GET /users/events` reads a per-user stream (`user:events:{user_id}`) for account-wide events (`conversation_created`, `conversation_updated`), so every open device updates its sidebar.
+  - `GET /users/events` reads a per-user stream (`user:events:{user_id}`) for account-wide events (`conversation_created`, `conversation_updated`, `conversation_touched`), so every open device updates its sidebar. `conversation_touched` carries the real `updated_at` and is published when a message is sent and again when the turn ends, so a conversation moves to the top of "Today" in every open tab.
 - **Tradeoff:** SSE is one-directional, so sending needs a separate POST. Cancelling a running turn is not implemented. Streams have retention limits: turn streams expire 900 s after a turn ends, and the per-user stream is trimmed to about 1000 entries.
 
 ### OpenRouter instead of a single-vendor SDK
@@ -145,6 +145,7 @@ The repository records some of its own reasoning in [`creation_blog.md`](creatio
 
 - **Decision:** chat history is an append-only log in Postgres (`chat_message`, widgets in `chat_message_widget`). Redis holds a 24-hour prompt-history cache, the per-conversation in-progress flag and the event streams.
 - **Problem (from the chat-memory notes):** Redis-only history was lossy and TTL-bound, so a restart or Redis failure lost conversations and there was no way to list them. `GET /conversations/{id}/messages` therefore reads Postgres directly, because the cache has no widget data.
+- **History rebuild:** when the Redis cache is empty (24-hour expiry, flush, or a failed turn), the prompt history is rebuilt from Postgres and written back to the cache. Only completed user and assistant text pairs, in `sequence` order, are rebuilt. Widgets, metadata, reasoning, tool messages and the system prompt are never part of it, so the prompt prefix stays identical to what the model saw and the provider's KV cache keeps hitting. Orphan user messages from failed turns are dropped, and the oldest whole turns are dropped once the history exceeds `CHAT_HISTORY_TOKEN_BUDGET` (default 50,000 tokens, counted with `tiktoken`, with a `len/4` fallback if the encoding cannot load). Windowing runs only on a rebuild, not on a cache hit.
 - **Tradeoff:** two stores to keep consistent. The design accepted synchronous writes and deferred any outbox or CDC mechanism.
 
 ## Key flows
@@ -154,11 +155,11 @@ The repository records some of its own reasoning in [`creation_blog.md`](creatio
 1. The browser sends `POST /api/conversations/{id}/messages`. The Route Handler attaches the JWT from the cookie and forwards the call to `POST /api/v1/conversations/{id}/messages`.
 2. FastAPI checks conversation ownership and does a get-or-create of the conversation. For a new conversation it enqueues `categorize_conversation_task` and publishes `ConversationCreatedEvent` to the user stream.
 3. FastAPI reserves the turn with `SET chat:turn-in-progress:{id} <cursor> NX EX 300`. If the key exists it returns `409`.
-4. FastAPI persists the user message in Postgres, appends a `UserMessageEvent` to `chat:turn-stream:{id}`, enqueues `generate_chat_reply_task` and returns `202`.
+4. FastAPI persists the user message in Postgres, touches the conversation's `updated_at` and publishes `conversation_touched` to the user stream, appends a `UserMessageEvent` to `chat:turn-stream:{id}`, enqueues `generate_chat_reply_task` and returns `202`.
 5. The browser already holds an `EventSource` on `/api/conversations/{id}/events`. The Route Handler pipes the backend SSE stream through, so the user message shows on every device watching that conversation.
-6. The worker loads the cached history, calls OpenRouter with streaming enabled and runs the tool loop. Each tool validates its arguments and queries Postgres.
+6. The worker loads the cached history (rebuilt from Postgres on a cache miss), calls OpenRouter with streaming enabled and runs the tool loop. Each tool validates its arguments and queries Postgres.
 7. Every event (reasoning delta, content delta, tool call, widget ready, message done) is appended to the turn stream. SSE readers forward each entry as an `event: turn` frame with the stream id as `id:`.
-8. The worker persists the assistant message and widgets, refreshes the Redis history cache, deletes the in-progress flag and sets a 900 s TTL on the stream.
+8. The worker persists the assistant message and widgets, touches the conversation again (publishing `conversation_touched`), refreshes the Redis history cache, deletes the in-progress flag and sets a 900 s TTL on the stream.
 9. If the reply fails outright, the worker writes a `chat_turn_failure` row and publishes an error entry. `GET /conversations/{id}/messages` returns it as `last_turn_failure`.
 
 ### 2. An admin ingestion job
