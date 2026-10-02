@@ -34,7 +34,22 @@ export interface ConversationUpdatedEvent {
   cursor: string;
 }
 
-export type UserEvent = ConversationCreatedEvent | ConversationUpdatedEvent;
+/**
+ * Emitted on the `conversation_touched` SSE event whenever a conversation's
+ * `updated_at` is bumped (user message persisted, assistant turn persisted).
+ * `updated_at` is the real database value (ISO 8601).
+ */
+export interface ConversationTouchedEvent {
+  type: "conversation_touched";
+  conversation_id: string;
+  updated_at: string;
+  cursor: string;
+}
+
+export type UserEvent =
+  | ConversationCreatedEvent
+  | ConversationUpdatedEvent
+  | ConversationTouchedEvent;
 
 export interface UserEventsConnection {
   close: () => void;
@@ -63,6 +78,7 @@ export function connectUserEvents(onEvent: (event: UserEvent) => void): UserEven
 
   source.addEventListener("conversation_created", handleFrame);
   source.addEventListener("conversation_updated", handleFrame);
+  source.addEventListener("conversation_touched", handleFrame);
 
   return {
     close() {

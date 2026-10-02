@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { listConversations } from "@/features/chat/api/list-conversations";
 import { updateConversationTitle } from "@/features/chat/api/update-conversation-title";
 import { connectUserEvents, type UserEvent } from "@/features/chat/api/user-events";
+import { touchConversation } from "@/features/chat/touch-conversation";
 import type { ConversationSummary } from "@/features/chat/types";
 
 export function useConversationList() {
@@ -49,6 +50,15 @@ export function useConversationList() {
   );
 
   /**
+   * Moves a row to the top with the server's new `updatedAt` from a live
+   * `conversation_touched` event. No-op for an id not in the list; idempotent
+   * for the sending tab, which also refreshes (see `touchConversation`).
+   */
+  const applyConversationTouched = useCallback((conversationId: string, updatedAt: string) => {
+    setConversations((prev) => touchConversation(prev, conversationId, updatedAt));
+  }, []);
+
+  /**
    * Prepends a row for a brand-new conversation from a live
    * `conversation_created` event -- deduped by id, since the window that
    * itself created the conversation may already have it from the existing
@@ -79,9 +89,10 @@ export function useConversationList() {
    * Owns the per-user SSE connection for as long as this hook (and the
    * sidebar mounting it, `HomeShell`) is mounted -- opened once on mount,
    * unlike the per-conversation connection, which only opens once a
-   * conversation is selected. Handles both event kinds internally:
+   * conversation is selected. Handles every event kind internally:
    * `conversation_created` prepends a row, `conversation_updated` patches
-   * one in place via `applyConversationUpdate`.
+   * one in place via `applyConversationUpdate`, `conversation_touched`
+   * moves one to the top via `applyConversationTouched`.
    */
   useEffect(() => {
     const handleEvent = (event: UserEvent) => {
@@ -93,12 +104,16 @@ export function useConversationList() {
         });
         return;
       }
+      if (event.type === "conversation_touched") {
+        applyConversationTouched(event.conversation_id, event.updated_at);
+        return;
+      }
       applyConversationUpdate(event.conversation_id, { title: event.title, icon: event.icon });
     };
 
     const connection = connectUserEvents(handleEvent);
     return () => connection.close();
-  }, [addCreatedConversation, applyConversationUpdate]);
+  }, [addCreatedConversation, applyConversationTouched, applyConversationUpdate]);
 
   return { conversations, isLoading, loadError, refresh, rename, applyConversationUpdate };
 }
