@@ -13,3 +13,7 @@ known-first-party = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = '-m "not llm_eval"'
+markers = [
+    "llm_eval: calls the real LLM through OpenRouter (opt-in: pytest -m llm_eval, needs OPENROUTER_API_KEY)",
+]
