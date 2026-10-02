@@ -1,5 +1,6 @@
 import logging
 from collections.abc import AsyncIterator
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +46,7 @@ from src.infra.redis.interfaces.conversation_cache_repository_interface import (
 from src.infra.task_queue.chat_streams import (
     USER_EVENTS_STREAM_MAXLEN,
     ConversationCreatedEvent,
+    publish_conversation_touched,
     serialize_conversation_created_event,
     user_events_key,
 )
@@ -154,7 +156,7 @@ class ChatService:
         return conversation
 
     async def persist_user_message(
-        self, conversation_id: UUID, content: str, metadata: dict | None = None
+        self, conversation_id: UUID, user_id: int, content: str, metadata: dict | None = None
     ) -> ChatMessage:
         """Persists the user's own message synchronously, independent of
         whether the reply is ever generated -- called by the router right
@@ -168,11 +170,17 @@ class ChatService:
         Returns the persisted message so the router can pass its `id` on to
         `generate_chat_reply_task` -- the only thing a `chat_turn_failure`
         row can be recorded against on a failed turn.
+
+        Also touches the conversation in the same transaction and, after the
+        commit, announces the new `updated_at` on the per-user stream so the
+        sidebar row jumps to the top the moment the user hits send.
         """
         message = await self._chat_message_repo.append_message(
             conversation_id, role="user", content=content, metadata=metadata
         )
+        updated_at = await self._conversation_repo.touch(conversation_id)
         await self._session.commit()
+        await publish_conversation_touched(user_id, conversation_id, updated_at)
         return message
 
     async def send_message(
@@ -210,6 +218,7 @@ class ChatService:
             completion_messages.append({"role": "system", "content": match_directive})
         completion_messages.extend({"role": m.role, "content": m.content} for m in history)
 
+        touched_at: datetime | None = None
         final_result: ChatCompletionResult | ToolLoopCapReached | None = None
         final_content_segments: list[str | ToolWidgetResult] = []
         try:
@@ -258,7 +267,7 @@ class ChatService:
                 await chat_message_repo.append_message(
                     conversation_id, role="assistant", content=reply_content, widgets=widgets
                 )
-                await conversation_repo.touch(conversation_id)
+                touched_at = await conversation_repo.touch(conversation_id)
                 await turn_session.commit()
         except Exception:
             logger.exception(
@@ -274,6 +283,8 @@ class ChatService:
             yield PersistenceFailedEvent(
                 detail="This message could not be saved. It may not be here after a reload."
             )
+
+        await publish_conversation_touched(user_id, conversation_id, touched_at)
 
         history.append(Message(role="assistant", content=reply_content))
         try:

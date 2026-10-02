@@ -2,7 +2,7 @@
 mapping of the per-user event stream."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -12,7 +12,7 @@ from src.infra.task_queue.chat_streams import (
     serialize_conversation_touched_event,
 )
 
-_UPDATED_AT = datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc)
+_UPDATED_AT = datetime(2026, 7, 1, 12, 30, tzinfo=UTC)
 
 
 def test_serialize_carries_event_type_and_iso_updated_at() -> None:

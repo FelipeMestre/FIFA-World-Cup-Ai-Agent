@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -132,15 +133,21 @@ class _SqlAlchemyConversationRepository:
         await self._session.refresh(row)
         return _to_domain(row)
 
-    async def touch(self, conversation_id: UUID) -> None:
-        """Does not `commit()` -- `flush()` only; same rationale as
+    async def touch(self, conversation_id: UUID) -> datetime | None:
+        """Returns the real `updated_at` the database just wrote (`None` when
+        the conversation does not exist), so callers can announce it without
+        guessing a client-side time.
+
+        Does not `commit()` -- `flush()` only; same rationale as
         `get_or_create`."""
-        await self._session.execute(
+        result = await self._session.execute(
             update(ConversationSchema)
             .where(ConversationSchema.id == conversation_id)
             .values(updated_at=func.now())
+            .returning(ConversationSchema.updated_at)
         )
         await self._session.flush()
+        return result.scalar_one_or_none()
 
 
 def get_conversation_repository(

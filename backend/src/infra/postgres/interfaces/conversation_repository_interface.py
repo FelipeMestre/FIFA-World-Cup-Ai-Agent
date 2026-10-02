@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -19,4 +20,4 @@ class ConversationRepositoryInterface(Protocol):
     async def update_category(
         self, conversation_id: UUID, title: str, icon: str
     ) -> Conversation | None: ...
-    async def touch(self, conversation_id: UUID) -> None: ...
+    async def touch(self, conversation_id: UUID) -> datetime | None: ...
