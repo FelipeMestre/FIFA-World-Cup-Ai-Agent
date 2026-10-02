@@ -12,6 +12,8 @@ The system has five runtime pieces: a **Next.js** frontend, a **FastAPI** backen
 - [Running locally](#running-locally)
 - [Repository layout](#repository-layout)
 
+
+
 ## Architecture at a glance
 
 ```mermaid
@@ -37,9 +39,21 @@ flowchart LR
 
 
 
+The purpose of this architecture is to give the chat reliability (never loose a message) and scalability (the capacity of safely handling the amount of work the system can take). The main concept is that the processing of messages is abstracted from the fastAPI backend, and it takes place in the Arq Worker. To store the messages of the conversation, the system uses postgres as an append only log, source of the truth, a derived representation of this data is stored in Redis, so the chat state is not stored in the backend, and it is in a fast access memory. 
+
+Arq is a queue of jobs, that will allow the backend to communicate with the worker. To process messages, the worker reads jobs with the message and the conversationId as payloads. It loads the conversation context from redis (or postgres on a miss), and reconstructs the context, appends the new message and sends it to the LLM gateway. As the events arrive, the worker processes them, there is the tool loop, the processing of incoming deltas, the consolidation of the message in postgres after it has finished. 
+
+The mechanism of re-connecting to a conversation is to bring the messages from the database. And if there is a message beign stream for that conversation in redis, the frontend attaches to that stream. What is great about Redis stream is that the consumer can send a cursor, and the system sends him the messages after that cursor, so each consumer can go at its own pace. 
+
+This allows several devices consuming the same conversation with a safe re connection policy, and avoids loosing messages, because a message can either be in the redis memory beign streamed, or in the database, where it can be recovered from.
+
+All the decoupling of the components, make each layer of the system horizontal scalable, by adding more FastAPI backend replicas, or more workers.
+
 Two rules shape the diagram:
 
 1. Long-running work (LLM replies, ingestion) runs in the worker. It reaches the browser through Redis Streams and the `ingestion_job` table, never through the request that started it.
+
+
 
 ## Components
 
@@ -57,6 +71,8 @@ Two rules shape the diagram:
 | Redis                      | Job queue, per-turn coordination flags, event streams for realtime updates, and a prompt-history cache.                                                            | Redis 7                                                                 | `backend/src/infra/redis/`, `backend/src/infra/task_queue/` |
 | LLM gateway                | Provider-independent LLM access with tool calling, streamed reasoning, prompt caching and model fallback.                                                          | OpenRouter (OpenAI-compatible API)                                      | `backend/src/infra/openrouter/`                             |
 | Transfermarkt source       | Club-level player, valuation, transfer and season data that the tournament dataset lacks.                                                                          | httpx, gzip CSV                                                         | `backend/src/infra/transfermarkt/`                          |
+
+
 
 
 ### Data held in Postgres
@@ -104,6 +120,8 @@ Notes:
 - There is no pub/sub. All realtime fan-out uses Redis Streams, which keep entries so a reader can catch up.
 - The API also uses `XREAD`/`XREVRANGE` to serve SSE, so the API process both writes to and reads from the same streams the worker writes to.
 
+
+
 ## Why this architecture
 
 The repository records some of its own reasoning in `[creation_blog.md](creation_blog.md)` and in commit messages. Where a rationale is recorded, it is quoted or paraphrased below. Where it is not, the tradeoff is stated neutrally.
@@ -114,17 +132,23 @@ The repository records some of its own reasoning in `[creation_blog.md](creation
 - **Problem:** the JWT must not be readable by browser JavaScript, and the backend URL should not be exposed. The session token lives in an httpOnly cookie (`frontend/src/lib/auth/session.ts`).
 - **Tradeoff:** every backend endpoint the UI needs has a matching Route Handler. Streaming responses need a dedicated pass-through handler. The frontend auth gate only checks that the cookie exists; the backend verifies the JWT on every request.
 
+
+
 ### Hexagonal backend (layer-first)
 
 - **Decision:** `api/` handles HTTP and DTOs, `domain/` holds models and use-case services, `infra/` wraps each external dependency behind interfaces. Conventions are in `[AGENTS.md](AGENTS.md)`.
 - **Problem:** Postgres, Redis, OpenRouter and Transfermarkt should be replaceable without touching business logic or routers. Simple reads can go from a router straight to a repository interface. Multi-step use cases live in domain services.
 - **Tradeoff:** more files and indirection than a flat FastAPI app. Each repository needs an interface, a private implementation and a DI provider.
 
+
+
 ### Background worker and queue (Arq)
 
 - **Decision:** chat replies, conversation categorization and all ingestion run as Arq jobs (`backend/src/infra/task_queue/worker.py`).
 - **Problem:** `chat_tasks.py` documents the original failure. When the reply was generated inside a streaming response, a client disconnect cancelled the generator before it could persist. Running it as a job means the reply finishes and persists regardless of who is watching. Ingestion jobs (for example a Transfermarkt sync; one of its files is about 126 MB decompressed, per `worker.py`) exceed request timeouts and need durable status, which the `ingestion_job` table provides.
 - **Tradeoff:** an extra process to run, and results arrive asynchronously. The API returns `202` or a job id, and clients poll (`GET /admin/ingestion/jobs/{id}`) or read a stream. Timeouts are per function: 300 s for chat replies, 60 s for categorization, 3600 s for Transfermarkt sync.
+
+
 
 ### SSE over WebSocket
 
@@ -135,6 +159,8 @@ The repository records some of its own reasoning in `[creation_blog.md](creation
   - `GET /users/events` reads a per-user stream (`user:events:{user_id}`) for account-wide events (`conversation_created`, `conversation_updated`, `conversation_touched`), so every open device updates its sidebar. `conversation_touched` carries the real `updated_at` and is published when a message is sent and again when the turn ends, so a conversation moves to the top of "Today" in every open tab.
 - **Tradeoff:** SSE is one-directional, so sending needs a separate POST. Cancelling a running turn is not implemented. Streams have retention limits: turn streams expire 900 s after a turn ends, and the per-user stream is trimmed to about 1000 entries.
 
+
+
 ### OpenRouter instead of a single-vendor SDK
 
 - **Decision:** one OpenAI-compatible client (`backend/src/infra/openrouter/client.py`) with a model list in `OPENROUTER_MODELS`, sent as the request's `models` array.
@@ -142,11 +168,15 @@ The repository records some of its own reasoning in `[creation_blog.md](creation
 - **Recorded caveats:** OpenRouter is itself a single point of failure. Prompt caching only works within a provider, so a fallback model loses cache benefit and may change response style. The author accepted both for a demo-stage app.
 - **Where it applies:** the client marks the system prompt with an ephemeral cache breakpoint. The tool loop is capped at 5 iterations per turn (`MAX_ITERATIONS`).
 
+
+
 ### Tournament data plus real Transfermarkt data with audited links
 
 - **Decision:** the tournament dataset is loaded from CSVs (git-ignored `data/FIFA-World-Cup-2026-Dataset`, via the admin ingestion API or a seed script). Real Transfermarkt tables are synced separately. `player_identity_link` connects the two ID spaces.
 - **Problem:** the two sources share no key. Matching uses exact name plus date of birth, exact name plus team, and fuzzy name similarity (`rapidfuzz`). Fuzzy matches get confidence below the exact ones, and an admin can approve, reject or reassign each link in the admin UI.
 - **Tradeoff:** an automatic match can be wrong, so a human review step exists and rejections are stored explicitly rather than deleted. Clean re-matching is a separate admin-triggered job.
+
+
 
 ### Postgres as source of truth, Redis as coordination layer
 
@@ -155,7 +185,11 @@ The repository records some of its own reasoning in `[creation_blog.md](creation
 - **History rebuild:** when the Redis cache is empty (24-hour expiry, flush, or a failed turn), the prompt history is rebuilt from Postgres and written back to the cache. Only completed user and assistant text pairs, in `sequence` order, are rebuilt. Widgets, metadata, reasoning, tool messages and the system prompt are never part of it, so the prompt prefix stays identical to what the model saw and the provider's KV cache keeps hitting. Orphan user messages from failed turns are dropped, and the oldest whole turns are dropped once the history exceeds `CHAT_HISTORY_TOKEN_BUDGET` (default 50,000 tokens, counted with `tiktoken`, with a `len/4` fallback if the encoding cannot load). Windowing runs only on a rebuild, not on a cache hit.
 - **Tradeoff:** two stores to keep consistent. The design accepted synchronous writes and deferred any outbox or CDC mechanism.
 
+
+
 ## Key flows
+
+
 
 ### 1. A chat turn, end to end
 
@@ -168,6 +202,8 @@ The repository records some of its own reasoning in `[creation_blog.md](creation
 7. Every event (reasoning delta, content delta, tool call, widget ready, message done) is appended to the turn stream. SSE readers forward each entry as an `event: turn` frame with the stream id as `id:`.
 8. The worker persists the assistant message and widgets, touches the conversation again (publishing `conversation_touched`), refreshes the Redis history cache, deletes the in-progress flag and sets a 900 s TTL on the stream.
 9. If the reply fails outright, the worker writes a `chat_turn_failure` row and publishes an error entry. `GET /conversations/{id}/messages` returns it as `last_turn_failure`.
+
+
 
 ### 2. An admin ingestion job
 
@@ -185,6 +221,8 @@ Upload payloads travel through Redis as bytes in the job arguments, because API 
 2. The Route Handler forwards them to `POST /api/v1/auth/login`. The backend verifies the credentials against the `user` table and returns a self-issued JWT (HS256, `JWT_*` settings).
 3. The Route Handler stores the token in the httpOnly `fai_session` cookie (`sameSite=lax`, `secure` in production) and returns only `{ "ok": true }` to the browser.
 4. `src/proxy.ts` redirects requests without the cookie to `/login`. Later Route Handlers read the cookie server-side and send it as a Bearer token.
+
+
 
 ## Running locally
 
@@ -226,6 +264,8 @@ cd backend && ruff check src && ruff format src
 cd frontend && npm run test   # vitest
 cd frontend && npm run lint
 ```
+
+
 
 ## Repository layout
 
