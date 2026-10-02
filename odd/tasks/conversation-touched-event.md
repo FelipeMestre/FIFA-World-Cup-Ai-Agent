@@ -14,7 +14,7 @@ Sending a message to an old conversation must move it to the top of the sidebar 
 ## Tasks
 - [x] T1 backend: event class + serializer + SSE wire mapping (+ unit tests)
 - [x] T2 backend: touch in persist_user_message + publish at both touch points, fail-soft (+ unit tests)
-- [~] T3 frontend: user-events types/parsing + list hook reorder (+ tests per frontend test conventions)
+- [x] T3 frontend: user-events types/parsing + list hook reorder (+ tests per frontend test conventions)
 
 ## Constraints
 Strict TDD where a runner exists; ruff; files < 400 lines; English artifacts; conventional commits, no AI attribution; same branch `feat/chat-history-rebuild` (PR #37); work only in this worktree; no docker cp/exec; commit locally, no push.
@@ -22,5 +22,5 @@ Strict TDD where a runner exists; ruff; files < 400 lines; English artifacts; co
 ## Progress / evidence
 - T1 (7301621): RED observed (ImportError ConversationTouchedEvent), GREEN 3 tests in tests/unit/infra/test_conversation_touched_event.py.
 - T2 (2346b5b): RED observed (collection failure, then signature/behavior), GREEN: `touch` now returns real `updated_at` (RETURNING); `persist_user_message(conversation_id, user_id, ...)` touches in the same txn, publishes after commit; end-of-turn publishes after commit; `publish_conversation_touched` fail-soft in chat_streams.py. `pytest tests/unit`: 148 passed; ruff format clean, ruff check only the 5 known E501 in SYSTEM_PROMPT. Integration tests NOT run (need Postgres/Redis).
-- T3 (frontend commit, see git log): user-events.ts union + listener, pure `touchConversation` (touch-conversation.ts), hook handler, tests added (touch-conversation.test.ts, use-conversation-list.test.tsx). NOT RUN: frontend has no node_modules in this worktree, so vitest/tsc/eslint could not execute. Box left as [~] until run.
+- T3 (frontend commit, see git log): user-events.ts union + listener, pure `touchConversation` (touch-conversation.ts), hook handler, tests added (touch-conversation.test.ts, use-conversation-list.test.tsx). Verified later with `npm ci`: vitest 121 passed / 1 failed (login-form, fails identically on origin/main); tsc only reports the pre-existing LayoutProps error in app/layout.tsx (also on main).
 - Routes: all inline by single writer (delegated).
