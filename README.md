@@ -1,6 +1,6 @@
 # World Cup AI Scout
 
-World Cup AI Scout is a chat application that answers questions about the FIFA World Cup 2026 using tournament data. A user asks about a team, a match or a player, or asks for a comparison. An LLM decides which analytics tools to call. The tools query Postgres, and the answer streams back to the browser as text plus structured widgets (team, match, player and comparison cards).
+World Cup AI Scout is a chat application that answers questions about the FIFA World Cup 2026 using tournament data. A user asks about a team, a match or a player, or asks for a comparison. An LLM decides which analytics tools to call. The tools query Postgres, and the answer streams back to the browser as text plus structured widgets (team, match, player and comparison cards). The data of players is enriched with a Transfermarkt dataset that allows more detailed information of each player statistics, transfers, values, position and more.
 
 The system has five runtime pieces: a **Next.js** frontend, a **FastAPI** backend, an **Arq worker**, **Postgres** and **Redis**. External calls go to **OpenRouter** (LLM) and a **Transfermarkt CSV source** (real-world enrichment data).
 
@@ -35,61 +35,68 @@ flowchart LR
     Worker -->|"HTTPS: gzip CSV download"| TM
 ```
 
+
+
 Two rules shape the diagram:
 
-1. The browser only talks to Next.js. Next.js talks to FastAPI on the server side, and the JWT never reaches browser JavaScript.
-2. Long-running work (LLM replies, ingestion) runs in the worker. It reaches the browser through Redis Streams and the `ingestion_job` table, never through the request that started it.
+1. Long-running work (LLM replies, ingestion) runs in the worker. It reaches the browser through Redis Streams and the `ingestion_job` table, never through the request that started it.
 
 ## Components
 
-| Component | Problem it solves | Key tech | Where |
-|---|---|---|---|
-| Frontend | Renders the chat, widgets, sidebar and admin screens. Keeps the session token out of browser JavaScript. Hides the backend URL from the browser. | Next.js 16 (App Router, `cacheComponents`), React, Tailwind, shadcn/ui | `frontend/` |
-| Route Handlers (BFF proxy) | Server-side gateway between browser and backend. Reads the JWT from an httpOnly cookie and forwards it as a Bearer token. | `proxyBackendJson`, `proxyBackendMultipart`, streaming SSE pass-through | `frontend/src/app/api/`, `frontend/src/lib/api/` |
-| Auth gate | Redirects unauthenticated visitors to `/login` (presence check only; the backend verifies the JWT). | Next.js `proxy.ts` | `frontend/src/proxy.ts` |
-| Backend API | Validates requests, enforces auth and ownership, returns DTOs. Contains no long-running work. | FastAPI, Pydantic v2, PyJWT | `backend/src/api/v1/` |
-| Domain layer | Business rules and use cases: chat turn orchestration, the tool-calling loop, ingestion and identity matching. Independent of HTTP and of concrete infrastructure. | Plain Python models, services, exceptions | `backend/src/domain/` |
-| Infrastructure layer | One facade per external dependency, behind interfaces (`Protocol`). Concrete repositories are private and exposed only through DI providers. | SQLAlchemy 2 async, redis-py, httpx, Arq | `backend/src/infra/` |
-| Arq worker | Runs work that must not block request handlers or die with a client connection: chat replies, conversation categorization, ingestion jobs. | Arq 0.28 | `backend/src/infra/task_queue/` |
-| Postgres | Durable source of truth: tournament data, real-world enrichment data, chat history, job records. | Postgres 16, asyncpg, Alembic | `backend/src/infra/postgres/`, `backend/migrations/` |
-| Redis | Job queue, per-turn coordination flags, event streams for realtime updates, and a prompt-history cache. | Redis 7 | `backend/src/infra/redis/`, `backend/src/infra/task_queue/` |
-| LLM gateway | Provider-independent LLM access with tool calling, streamed reasoning, prompt caching and model fallback. | OpenRouter (OpenAI-compatible API) | `backend/src/infra/openrouter/` |
-| Transfermarkt source | Club-level player, valuation, transfer and season data that the tournament dataset lacks. | httpx, gzip CSV | `backend/src/infra/transfermarkt/` |
+
+| Component                  | Problem it solves                                                                                                                                                  | Key tech                                                                | Where                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Frontend                   | Renders the chat, widgets, sidebar and admin screens. Keeps the session token out of browser JavaScript. Hides the backend URL from the browser.                   | Next.js 16 (App Router, `cacheComponents`), React, Tailwind, shadcn/ui  | `frontend/`                                                 |
+| Route Handlers (BFF proxy) | Server-side gateway between browser and backend. Reads the JWT from an httpOnly cookie and forwards it as a Bearer token.                                          | `proxyBackendJson`, `proxyBackendMultipart`, streaming SSE pass-through | `frontend/src/app/api/`, `frontend/src/lib/api/`            |
+| Auth gate                  | Redirects unauthenticated visitors to `/login` (presence check only; the backend verifies the JWT).                                                                | Next.js `proxy.ts`                                                      | `frontend/src/proxy.ts`                                     |
+| Backend API                | Validates requests, enforces auth and ownership, returns DTOs. Contains no long-running work.                                                                      | FastAPI, Pydantic v2, PyJWT                                             | `backend/src/api/v1/`                                       |
+| Domain layer               | Business rules and use cases: chat turn orchestration, the tool-calling loop, ingestion and identity matching. Independent of HTTP and of concrete infrastructure. | Plain Python models, services, exceptions                               | `backend/src/domain/`                                       |
+| Infrastructure layer       | One facade per external dependency, behind interfaces (`Protocol`). Concrete repositories are private and exposed only through DI providers.                       | SQLAlchemy 2 async, redis-py, httpx, Arq                                | `backend/src/infra/`                                        |
+| Arq worker                 | Runs work that must not block request handlers or die with a client connection: chat replies, conversation categorization, ingestion jobs.                         | Arq 0.28                                                                | `backend/src/infra/task_queue/`                             |
+| Postgres                   | Durable source of truth: tournament data, real-world enrichment data, chat history, job records.                                                                   | Postgres 16, asyncpg, Alembic                                           | `backend/src/infra/postgres/`, `backend/migrations/`        |
+| Redis                      | Job queue, per-turn coordination flags, event streams for realtime updates, and a prompt-history cache.                                                            | Redis 7                                                                 | `backend/src/infra/redis/`, `backend/src/infra/task_queue/` |
+| LLM gateway                | Provider-independent LLM access with tool calling, streamed reasoning, prompt caching and model fallback.                                                          | OpenRouter (OpenAI-compatible API)                                      | `backend/src/infra/openrouter/`                             |
+| Transfermarkt source       | Club-level player, valuation, transfer and season data that the tournament dataset lacks.                                                                          | httpx, gzip CSV                                                         | `backend/src/infra/transfermarkt/`                          |
+
 
 ### Data held in Postgres
 
-| Group | Tables (examples) | Purpose |
-|---|---|---|
-| Synthetic tournament | `national_team`, `player`, `player_stat`, `match`, `match_event`, `match_team_stat`, `match_lineup`, `venue`, `referee`, `tournament_stage` | The World Cup 2026 dataset the analytics tools query. |
-| Real enrichment | `real_player`, `real_player_valuation`, `real_transfer`, `real_player_season_stat`, `real_club`, `real_club_game`, `real_game_lineup`, `real_match_event` | Transfermarkt data for club-level context. |
-| Identity links | `player_identity_link` | Joins a tournament-dataset player to a Transfermarkt player. Carries match method, confidence and a review status (`pending`, `approved`, and a rejected state). |
-| Chat | `conversation`, `chat_message`, `chat_message_widget`, `chat_turn_failure` | Durable, append-only chat history and widget payloads. |
-| Operations | `user`, `ingestion_job` | Accounts and asynchronous job status (`queued`, `running`, `succeeded`, `failed`). |
+
+| Group                    | Tables (examples)                                                                                                                                         | Purpose                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| World Cup tournament     | `national_team`, `player`, `player_stat`, `match`, `match_event`, `match_team_stat`, `match_lineup`, `venue`, `referee`, `tournament_stage`               | The World Cup 2026 dataset the analytics tools query.                                                                                                            |
+| Transfermarkt enrichment | `real_player`, `real_player_valuation`, `real_transfer`, `real_player_season_stat`, `real_club`, `real_club_game`, `real_game_lineup`, `real_match_event` | Transfermarkt data for club-level context.                                                                                                                       |
+| Identity links           | `player_identity_link`                                                                                                                                    | Joins a tournament-dataset player to a Transfermarkt player. Carries match method, confidence and a review status (`pending`, `approved`, and a rejected state). |
+| Chat                     | `conversation`, `chat_message`, `chat_message_widget`, `chat_turn_failure`                                                                                | Durable, append-only chat history and widget payloads.                                                                                                           |
+| Operations               | `user`, `ingestion_job`                                                                                                                                   | Accounts and asynchronous job status (`queued`, `running`, `succeeded`, `failed`).                                                                               |
+
 
 Schemas: `backend/src/infra/postgres/schemas/`.
 
 ### Analytics tools exposed to the LLM
 
-Registered in `backend/src/domain/chat/tools/registry.py`: `get_team_analysis`, `get_team_comparison`, `get_player_analysis`, `get_player_comparison`, `get_match_analysis`, `query_player_stats` and `get_current_utc_time`. Each validates its arguments with a Pydantic model and queries Postgres through a repository interface.
+Registered in `backend/src/domain/chat/tools/registry.py`: `get_team_analysis`, `get_team_comparison`, `get_player_analysis`, `get_player_comparison`, `get_match_analysis`, `query_player_stats`. Each validates its arguments with a Pydantic model and queries Postgres through a repository interface.
 
 ## How components communicate
 
 One row per real edge in the system.
 
-| From → To | Protocol | Why this protocol |
-|---|---|---|
-| Browser → Next.js (pages, actions) | HTTPS, HTML and JSON `fetch` | Standard web delivery. Auth is an httpOnly cookie (`fai_session`), so the browser never holds the token. |
-| Browser → Next.js (live updates) | Server-Sent Events via `EventSource` (`GET /api/conversations/{id}/events`, `GET /api/users/events`) | Server-to-client push only, over plain HTTP. `EventSource` sends the cookie automatically and reconnects with `Last-Event-ID`. See [SSE over WebSocket](#sse-over-websocket). |
-| Next.js → FastAPI (JSON) | HTTP + JSON, `Authorization: Bearer <JWT>` | Stateless, cacheable-by-design REST. The backend authorizes each request independently of the frontend. |
-| Next.js → FastAPI (CSV upload) | `multipart/form-data` | Native format for file uploads. The proxy forwards the `FormData` unchanged, so the backend's structured per-file rejection body survives. |
-| Next.js → FastAPI (live events) | SSE (`text/event-stream`), response body piped through | The proxy returns the backend's `ReadableStream` as-is. Buffering it would hold back an intentionally endless stream. |
-| FastAPI → Postgres | PostgreSQL wire protocol via asyncpg (SQLAlchemy 2 async) | Non-blocking I/O on the event loop. Relational data with joins and aggregation done in SQL. |
-| FastAPI → Redis (enqueue) | Redis protocol, Arq `enqueue_job` | Hands work to the worker without blocking the request. |
-| FastAPI → Redis (coordination) | Redis protocol: `SET NX EX` flag, `XADD`, `XREAD BLOCK`, `MGET` | Atomic one-turn-per-conversation guard. Streams give an ordered, replayable log for SSE readers. |
-| Worker → Redis | Redis protocol: Arq job pull, `XADD`, `SET`/`EXPIRE`/`DEL` | The same queue and streams the API uses. No direct API-to-worker connection is needed. |
-| Worker → Postgres | PostgreSQL wire protocol via asyncpg | Persists replies, widgets, job status and ingested rows in the worker's own session. |
-| Worker → OpenRouter | HTTPS, OpenAI-compatible `POST /chat/completions` with `stream: true` (SSE response) | One request shape for many providers. Streaming carries reasoning and content deltas and tool-call fragments. |
-| Worker → Transfermarkt source | HTTPS `GET {base}/{table}.csv.gz` | Bulk static files. Decompression and CSV parsing run in a threadpool so the loop stays free. |
+
+| From → To                          | Protocol                                                                                             | Why this protocol                                                                                                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser → Next.js (pages, actions) | HTTPS, HTML and JSON `fetch`                                                                         | Standard web delivery. Auth is an httpOnly cookie (`fai_session`), so the browser never holds the token.                                                                      |
+| Browser → Next.js (live updates)   | Server-Sent Events via `EventSource` (`GET /api/conversations/{id}/events`, `GET /api/users/events`) | Server-to-client push only, over plain HTTP. `EventSource` sends the cookie automatically and reconnects with `Last-Event-ID`. See [SSE over WebSocket](#sse-over-websocket). |
+| Next.js → FastAPI (JSON)           | HTTP + JSON, `Authorization: Bearer <JWT>`                                                           | Stateless, cacheable-by-design REST. The backend authorizes each request independently of the frontend.                                                                       |
+| Next.js → FastAPI (CSV upload)     | `multipart/form-data`                                                                                | Native format for file uploads. The proxy forwards the `FormData` unchanged, so the backend's structured per-file rejection body survives.                                    |
+| Next.js → FastAPI (live events)    | SSE (`text/event-stream`), response body piped through                                               | The proxy returns the backend's `ReadableStream` as-is. Buffering it would hold back an intentionally endless stream.                                                         |
+| FastAPI → Postgres                 | PostgreSQL wire protocol via asyncpg (SQLAlchemy 2 async)                                            | Non-blocking I/O on the event loop. Relational data with joins and aggregation done in SQL.                                                                                   |
+| FastAPI → Redis (enqueue)          | Redis protocol, Arq `enqueue_job`                                                                    | Hands work to the worker without blocking the request.                                                                                                                        |
+| FastAPI → Redis (coordination)     | Redis protocol: `SET NX EX` flag, `XADD`, `XREAD BLOCK`, `MGET`                                      | Atomic one-turn-per-conversation guard. Streams give an ordered, replayable log for SSE readers.                                                                              |
+| Worker → Redis                     | Redis protocol: Arq job pull, `XADD`, `SET`/`EXPIRE`/`DEL`                                           | The same queue and streams the API uses. No direct API-to-worker connection is needed.                                                                                        |
+| Worker → Postgres                  | PostgreSQL wire protocol via asyncpg                                                                 | Persists replies, widgets, job status and ingested rows in the worker's own session.                                                                                          |
+| Worker → OpenRouter                | HTTPS, OpenAI-compatible `POST /chat/completions` with `stream: true` (SSE response)                 | One request shape for many providers. Streaming carries reasoning and content deltas and tool-call fragments.                                                                 |
+| Worker → Transfermarkt source      | HTTPS `GET {base}/{table}.csv.gz`                                                                    | Bulk static files. Decompression and CSV parsing run in a threadpool so the loop stays free.                                                                                  |
+
 
 Notes:
 
@@ -99,17 +106,17 @@ Notes:
 
 ## Why this architecture
 
-The repository records some of its own reasoning in [`creation_blog.md`](creation_blog.md) and in commit messages. Where a rationale is recorded, it is quoted or paraphrased below. Where it is not, the tradeoff is stated neutrally.
+The repository records some of its own reasoning in `[creation_blog.md](creation_blog.md)` and in commit messages. Where a rationale is recorded, it is quoted or paraphrased below. Where it is not, the tradeoff is stated neutrally.
 
 ### Next.js as a BFF proxy in front of FastAPI
 
-- **Decision:** the browser calls only Next.js Route Handlers (`frontend/src/app/api/**`). They call FastAPI server-side.
+- **Decision:** the browser calls only Next.js Route Handlers (`frontend/src/app/api/`**). They call FastAPI server-side.
 - **Problem:** the JWT must not be readable by browser JavaScript, and the backend URL should not be exposed. The session token lives in an httpOnly cookie (`frontend/src/lib/auth/session.ts`).
 - **Tradeoff:** every backend endpoint the UI needs has a matching Route Handler. Streaming responses need a dedicated pass-through handler. The frontend auth gate only checks that the cookie exists; the backend verifies the JWT on every request.
 
 ### Hexagonal backend (layer-first)
 
-- **Decision:** `api/` handles HTTP and DTOs, `domain/` holds models and use-case services, `infra/` wraps each external dependency behind interfaces. Conventions are in [`AGENTS.md`](AGENTS.md).
+- **Decision:** `api/` handles HTTP and DTOs, `domain/` holds models and use-case services, `infra/` wraps each external dependency behind interfaces. Conventions are in `[AGENTS.md](AGENTS.md)`.
 - **Problem:** Postgres, Redis, OpenRouter and Transfermarkt should be replaceable without touching business logic or routers. Simple reads can go from a router straight to a repository interface. Multi-step use cases live in domain services.
 - **Tradeoff:** more files and indirection than a flat FastAPI app. Each repository needs an interface, a private implementation and a DI provider.
 
@@ -135,7 +142,7 @@ The repository records some of its own reasoning in [`creation_blog.md`](creatio
 - **Recorded caveats:** OpenRouter is itself a single point of failure. Prompt caching only works within a provider, so a fallback model loses cache benefit and may change response style. The author accepted both for a demo-stage app.
 - **Where it applies:** the client marks the system prompt with an ephemeral cache breakpoint. The tool loop is capped at 5 iterations per turn (`MAX_ITERATIONS`).
 
-### Synthetic tournament data plus real Transfermarkt data with audited links
+### Tournament data plus real Transfermarkt data with audited links
 
 - **Decision:** the tournament dataset is loaded from CSVs (git-ignored `data/FIFA-World-Cup-2026-Dataset`, via the admin ingestion API or a seed script). Real Transfermarkt tables are synced separately. `player_identity_link` connects the two ID spaces.
 - **Problem:** the two sources share no key. Matching uses exact name plus date of birth, exact name plus team, and fuzzy name similarity (`rapidfuzz`). Fuzzy matches get confidence below the exact ones, and an admin can approve, reject or reassign each link in the admin UI.
@@ -201,13 +208,15 @@ docker compose exec -e PYTHONPATH=/app backend python scripts/seed_from_csv.py
 
 Then open `http://localhost:3000` and sign in with the seeded admin credentials. As an alternative to step 4, sign in first and upload the CSVs through the admin ingestion UI.
 
-| Service | Host port | Notes |
-|---|---|---|
-| Frontend (Next.js) | 3000 | Reaches the backend as `http://backend:8000/api/v1` inside the compose network. |
-| Backend (FastAPI) | 8000 | Runs with `--reload`. Interactive docs are shown when `ENVIRONMENT` is `local` or `staging`. |
-| Worker (Arq) | none | Runs `arq src.infra.task_queue.worker.WorkerSettings`. |
-| Postgres | 55432 | User, password and database are all `world_cup_ai_scout`. |
-| Redis | 56379 | |
+
+| Service            | Host port | Notes                                                                                        |
+| ------------------ | --------- | -------------------------------------------------------------------------------------------- |
+| Frontend (Next.js) | 3000      | Reaches the backend as `http://backend:8000/api/v1` inside the compose network.              |
+| Backend (FastAPI)  | 8000      | Runs with `--reload`. Interactive docs are shown when `ENVIRONMENT` is `local` or `staging`. |
+| Worker (Arq)       | none      | Runs `arq src.infra.task_queue.worker.WorkerSettings`.                                       |
+| Postgres           | 55432     | User, password and database are all `world_cup_ai_scout`.                                    |
+| Redis              | 56379     |                                                                                              |
+
 
 Tests and linting:
 
@@ -242,3 +251,4 @@ cd frontend && npm run lint
 ├── AGENTS.md                Coding conventions and architecture rules
 └── creation_blog.md         Author's log of decisions
 ```
+
