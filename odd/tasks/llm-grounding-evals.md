@@ -31,10 +31,10 @@ extends coverage to every other tool, and to questions that need no tool.
   is already a feature branch, one PR slice per tool group if needed.
 
 ## Tasks
-- [ ] T1 Generalize harness (optional repos, `run_turn`, keep player tests green on collect) — route: delegated writer
-- [ ] T2 Per-tool counterfactual evals (team, match, player comparison, team comparison, ranking, utc time) — route: delegated writer
-- [ ] T3 No-tool question evals — route: delegated writer
-- [ ] T4 Verify (ruff, collect-only, default deselect, handler smoke, unit suite) and commit work units
+- [x] T1 Generalize harness (optional repos, `run_turn`, keep player tests green on collect) — route: delegated writer
+- [x] T2 Per-tool counterfactual evals (team, match, player comparison, team comparison, ranking, utc time) — route: delegated writer
+- [x] T3 No-tool question evals — route: delegated writer
+- [x] T4 Verify (ruff, collect-only, default deselect, handler smoke, unit suite) and commit work units
 
 ## Route declaration
 Mapping needs 4+ domain model files and the writer touches 2+ non-trivial files, so mandatory delegation
@@ -46,7 +46,8 @@ triggers fire: one bounded writer (sonnet), single writer thread.
 - Every tool eval asserts the tool was called and that the answer follows altered tool data.
 
 ## Progress / evidence
-- Player analysis evals (5) done earlier in session; collected OK, not run against live model.
+- 39 evals (5 player + 34 other tools/no-tool) collected via `pytest -m llm_eval --collect-only`; default run deselects all; ruff clean; unit suite 148 passed. Never run against the live model (no API key).
+- Commits: 11a423c (harness + player), 62e7f26 (other tools), 4e0f834 (no-tool).
 
 ## Next step
-Delegate T1-T3 to one writer, then verify and commit.
+Run `cd backend && pytest -m llm_eval tests/evals` with a real OPENROUTER_API_KEY and tune flaky regexes.
