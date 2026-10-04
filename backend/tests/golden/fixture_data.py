@@ -15,6 +15,8 @@ Run it (needs the local docker Postgres, see `backend/env.example.txt`):
 The tournament: Valdoria (VLD), Karsovia (KRS) and Sérvenia (SRV, accented name). Valdoria
 and Karsovia meet twice (group stage and final, the final decided on penalties); Valdoria
 also beats Sérvenia 3-0. Two players share the name "Mateo Ravelli" on different teams.
+`fixture_empty` adds deliberately empty entities for the no-data tests (a team that never
+played, a team without roster, a scheduled match with no events, a career with no seasons).
 
 Seeding contract (shared dev database, which also holds the real dataset):
 
