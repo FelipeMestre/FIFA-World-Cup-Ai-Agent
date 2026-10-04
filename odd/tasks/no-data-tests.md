@@ -33,9 +33,9 @@ nothing; each tool has several distinct no-data shapes worth pinning.
 - Delivery: ask-on-risk; stacked on PR #40; size:exception requested as before (cached from #39).
 
 ## Tasks
-- [ ] T1 Map no-data shapes per tool/case; extend fixture with empty entities; Layer A tests
-- [ ] T2 Layer B LLM no-data cases
-- [ ] T3 Verify, commit work units, open PR (base: claude/golden-set-tests)
+- [x] T1 Map no-data shapes per tool/case; extend fixture with empty entities; Layer A tests
+- [x] T2 Layer B LLM no-data cases
+- [x] T3 Verify, commit work units, open PR (base: claude/golden-set-tests)
 
 ## Route declaration
 One bounded sonnet writer per task, sequential, single writer thread (writes 2+ non-trivial files and
@@ -48,7 +48,15 @@ needs reading of tools, repos and golden fixture).
 - ruff clean; unit/evals/golden suites unaffected.
 
 ## Progress / evidence
-(none yet)
+- Layer A: 131 new deterministic no-data tests (golden suite 244, run twice, idempotent, 0 leftover rows); fixture extended with empty entities (Ostravia, Thalmoor, scheduled Varnholm-Quellis match, Thorncastle career). Mutation check made the per-90/ranking no-data tests fail.
+- Layer B: 47 opt-in llm_eval cases; scripted smoke: 49 honest answers pass, 78 hallucinated fail, 0 mismatches. Never run live (no API key). 130 llm_eval tests collected overall.
+- unit 148 passed, ruff clean.
+- Commits: 103585d (Layer A), Layer B commit.
+
+## Findings (possible production bugs, not changed)
+F1 malformed match `date` raises uncaught ValueError (aborts the turn); F2 `%`/`_` unescaped in ilike resolvers
+(name "%" resolves to a real team/player); F3 no-data players get "Clean record" and a peer-dependent tier;
+F4 a scheduled match counts as a played draw in team analysis; F5 scheduled match returned with 0-0 score.
 
 ## Next step
-T1.
+Run `cd backend && pytest -m llm_eval tests/golden` with a real OPENROUTER_API_KEY; decide on fixes.
