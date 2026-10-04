@@ -5,14 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.infra.postgres.config import SessionFactory
 from tests.golden import fixture_career as career
 from tests.golden import fixture_data as data
+from tests.golden import fixture_empty as empty
 from tests.golden import fixture_matches
 from tests.golden.seeding import count_fixture_rows, delete_fixture_rows, seed_fixture_rows
 
 _EXPECTED_ROW_COUNTS = {
-    "national_team": len(data.TEAMS),
-    "player": len(data.PLAYERS),
-    "match": len(fixture_matches.MATCHES),
-    "real_player": len(career.REAL_PLAYERS),
+    "national_team": len(data.TEAMS) + len(empty.EMPTY_TEAMS),
+    "player": len(data.PLAYERS) + len(empty.EMPTY_PLAYERS),
+    "match": len(fixture_matches.MATCHES) + len(empty.SCHEDULED_MATCHES),
+    "real_player": len(career.REAL_PLAYERS) + len(empty.EMPTY_REAL_PLAYERS),
 }
 _NO_ROWS = dict.fromkeys(_EXPECTED_ROW_COUNTS, 0)
 

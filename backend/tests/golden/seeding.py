@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.golden import fixture_career as career
 from tests.golden import fixture_data as data
+from tests.golden import fixture_empty as empty
 from tests.golden import fixture_matches as matches
 
 _RANGE = {
@@ -56,7 +57,7 @@ def _inserts() -> tuple[_Insert, ...]:
             "group_letter, fifa_ranking_pre_tournament, elo_rating, manager_name) VALUES "
             "(:team_id, :team_name, :fifa_code, :confederation, :group_letter, "
             ":fifa_ranking_pre_tournament, :elo_rating, :manager_name)",
-            data.TEAMS,
+            data.TEAMS + empty.EMPTY_TEAMS,
         ),
         _Insert(
             "INSERT INTO tournament_stage (stage_id, stage_name, is_knockout) VALUES "
@@ -92,7 +93,7 @@ def _inserts() -> tuple[_Insert, ...]:
             "market_value_eur, caps, date_of_birth, height_cm, goals) VALUES (:player_id, "
             ":team_id, :player_name, :position, :club_team, :market_value_eur, :caps, "
             ":date_of_birth, :height_cm, :goals)",
-            data.PLAYERS,
+            data.PLAYERS + empty.EMPTY_PLAYERS,
         ),
         _Insert(
             "INSERT INTO player_stat (player_id, player_name, team_id, position, "
@@ -102,7 +103,10 @@ def _inserts() -> tuple[_Insert, ...]:
             ":matches_played, :matches_started, :minutes_played, :goals, :assists, "
             ":yellow_cards, :red_cards, :penalty_goals, :own_goals, :clean_sheets, :saves, "
             ":goals_conceded, :last_verified)",
-            tuple({**stat._asdict(), "last_verified": data.LAST_VERIFIED} for stat in data.STATS),
+            tuple(
+                {**stat._asdict(), "last_verified": data.LAST_VERIFIED}
+                for stat in data.STATS + empty.EMPTY_STATS
+            ),
         ),
         _Insert(
             'INSERT INTO "match" (match_id, date, kickoff_time_utc, stage_id, venue_id, '
@@ -115,6 +119,17 @@ def _inserts() -> tuple[_Insert, ...]:
             tuple(
                 {**match._asdict(), "venue_id": data.VENUE_ID, "referee_id": data.REFEREE_ID}
                 for match in matches.MATCHES
+            ),
+        ),
+        _Insert(
+            'INSERT INTO "match" (match_id, date, kickoff_time_utc, stage_id, venue_id, '
+            "home_team_id, away_team_id, home_score, away_score, status, result_type, "
+            "home_xg, away_xg, referee_id, player_of_the_match_id) VALUES (:match_id, "
+            ":match_date, :kickoff, :stage_id, :venue_id, :home_team_id, :away_team_id, "
+            "0, 0, :status, 'regulation', 0, 0, :referee_id, :potm_id)",
+            tuple(
+                {**match._asdict(), "venue_id": data.VENUE_ID, "referee_id": data.REFEREE_ID}
+                for match in empty.SCHEDULED_MATCHES
             ),
         ),
         _Insert(
@@ -151,7 +166,7 @@ def _inserts() -> tuple[_Insert, ...]:
             ":sub_position, :foot, :height_cm, :current_club_id, :international_caps, "
             ":international_goals, :market_value_eur, :highest_market_value_eur, "
             ":profile_url, now())",
-            career.REAL_PLAYERS,
+            career.REAL_PLAYERS + empty.EMPTY_REAL_PLAYERS,
         ),
         _Insert(
             "INSERT INTO real_player_season_stat (real_player_id, season, competition_id, "
@@ -171,7 +186,7 @@ def _inserts() -> tuple[_Insert, ...]:
             "INSERT INTO player_identity_link (player_id, real_player_id, match_method, "
             "match_confidence, reviewed_by_admin, status) VALUES (:player_id, "
             ":real_player_id, :match_method, :match_confidence, false, :status)",
-            career.LINKS,
+            career.LINKS + empty.EMPTY_LINKS,
         ),
     )
 

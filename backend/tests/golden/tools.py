@@ -4,6 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from src.domain.chat.model.message import Message
 from src.domain.chat.services.tool_call_executor import (
     ToolCallExecutor,
     ToolLoopEvent,
@@ -70,6 +71,22 @@ class ScriptedOpenRouterClient:
     ) -> AsyncIterator[ChatCompletionChunk]:
         self.calls.append([dict(message) for message in messages])
         return self._responses.pop(0)
+
+
+class InMemoryConversationCache:
+    """Real in-memory implementation of the history cache; starts empty unless seeded."""
+
+    def __init__(self, history: list[Message] | None = None) -> None:
+        self._history = list(history or [])
+        self.saved: list[list[Message]] = []
+
+    async def get_history(self, conversation_id: str) -> list[Message]:
+        return list(self._history)
+
+    async def save_history(
+        self, conversation_id: str, messages: list[Message], ttl_seconds: int
+    ) -> None:
+        self.saved.append(list(messages))
 
 
 async def run_turn(
